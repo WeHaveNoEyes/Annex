@@ -3,6 +3,8 @@ import { router, publicProcedure } from "../trpc.js";
 import { getSyncService } from "../services/sync.js";
 import { getJobQueueService } from "../services/jobQueue.js";
 import { getMDBListService } from "../services/mdblist.js";
+import { prisma } from "../db/client.js";
+import { calculateAggregateScore } from "../services/ratingAggregator.js";
 
 export const syncRouter = router({
   /**
@@ -192,6 +194,36 @@ export const syncRouter = router({
     }),
 
   /**
+   * Pause a pending or running job
+   * Running jobs will stop at the next checkpoint
+   */
+  pauseJob: publicProcedure
+    .input(z.object({ jobId: z.string() }))
+    .mutation(async ({ input }) => {
+      const jobQueue = getJobQueueService();
+      const success = await jobQueue.pauseJob(input.jobId);
+      return {
+        success,
+        message: success ? "Job paused" : "Job not found or not in pausable state",
+      };
+    }),
+
+  /**
+   * Resume a paused job
+   * The job will be re-queued and processed from where it left off
+   */
+  resumeJob: publicProcedure
+    .input(z.object({ jobId: z.string() }))
+    .mutation(async ({ input }) => {
+      const jobQueue = getJobQueueService();
+      const success = await jobQueue.resumeJob(input.jobId);
+      return {
+        success,
+        message: success ? "Job resumed" : "Job not found or not paused",
+      };
+    }),
+
+  /**
    * Cancel a running sync job
    * The sync will stop gracefully at the next batch checkpoint
    */
@@ -217,17 +249,27 @@ export const syncRouter = router({
     }),
 
   /**
-   * Get running sync jobs for the UI to show cancel buttons
+   * Get running and paused jobs for the UI to show pause/resume/cancel buttons
    */
   getRunningJobs: publicProcedure.query(async () => {
     const jobQueue = getJobQueueService();
     const runningIds = jobQueue.getRunningJobIds();
 
-    if (runningIds.length === 0) {
-      return { jobs: [] };
-    }
+    // Also get paused jobs from database
+    const pausedJobs = await prisma.job.findMany({
+      where: { status: "PAUSED" },
+      select: {
+        id: true,
+        type: true,
+        progress: true,
+        progressCurrent: true,
+        progressTotal: true,
+        startedAt: true,
+        status: true,
+      },
+    });
 
-    const jobs = await Promise.all(
+    const runningJobs = await Promise.all(
       runningIds.map(async (id) => {
         const job = await jobQueue.getJob(id);
         if (!job) return null;
@@ -238,12 +280,18 @@ export const syncRouter = router({
           progressCurrent: job.progressCurrent,
           progressTotal: job.progressTotal,
           startedAt: job.startedAt,
+          status: job.status,
         };
       })
     );
 
+    const allJobs = [
+      ...runningJobs.filter((j): j is NonNullable<typeof j> => j !== null),
+      ...pausedJobs,
+    ];
+
     return {
-      jobs: jobs.filter((j): j is NonNullable<typeof j> => j !== null),
+      jobs: allJobs,
     };
   }),
 
@@ -340,4 +388,120 @@ export const syncRouter = router({
         alreadyRunning: false,
       };
     }),
+
+  /**
+   * Recalculate all aggregate scores from existing rating data
+   * This is useful after fixing bugs in the aggregation algorithm
+   */
+  recalculateAggregates: publicProcedure.mutation(async () => {
+    const batchSize = 500;
+    let processed = 0;
+    let updated = 0;
+    let lastId: string | null = null;
+
+    // Process in batches using offset pagination
+    let hasMore = true;
+    while (hasMore) {
+      type RatingRow = {
+        id: string;
+        tmdbScore: number | null;
+        tmdbVotes: number | null;
+        imdbScore: number | null;
+        imdbVotes: number | null;
+        rtCriticScore: number | null;
+        rtAudienceScore: number | null;
+        metacriticScore: number | null;
+        traktScore: number | null;
+        traktVotes: number | null;
+        letterboxdScore: number | null;
+      };
+
+      let ratings: RatingRow[];
+      if (lastId) {
+        ratings = await prisma.mediaRatings.findMany({
+          take: batchSize,
+          where: { id: { gt: lastId } },
+          orderBy: { id: "asc" },
+          select: {
+            id: true,
+            tmdbScore: true,
+            tmdbVotes: true,
+            imdbScore: true,
+            imdbVotes: true,
+            rtCriticScore: true,
+            rtAudienceScore: true,
+            metacriticScore: true,
+            traktScore: true,
+            traktVotes: true,
+            letterboxdScore: true,
+          },
+        });
+      } else {
+        ratings = await prisma.mediaRatings.findMany({
+          take: batchSize,
+          orderBy: { id: "asc" },
+          select: {
+            id: true,
+            tmdbScore: true,
+            tmdbVotes: true,
+            imdbScore: true,
+            imdbVotes: true,
+            rtCriticScore: true,
+            rtAudienceScore: true,
+            metacriticScore: true,
+            traktScore: true,
+            traktVotes: true,
+            letterboxdScore: true,
+          },
+        });
+      }
+
+      if (ratings.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      for (const rating of ratings) {
+        const aggregate = calculateAggregateScore({
+          tmdbScore: rating.tmdbScore,
+          tmdbVotes: rating.tmdbVotes,
+          imdbScore: rating.imdbScore,
+          imdbVotes: rating.imdbVotes,
+          rtCriticScore: rating.rtCriticScore,
+          rtAudienceScore: rating.rtAudienceScore,
+          metacriticScore: rating.metacriticScore,
+          traktScore: rating.traktScore,
+          traktVotes: rating.traktVotes,
+          letterboxdScore: rating.letterboxdScore,
+        });
+
+        await prisma.mediaRatings.update({
+          where: { id: rating.id },
+          data: {
+            aggregateScore: aggregate.aggregateScore,
+            sourceCount: aggregate.sourceCount,
+            confidenceScore: aggregate.confidenceScore,
+            isTrusted: aggregate.isTrusted,
+            aggregatedAt: aggregate.aggregatedAt,
+          },
+        });
+
+        updated++;
+      }
+
+      processed += ratings.length;
+      lastId = ratings[ratings.length - 1].id;
+
+      console.log(`[RecalculateAggregates] Processed ${processed} ratings...`);
+
+      if (ratings.length < batchSize) {
+        hasMore = false;
+      }
+    }
+
+    return {
+      message: `Recalculated aggregates for ${updated} items`,
+      updated,
+    };
+  }),
 });
