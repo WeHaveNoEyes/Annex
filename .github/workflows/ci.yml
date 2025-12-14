@@ -47,7 +47,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma client
-        run: pnpm --filter @annex/server prisma generate
+        run: npx prisma generate
+        working-directory: packages/server
 
       - name: Build shared types
         run: pnpm --filter @annex/shared build
