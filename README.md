@@ -12,6 +12,10 @@ Unified media acquisition platform replacing Jellyseerr, Radarr, Sonarr & Prowla
 | Prowlarr | Indexer management | Annex Indexer Module |
 | qBittorrent | Torrent downloading | Still used (via API) |
 
+## Documentation
+
+- [Development Setup](documentation/development.md)
+
 ## Features
 
 - **Discovery** - Browse trending movies and TV shows via TMDB with aggregated ratings from MDBList (IMDB, RT, Metacritic, Trakt, Letterboxd)
@@ -167,10 +171,6 @@ Environment=NODE_ENV=production
 [Install]
 WantedBy=multi-user.target
 ```
-
-## Documentation
-
-- [Development Setup](documentation/development.md)
 
 ## License
 
