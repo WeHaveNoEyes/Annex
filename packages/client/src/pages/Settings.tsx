@@ -258,15 +258,14 @@ function ServerForm({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Protocol</Label>
-            <select
+            <Select
               value={form.protocol}
               onChange={(e) => updateForm("protocol", e.target.value as "sftp" | "rsync" | "smb")}
-              className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white focus:outline-none focus:border-annex-500/50"
             >
               <option value="sftp">SFTP</option>
               <option value="rsync">rsync</option>
               <option value="smb">SMB</option>
-            </select>
+            </Select>
           </div>
           <div>
             <Label>Username</Label>
@@ -324,15 +323,14 @@ function ServerForm({
 
         <div>
           <Label>Media Server Type</Label>
-          <select
+          <Select
             value={mediaServerType}
             onChange={(e) => handleMediaServerTypeChange(e.target.value as "none" | "plex" | "emby")}
-            className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white focus:outline-none focus:border-annex-500/50"
           >
             <option value="none">None</option>
             <option value="emby">Emby</option>
             <option value="plex">Plex</option>
-          </select>
+          </Select>
         </div>
 
         {mediaServerType !== "none" && (
@@ -430,7 +428,7 @@ function ServerForm({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Max Resolution</Label>
-            <select
+            <Select
               value={form.restrictions.maxResolution}
               onChange={(e) =>
                 updateForm("restrictions", {
@@ -438,18 +436,17 @@ function ServerForm({
                   maxResolution: e.target.value as "4K" | "2K" | "1080p" | "720p" | "480p",
                 })
               }
-              className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white focus:outline-none focus:border-annex-500/50"
             >
               <option value="4K">4K</option>
               <option value="2K">2K (1440p)</option>
               <option value="1080p">1080p</option>
               <option value="720p">720p</option>
               <option value="480p">480p</option>
-            </select>
+            </Select>
           </div>
           <div>
             <Label>Preferred Codec</Label>
-            <select
+            <Select
               value={form.restrictions.preferredCodec}
               onChange={(e) =>
                 updateForm("restrictions", {
@@ -457,12 +454,11 @@ function ServerForm({
                   preferredCodec: e.target.value as "av1" | "hevc" | "h264",
                 })
               }
-              className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white focus:outline-none focus:border-annex-500/50"
             >
               <option value="av1">AV1</option>
               <option value="hevc">HEVC (H.265)</option>
               <option value="h264">H.264</option>
-            </select>
+            </Select>
           </div>
         </div>
       </Card>
@@ -1463,8 +1459,14 @@ function ProfileForm({
   };
 
   // Group encoders by hardware acceleration type
-  const softwareEncoders = videoEncoders.data?.filter((e) => !e.hwAccel) || [];
-  const hwEncoders = videoEncoders.data?.filter((e) => e.hwAccel) || [];
+  const encoderGroups = [
+    { key: "none", label: "Software", encoders: videoEncoders.data?.filter((e) => !e.hwAccel || e.hwAccel === "none") || [] },
+    { key: "qsv", label: "Intel Quick Sync", encoders: videoEncoders.data?.filter((e) => e.hwAccel === "qsv") || [] },
+    { key: "nvenc", label: "NVIDIA NVENC", encoders: videoEncoders.data?.filter((e) => e.hwAccel === "nvenc") || [] },
+    { key: "amf", label: "AMD AMF", encoders: videoEncoders.data?.filter((e) => e.hwAccel === "amf") || [] },
+    { key: "vaapi", label: "VAAPI (Linux)", encoders: videoEncoders.data?.filter((e) => e.hwAccel === "vaapi") || [] },
+    { key: "videotoolbox", label: "Apple VideoToolbox", encoders: videoEncoders.data?.filter((e) => e.hwAccel === "videotoolbox") || [] },
+  ].filter((g) => g.encoders.length > 0);
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -1516,24 +1518,15 @@ function ProfileForm({
               value={form.videoEncoder}
               onChange={(e) => handleEncoderChange(e.target.value)}
             >
-              {softwareEncoders.length > 0 && (
-                <optgroup label="Software Encoders">
-                  {softwareEncoders.map((enc) => (
+              {encoderGroups.map((group) => (
+                <optgroup key={group.key} label={group.label}>
+                  {group.encoders.map((enc) => (
                     <option key={enc.id} value={enc.id}>
                       {enc.name} ({enc.codec.toUpperCase()})
                     </option>
                   ))}
                 </optgroup>
-              )}
-              {hwEncoders.length > 0 && (
-                <optgroup label="Hardware Encoders">
-                  {hwEncoders.map((enc) => (
-                    <option key={enc.id} value={enc.id}>
-                      {enc.name} ({enc.codec.toUpperCase()})
-                    </option>
-                  ))}
-                </optgroup>
-              )}
+              ))}
             </Select>
             {encoderDetails.data && (
               <p className="text-xs text-white/40 mt-1">{encoderDetails.data.description}</p>

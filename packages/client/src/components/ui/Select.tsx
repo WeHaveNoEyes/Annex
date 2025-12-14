@@ -19,7 +19,8 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
           bg-[url('data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22%23ffffff%22%20fill-opacity%3D%220.5%22%20d%3D%22M6%208L1%203h10z%22%2F%3E%3C%2Fsvg%3E')]
           bg-[length:12px] bg-[right_12px_center] bg-no-repeat
           pr-10
-          [&>option]:bg-zinc-900 [&>option]:text-white
+          [&_option]:bg-zinc-900 [&_option]:text-white
+          [&_optgroup]:bg-zinc-900 [&_optgroup]:text-white
           ${className}
         `}
         {...props}
