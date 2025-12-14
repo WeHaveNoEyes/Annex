@@ -914,3 +914,111 @@ export async function fetchPlexShowsWithEpisodes(
 
   return results;
 }
+
+// =============================================================================
+// Watch History
+// =============================================================================
+
+export interface PlexWatchedItem {
+  tmdbId: number;
+  type: "movie" | "tv";
+  title: string;
+  viewCount: number;
+  lastViewedAt?: Date;
+}
+
+/**
+ * Fetch watched items from a Plex server for a user
+ * Returns movies and TV shows that have been watched
+ */
+export async function fetchPlexWatchedItems(
+  serverUrl: string,
+  token: string
+): Promise<PlexWatchedItem[]> {
+  const baseUrl = serverUrl.replace(/\/$/, "");
+  const watchedItems: PlexWatchedItem[] = [];
+
+  // Get all libraries
+  const libraries = await getPlexLibraries(serverUrl, token);
+
+  // Filter to movie and show libraries
+  const targetLibraries = libraries.filter(
+    (lib) => lib.type === "movie" || lib.type === "show"
+  );
+
+  for (const library of targetLibraries) {
+    const isMovieLibrary = library.type === "movie";
+
+    // Fetch items - Plex doesn't have a direct "watched only" filter via API params
+    // We need to fetch all and filter by viewCount > 0 or viewedLeafCount > 0
+    let startIndex = 0;
+    const batchSize = 100;
+    let totalCount = 0;
+
+    do {
+      const params = new URLSearchParams({
+        "X-Plex-Container-Start": startIndex.toString(),
+        "X-Plex-Container-Size": batchSize.toString(),
+        includeGuids: "1",
+      });
+
+      // For shows, we can filter to ones with viewed episodes
+      // unwatched=0 means "hide unwatched" but this might not work on all Plex versions
+      if (!isMovieLibrary) {
+        params.set("unwatched", "0");
+      }
+
+      const endpoint = `/library/sections/${library.key}/all?${params}`;
+
+      try {
+        const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(
+          baseUrl,
+          token,
+          endpoint
+        );
+
+        totalCount = data.MediaContainer.totalSize ?? data.MediaContainer.size;
+        const items = data.MediaContainer.Metadata || [];
+
+        for (const item of items) {
+          // For movies: check viewCount (lastViewedAt might also be available)
+          // For shows: check viewedLeafCount (number of watched episodes)
+          const isWatched = isMovieLibrary
+            ? (item as PlexMediaItem & { viewCount?: number }).viewCount !== undefined &&
+              (item as PlexMediaItem & { viewCount?: number }).viewCount! > 0
+            : (item.viewedLeafCount ?? 0) > 0;
+
+          if (!isWatched) continue;
+
+          // Parse external IDs
+          const externalIds = parseExternalIds(item.Guid);
+          if (!externalIds.tmdbId) continue;
+
+          // Get view count
+          const viewCount = isMovieLibrary
+            ? (item as PlexMediaItem & { viewCount?: number }).viewCount ?? 1
+            : item.viewedLeafCount ?? 1;
+
+          // Get last viewed timestamp if available
+          const lastViewedAtRaw = (item as PlexMediaItem & { lastViewedAt?: number }).lastViewedAt;
+          const lastViewedAt = lastViewedAtRaw ? new Date(lastViewedAtRaw * 1000) : undefined;
+
+          watchedItems.push({
+            tmdbId: externalIds.tmdbId,
+            type: isMovieLibrary ? "movie" : "tv",
+            title: item.title,
+            viewCount,
+            lastViewedAt,
+          });
+        }
+
+        startIndex += batchSize;
+      } catch (error) {
+        console.error(`[Plex] Error fetching watched items from library ${library.title}:`, error);
+        break;
+      }
+    } while (startIndex < totalCount);
+  }
+
+  return watchedItems;
+}

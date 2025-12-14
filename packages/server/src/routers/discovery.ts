@@ -3,6 +3,7 @@ import { router, publicProcedure } from "../trpc.js";
 import { getTMDBService } from "../services/tmdb.js";
 import { prisma } from "../db/client.js";
 import { getJobQueueService } from "../services/jobQueue.js";
+import { getTasteProfileService, type TasteProfile } from "../services/tasteProfile.js";
 import type { TrendingResult } from "@annex/shared";
 import { Prisma } from "@prisma/client";
 
@@ -105,6 +106,31 @@ const QUALITY_TIER_THRESHOLDS: Record<QualityTier, number> = {
   great: 80,
   excellent: 85,
 };
+
+// Personalization constants
+const PERSONALIZATION_OVERSAMPLE = 3; // Fetch 3x items for reranking
+const PERSONALIZATION_WEIGHT = 15; // Max bonus points for perfect genre match
+
+/**
+ * Calculate personalization score based on genre overlap with taste profile
+ * Returns a score from 0 to 1 (normalized)
+ */
+function calculatePersonalScore(itemGenres: string[], profile: TasteProfile): number {
+  if (!itemGenres.length || !profile.genres.length) return 0;
+
+  const profileGenreMap = new Map(profile.genres.map((g) => [g.genre, g.weight]));
+  let score = 0;
+
+  for (const genre of itemGenres) {
+    const weight = profileGenreMap.get(genre);
+    if (weight) {
+      score += weight;
+    }
+  }
+
+  // Normalize by number of genres in the item
+  return score / itemGenres.length;
+}
 
 /**
  * Queue a background refresh job for a media item if it's stale
@@ -726,11 +752,29 @@ export const discoveryRouter = router({
         sortBy: z.string().default("aggregate.desc"),
       })
     )
-    .query(async ({ input }) => {
+    .query(async ({ input, ctx }) => {
       const prismaType = input.type === "movie" ? "MOVIE" : "TV";
       const skip = (input.page - 1) * ITEMS_PER_PAGE;
       const today = new Date().toISOString().split("T")[0];
       const currentYear = new Date().getFullYear();
+
+      // Check if personalization is available (user authenticated with linked account)
+      let tasteProfile: TasteProfile | null = null;
+      const mode = input.mode as DiscoveryMode;
+
+      if (mode === "for_you" && ctx.user) {
+        try {
+          const tasteService = getTasteProfileService();
+          tasteProfile = await tasteService.getTasteProfile(
+            ctx.user.id,
+            ctx.user.plexAccount,
+            ctx.user.embyAccount
+          );
+        } catch (error) {
+          console.error("[Discovery] Failed to get taste profile:", error);
+          // Continue without personalization
+        }
+      }
 
       // Build base where clause
       const where: Prisma.MediaItemWhereInput = {
@@ -744,7 +788,6 @@ export const discoveryRouter = router({
       };
 
       // Apply mode-specific filters
-      const mode = input.mode as DiscoveryMode;
       const qualityTier = input.qualityTier as QualityTier;
 
       switch (mode) {
@@ -961,6 +1004,12 @@ export const discoveryRouter = router({
       // Get sort order based on mode (or custom sort for custom mode)
       const orderBy = getSortOrderForMode(mode, input.sortBy);
 
+      // Determine how many items to fetch
+      // If personalization is active, oversample for reranking
+      const fetchCount = tasteProfile && tasteProfile.genres.length > 0
+        ? ITEMS_PER_PAGE * PERSONALIZATION_OVERSAMPLE
+        : ITEMS_PER_PAGE;
+
       // Query local database
       const [items, totalCount] = await Promise.all([
         prisma.mediaItem.findMany({
@@ -975,17 +1024,37 @@ export const discoveryRouter = router({
             overview: true,
             videos: true,
             ratings: true,
+            genres: true, // Include genres for personalization scoring
           },
           orderBy,
           skip,
-          take: ITEMS_PER_PAGE,
+          take: fetchCount,
         }),
         prisma.mediaItem.count({ where }),
       ]);
 
+      // Apply personalization if taste profile is available
+      let finalItems = items;
+      if (tasteProfile && tasteProfile.genres.length > 0 && items.length > 0) {
+        // Score and rerank items based on taste profile
+        const scoredItems = items.map((item) => {
+          const personalScore = calculatePersonalScore(item.genres, tasteProfile);
+          const aggregateScore = (item.ratings as { aggregateScore?: number | null } | null)?.aggregateScore ?? 0;
+          // Combined score: aggregate score + personalization bonus
+          const combinedScore = aggregateScore + personalScore * PERSONALIZATION_WEIGHT;
+          return { ...item, personalScore, combinedScore };
+        });
+
+        // Sort by combined score (highest first)
+        scoredItems.sort((a, b) => b.combinedScore - a.combinedScore);
+
+        // Take only the page size
+        finalItems = scoredItems.slice(0, ITEMS_PER_PAGE);
+      }
+
       // Always return local data - don't fall back to TMDB mid-pagination
       // This ensures consistent totalResults across all pages
-      const results: TrendingResult[] = items.map(mediaItemToTrendingResult);
+      const results: TrendingResult[] = finalItems.map(mediaItemToTrendingResult);
 
       // Queue background refresh for stale items (fire and forget)
       if (items.length > 0) {

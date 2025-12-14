@@ -928,3 +928,127 @@ export async function fetchEmbyShowsWithEpisodes(
 
   return results;
 }
+
+// =============================================================================
+// Watch History
+// =============================================================================
+
+export interface EmbyWatchedItem {
+  tmdbId: number;
+  type: "movie" | "tv";
+  title: string;
+  playCount: number;
+  lastPlayedAt?: Date;
+}
+
+/**
+ * Fetch watched items from an Emby server for a user
+ * Returns movies and TV shows that have been watched
+ */
+export async function fetchEmbyWatchedItems(
+  serverUrl: string,
+  apiKey: string,
+  userId: string
+): Promise<EmbyWatchedItem[]> {
+  const baseUrl = serverUrl.replace(/\/$/, "");
+  const watchedItems: EmbyWatchedItem[] = [];
+
+  // Emby supports filtering by IsPlayed=true directly
+  // Fetch watched movies
+  const movieParams = new URLSearchParams({
+    IncludeItemTypes: "Movie",
+    IsPlayed: "true",
+    Recursive: "true",
+    Fields: "ProviderIds,UserData",
+    StartIndex: "0",
+    Limit: "1000", // Get all in one request for simplicity
+  });
+
+  try {
+    const movieResponse = await fetch(
+      `${baseUrl}/Users/${userId}/Items?${movieParams}`,
+      {
+        headers: {
+          "X-Emby-Token": apiKey,
+          Accept: "application/json",
+        },
+      }
+    );
+
+    if (movieResponse.ok) {
+      const movieData = (await movieResponse.json()) as EmbyItemsResponse;
+
+      for (const item of movieData.Items) {
+        const tmdbId = item.ProviderIds?.Tmdb
+          ? parseInt(item.ProviderIds.Tmdb, 10)
+          : undefined;
+
+        if (!tmdbId || isNaN(tmdbId)) continue;
+
+        watchedItems.push({
+          tmdbId,
+          type: "movie",
+          title: item.Name,
+          playCount: item.UserData?.PlayCount ?? 1,
+          lastPlayedAt: item.UserData?.LastPlayedDate
+            ? new Date(item.UserData.LastPlayedDate)
+            : undefined,
+        });
+      }
+    }
+  } catch (error) {
+    console.error("[Emby] Error fetching watched movies:", error);
+  }
+
+  // Fetch watched TV shows (series level)
+  const tvParams = new URLSearchParams({
+    IncludeItemTypes: "Series",
+    Recursive: "true",
+    Fields: "ProviderIds,UserData",
+    StartIndex: "0",
+    Limit: "1000",
+  });
+
+  try {
+    const tvResponse = await fetch(
+      `${baseUrl}/Users/${userId}/Items?${tvParams}`,
+      {
+        headers: {
+          "X-Emby-Token": apiKey,
+          Accept: "application/json",
+        },
+      }
+    );
+
+    if (tvResponse.ok) {
+      const tvData = (await tvResponse.json()) as EmbyItemsResponse;
+
+      for (const item of tvData.Items) {
+        // Only include shows that have been played
+        if (!item.UserData?.Played && (item.UserData?.PlayCount ?? 0) === 0) {
+          continue;
+        }
+
+        const tmdbId = item.ProviderIds?.Tmdb
+          ? parseInt(item.ProviderIds.Tmdb, 10)
+          : undefined;
+
+        if (!tmdbId || isNaN(tmdbId)) continue;
+
+        watchedItems.push({
+          tmdbId,
+          type: "tv",
+          title: item.Name,
+          playCount: item.UserData?.PlayCount ?? 1,
+          lastPlayedAt: item.UserData?.LastPlayedDate
+            ? new Date(item.UserData.LastPlayedDate)
+            : undefined,
+        });
+      }
+    }
+  } catch (error) {
+    console.error("[Emby] Error fetching watched TV shows:", error);
+  }
+
+  return watchedItems;
+}
