@@ -3,9 +3,14 @@
  *
  * Central scheduler for all recurring tasks. Replaces scattered setInterval calls
  * with a single main loop that fires tasks concurrently.
+ *
+ * IMPORTANT: Last run times are persisted to the database so that on restart,
+ * tasks don't immediately fire. This prevents hammering external services
+ * when the server restarts rapidly.
  */
 
 import { getConfig } from "../config/index.js";
+import { prisma } from "../db/client.js";
 
 interface RecurringTask {
   id: string;
@@ -79,6 +84,7 @@ class SchedulerService {
 
   /**
    * Register a recurring task
+   * Loads last run time from database to prevent immediate execution on restart
    */
   register(
     id: string,
@@ -90,7 +96,8 @@ class SchedulerService {
       console.warn(`[Scheduler] Task ${id} already registered, updating handler`);
     }
 
-    this.recurringTasks.set(id, {
+    // Create task with null lastRun initially
+    const task: RecurringTask = {
       id,
       name,
       intervalMs,
@@ -102,9 +109,62 @@ class SchedulerService {
       errorCount: 0,
       enabled: true,
       isRunning: false,
+    };
+
+    this.recurringTasks.set(id, task);
+
+    // Load last run time from database (async, non-blocking)
+    this.loadLastRunTime(id, task).catch((error) => {
+      console.error(`[Scheduler] Failed to load last run time for ${id}:`, error);
     });
 
     console.log(`[Scheduler] Registered task: ${name} (${id}) @ ${intervalMs}ms`);
+  }
+
+  /**
+   * Load last run time from database
+   */
+  private async loadLastRunTime(id: string, task: RecurringTask): Promise<void> {
+    try {
+      const state = await prisma.schedulerState.findUnique({
+        where: { taskId: id },
+      });
+
+      if (state) {
+        task.lastRun = state.lastRunAt;
+        const age = Date.now() - state.lastRunAt.getTime();
+        const remaining = Math.max(0, task.intervalMs - age);
+        console.log(
+          `[Scheduler] Restored ${task.name}: last ran ${Math.round(age / 1000)}s ago, ` +
+          `next run in ${Math.round(remaining / 1000)}s`
+        );
+      } else {
+        // No previous run recorded - set lastRun to now to prevent immediate execution
+        // This means new tasks wait one full interval before first run
+        task.lastRun = new Date();
+        console.log(`[Scheduler] New task ${task.name}: first run in ${Math.round(task.intervalMs / 1000)}s`);
+      }
+    } catch (error) {
+      // If database is not ready yet, set lastRun to now to be safe
+      task.lastRun = new Date();
+      console.warn(`[Scheduler] DB not ready for ${task.name}, deferring first run`);
+    }
+  }
+
+  /**
+   * Save last run time to database
+   */
+  private async saveLastRunTime(id: string): Promise<void> {
+    try {
+      await prisma.schedulerState.upsert({
+        where: { taskId: id },
+        create: { taskId: id, lastRunAt: new Date() },
+        update: { lastRunAt: new Date() },
+      });
+    } catch (error) {
+      // Non-critical - log but don't fail the task
+      console.error(`[Scheduler] Failed to save last run time for ${id}:`, error);
+    }
   }
 
   /**
@@ -321,9 +381,11 @@ class SchedulerService {
     for (const task of this.recurringTasks.values()) {
       if (!task.enabled || task.isRunning) continue;
 
-      const timeSinceLastRun = task.lastRun
-        ? loopStart - task.lastRun.getTime()
-        : Infinity;
+      // Skip tasks where lastRun hasn't been loaded from DB yet
+      // This prevents immediate execution during startup
+      if (task.lastRun === null) continue;
+
+      const timeSinceLastRun = loopStart - task.lastRun.getTime();
 
       if (timeSinceLastRun >= task.intervalMs) {
         // Fire and forget - don't await
@@ -346,6 +408,8 @@ class SchedulerService {
           .finally(() => {
             task.isRunning = false;
             task.lastRun = new Date();
+            // Persist to database for crash recovery
+            this.saveLastRunTime(task.id).catch(() => {});
           });
       }
     }

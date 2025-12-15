@@ -19,6 +19,13 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
+// Build image URL - handles both full URLs (Trakt) and TMDB paths
+function buildImageUrl(path: string | null | undefined, size: string): string | null {
+  if (!path) return null;
+  if (path.startsWith("http")) return path;
+  return `${TMDB_IMAGE_BASE}/${size}${path}`;
+}
+
 // Format episode air date
 function formatAirDate(dateStr: string | null): string {
   if (!dateStr) return "";
@@ -64,6 +71,18 @@ export default function MediaDetailPage() {
   const tvShowQuery = trpc.discovery.traktTvShowDetails.useQuery(
     { tmdbId },
     { enabled: type === "tv" && tmdbId > 0 }
+  );
+
+  // Fetch library availability for TV shows
+  const tvAvailabilityQuery = trpc.library.tvShowAvailability.useQuery(
+    { tmdbId },
+    { enabled: type === "tv" && tmdbId > 0 }
+  );
+
+  // Fetch library availability for movies
+  const movieAvailabilityQuery = trpc.library.checkInLibrary.useQuery(
+    { tmdbId, type: "movie" },
+    { enabled: type === "movie" && tmdbId > 0 }
   );
 
   // Get the data based on type
@@ -115,17 +134,46 @@ export default function MediaDetailPage() {
     );
   }
 
-  const backdropUrl = data.backdropPath
-    ? `${TMDB_IMAGE_BASE}/original${data.backdropPath}`
-    : null;
-
-  const posterUrl = data.posterPath
-    ? `${TMDB_IMAGE_BASE}/w500${data.posterPath}`
-    : null;
+  const backdropUrl = buildImageUrl(data.backdropPath, "original");
+  const posterUrl = buildImageUrl(data.posterPath, "w500");
 
   const isTvShow = type === "tv";
   const tvData = isTvShow ? (data as NonNullable<typeof tvShowQuery.data>) : null;
   const movieData = !isTvShow ? (data as NonNullable<typeof movieQuery.data>) : null;
+
+  // Library availability data
+  const tvAvailability = tvAvailabilityQuery.data;
+  const movieAvailability = movieAvailabilityQuery.data;
+
+  // Helper to check if an episode is available on any server
+  const getEpisodeAvailability = (seasonNumber: number, episodeNumber: number) => {
+    if (!tvAvailability?.servers) return [];
+    const available: Array<{ serverName: string; quality: string | null }> = [];
+    for (const server of tvAvailability.servers) {
+      const season = server.seasons.find((s) => s.seasonNumber === seasonNumber);
+      const episode = season?.episodes.find((e) => e.episode === episodeNumber);
+      if (episode) {
+        available.push({ serverName: server.serverName, quality: episode.quality });
+      }
+    }
+    return available;
+  };
+
+  // Helper to get season availability summary per server
+  const getSeasonAvailability = (seasonNumber: number, totalEpisodes: number) => {
+    if (!tvAvailability?.servers) return [];
+    return tvAvailability.servers
+      .map((server) => {
+        const season = server.seasons.find((s) => s.seasonNumber === seasonNumber);
+        return {
+          serverName: server.serverName,
+          availableCount: season?.episodeCount || 0,
+          totalCount: totalEpisodes,
+          isComplete: season?.episodeCount === totalEpisodes && totalEpisodes > 0,
+        };
+      })
+      .filter((s) => s.availableCount > 0);
+  };
 
   // Trailer key is now provided directly instead of videos array
   const trailerKey = data.trailerKey;
@@ -286,6 +334,56 @@ export default function MediaDetailPage() {
                 </div>
               )}
 
+              {/* Movie Library Availability */}
+              {!isTvShow && movieAvailability?.inLibrary && movieAvailability.servers.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-white/50 text-sm">In Library:</span>
+                  {movieAvailability.servers.map((server) => (
+                    <span
+                      key={server.serverId}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded text-sm"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      {server.serverName}
+                      {server.quality && (
+                        <span className="text-green-400/70">{server.quality}</span>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              {/* TV Show Library Summary */}
+              {isTvShow && tvAvailability?.hasAnyEpisodes && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-white/50 text-sm">In Library:</span>
+                  {tvAvailability.servers.map((server) => (
+                    <span
+                      key={server.serverId}
+                      className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded text-sm"
+                    >
+                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      {server.serverName}
+                      <span className="text-green-400/70">
+                        {server.totalEpisodes} ep{server.totalEpisodes !== 1 ? "s" : ""}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
+
               {/* Action Buttons */}
               <div className="flex gap-3 pt-2">
                 <Button variant="primary" size="lg" onClick={() => setShowRequestDialog(true)}>
@@ -378,7 +476,7 @@ export default function MediaDetailPage() {
                           {/* Season Poster */}
                           {season.posterPath ? (
                             <img
-                              src={`${TMDB_IMAGE_BASE}/w92${season.posterPath}`}
+                              src={buildImageUrl(season.posterPath, "w92") ?? ""}
                               alt={season.name}
                               className="w-12 h-18 object-cover rounded flex-shrink-0"
                             />
@@ -390,7 +488,7 @@ export default function MediaDetailPage() {
 
                           {/* Season Info */}
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <h3 className="text-white font-medium truncate">
                                 {season.name || `Season ${season.seasonNumber}`}
                               </h3>
@@ -399,6 +497,34 @@ export default function MediaDetailPage() {
                                   ({new Date(season.airDate).getFullYear()})
                                 </span>
                               )}
+                              {/* Server availability badges */}
+                              {getSeasonAvailability(
+                                season.seasonNumber,
+                                season.episodes?.length || season.episodeCount || 0
+                              ).map((avail) => (
+                                <span
+                                  key={avail.serverName}
+                                  className={`text-xs px-1.5 py-0.5 rounded flex items-center gap-1 ${
+                                    avail.isComplete
+                                      ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                      : "bg-yellow-500/20 text-yellow-400 border border-yellow-500/30"
+                                  }`}
+                                >
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path
+                                      fillRule="evenodd"
+                                      d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                      clipRule="evenodd"
+                                    />
+                                  </svg>
+                                  {avail.serverName}
+                                  {!avail.isComplete && (
+                                    <span className="opacity-70">
+                                      ({avail.availableCount}/{avail.totalCount})
+                                    </span>
+                                  )}
+                                </span>
+                              ))}
                             </div>
                             <p className="text-white/50 text-sm">
                               {season.episodes?.length || season.episodeCount} episodes
@@ -414,54 +540,94 @@ export default function MediaDetailPage() {
                         {/* Episodes List (Expanded) */}
                         {isExpanded && season.episodes && season.episodes.length > 0 && (
                           <div className="border-t border-white/10">
-                            {season.episodes.map((episode) => (
-                              <div
-                                key={episode.episodeNumber}
-                                className="flex gap-4 p-4 border-b border-white/5 last:border-b-0 hover:bg-white/[0.02] transition-colors"
-                              >
-                                {/* Episode Still */}
-                                {episode.stillPath ? (
-                                  <img
-                                    src={`${TMDB_IMAGE_BASE}/w185${episode.stillPath}`}
-                                    alt={episode.name}
-                                    className="w-32 h-18 object-cover rounded flex-shrink-0"
-                                  />
-                                ) : (
-                                  <div className="w-32 h-18 bg-white/5 rounded flex-shrink-0 flex items-center justify-center">
-                                    <span className="text-white/20 text-sm">
-                                      E{episode.episodeNumber}
-                                    </span>
-                                  </div>
-                                )}
+                            {season.episodes.map((episode) => {
+                              const episodeAvail = getEpisodeAvailability(
+                                season.seasonNumber,
+                                episode.episodeNumber
+                              );
+                              const isAvailable = episodeAvail.length > 0;
 
-                                {/* Episode Info */}
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div>
-                                      <h4 className="text-white/90 font-medium">
-                                        <span className="text-white/40 mr-2">
-                                          {episode.episodeNumber}.
+                              return (
+                                <div
+                                  key={episode.episodeNumber}
+                                  className={`flex gap-4 p-4 border-b border-white/5 last:border-b-0 hover:bg-white/[0.02] transition-colors ${
+                                    isAvailable ? "bg-green-500/[0.02]" : ""
+                                  }`}
+                                >
+                                  {/* Episode Still */}
+                                  <div className="relative flex-shrink-0">
+                                    {episode.stillPath ? (
+                                      <img
+                                        src={buildImageUrl(episode.stillPath, "w185") ?? ""}
+                                        alt={episode.name}
+                                        className="w-32 h-18 object-cover rounded"
+                                      />
+                                    ) : (
+                                      <div className="w-32 h-18 bg-white/5 rounded flex items-center justify-center">
+                                        <span className="text-white/20 text-sm">
+                                          E{episode.episodeNumber}
                                         </span>
-                                        {episode.name}
-                                      </h4>
-                                      <div className="flex items-center gap-3 mt-1 text-sm text-white/40">
-                                        {episode.airDate && (
-                                          <span>{formatAirDate(episode.airDate)}</span>
-                                        )}
-                                        {episode.runtime && (
-                                          <span>{episode.runtime}m</span>
-                                        )}
+                                      </div>
+                                    )}
+                                    {/* Availability indicator overlay */}
+                                    {isAvailable && (
+                                      <div className="absolute top-1 right-1 bg-green-500 rounded-full p-0.5">
+                                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                          <path
+                                            fillRule="evenodd"
+                                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                            clipRule="evenodd"
+                                          />
+                                        </svg>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Episode Info */}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1">
+                                        <div className="flex items-center gap-2 flex-wrap">
+                                          <h4 className="text-white/90 font-medium">
+                                            <span className="text-white/40 mr-2">
+                                              {episode.episodeNumber}.
+                                            </span>
+                                            {episode.name}
+                                          </h4>
+                                          {/* Server badges for this episode */}
+                                          {episodeAvail.map((avail) => (
+                                            <span
+                                              key={avail.serverName}
+                                              className="text-xs px-1.5 py-0.5 bg-green-500/20 text-green-400 rounded border border-green-500/30"
+                                            >
+                                              {avail.serverName}
+                                              {avail.quality && (
+                                                <span className="opacity-70 ml-1">
+                                                  {avail.quality}
+                                                </span>
+                                              )}
+                                            </span>
+                                          ))}
+                                        </div>
+                                        <div className="flex items-center gap-3 mt-1 text-sm text-white/40">
+                                          {episode.airDate && (
+                                            <span>{formatAirDate(episode.airDate)}</span>
+                                          )}
+                                          {episode.runtime && (
+                                            <span>{episode.runtime}m</span>
+                                          )}
+                                        </div>
                                       </div>
                                     </div>
+                                    {episode.overview && (
+                                      <p className="text-white/50 text-sm mt-2 line-clamp-2">
+                                        {episode.overview}
+                                      </p>
+                                    )}
                                   </div>
-                                  {episode.overview && (
-                                    <p className="text-white/50 text-sm mt-2 line-clamp-2">
-                                      {episode.overview}
-                                    </p>
-                                  )}
                                 </div>
-                              </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
 
@@ -568,7 +734,7 @@ export default function MediaDetailPage() {
                 <div key={person.id} className="text-center group">
                   {person.profilePath ? (
                     <img
-                      src={`${TMDB_IMAGE_BASE}/w185${person.profilePath}`}
+                      src={buildImageUrl(person.profilePath, "w185") ?? ""}
                       alt={person.name}
                       className="w-full aspect-[2/3] object-cover rounded border border-white/10 group-hover:border-white/30 transition-colors"
                     />

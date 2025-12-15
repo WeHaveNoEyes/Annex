@@ -152,7 +152,7 @@ function AppLayout() {
 
       {/* Main content with ambient glow */}
       <main className="flex-1 ambient-glow">
-        <div className={isMediaDetailPage ? "px-4 md:px-8 lg:px-12" : "max-w-7xl mx-auto px-4 py-8"}>
+        <div className={isMediaDetailPage ? "" : "max-w-7xl mx-auto px-4 py-8"}>
           <Routes>
             <Route path="/" element={<DiscoverPage />} />
             <Route path="/movie/:id" element={<MediaDetailPage />} />

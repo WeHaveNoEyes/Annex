@@ -97,16 +97,13 @@ interface TraktIds {
 }
 
 interface TraktImages {
-  poster?: {
-    full?: string;
-    medium?: string;
-    thumb?: string;
-  };
-  fanart?: {
-    full?: string;
-    medium?: string;
-    thumb?: string;
-  };
+  poster?: string[];
+  fanart?: string[];
+  banner?: string[];
+  thumb?: string[];
+  screenshot?: string[];  // Used for episode images
+  logo?: string[];
+  clearart?: string[];
 }
 
 interface TraktMovie {
@@ -417,11 +414,18 @@ class TraktService {
   }
 
   private extractPoster(images?: TraktImages): string | undefined {
-    return images?.poster?.medium || images?.poster?.full || images?.poster?.thumb;
+    const url = images?.poster?.[0];
+    if (!url) return undefined;
+    // Ensure URL has protocol
+    return url.startsWith("http") ? url : `https://${url}`;
   }
 
   private extractFanart(images?: TraktImages): string | undefined {
-    return images?.fanart?.medium || images?.fanart?.full || images?.fanart?.thumb;
+    // Try fanart first, fall back to banner
+    const url = images?.fanart?.[0] || images?.banner?.[0];
+    if (!url) return undefined;
+    // Ensure URL has protocol
+    return url.startsWith("http") ? url : `https://${url}`;
   }
 
   // === Trending ===
@@ -839,6 +843,48 @@ class TraktService {
     return items;
   }
 
+  // === Lookup Trakt ID from TMDB ID ===
+
+  private async getTraktSlugFromTmdbId(
+    tmdbId: number,
+    type: "movie" | "show"
+  ): Promise<string> {
+    const cacheKey = `tmdb-to-trakt:${type}:${tmdbId}`;
+    const cached = cache.get<string>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    // Use Trakt's ID lookup endpoint to find by TMDB ID
+    const endpoint = `/search/tmdb/${tmdbId}`;
+    const params = { type };
+
+    interface SearchResult {
+      type: string;
+      score: number;
+      movie?: { ids: { trakt: number; slug: string; imdb: string; tmdb: number } };
+      show?: { ids: { trakt: number; slug: string; imdb: string; tmdb: number } };
+    }
+
+    const results = await this.fetch<SearchResult[]>(endpoint, params);
+
+    if (!results || results.length === 0) {
+      throw new Error(`No Trakt entry found for TMDB ID ${tmdbId} (${type})`);
+    }
+
+    // Get the slug from the first matching result
+    const result = results[0];
+    const slug = type === "movie" ? result.movie?.ids.slug : result.show?.ids.slug;
+
+    if (!slug) {
+      throw new Error(`No slug found for TMDB ID ${tmdbId} (${type})`);
+    }
+
+    // Cache the mapping for 30 days (IDs don't change)
+    cache.set(cacheKey, slug, 30 * 24 * 60 * 60 * 1000);
+    return slug;
+  }
+
   // === Movie Details ===
 
   async getMovieDetails(tmdbId: number): Promise<TraktMovieDetails> {
@@ -848,8 +894,10 @@ class TraktService {
       return cached;
     }
 
-    // Trakt accepts TMDB IDs with a prefix
-    const endpoint = `/movies/${tmdbId}`;
+    // First lookup the Trakt slug from TMDB ID
+    const slug = await this.getTraktSlugFromTmdbId(tmdbId, "movie");
+
+    const endpoint = `/movies/${slug}`;
     const params = { extended: "full,images" };
 
     const result = await this.fetch<TraktMovieDetails>(endpoint, params);
@@ -868,8 +916,10 @@ class TraktService {
       return cached;
     }
 
-    // Trakt accepts TMDB IDs with a prefix
-    const endpoint = `/shows/${tmdbId}`;
+    // First lookup the Trakt slug from TMDB ID
+    const slug = await this.getTraktSlugFromTmdbId(tmdbId, "show");
+
+    const endpoint = `/shows/${slug}`;
     const params = { extended: "full,images" };
 
     const result = await this.fetch<TraktShowDetails>(endpoint, params);
@@ -879,27 +929,40 @@ class TraktService {
     return result;
   }
 
-  // === TV Season with Episodes ===
+  // === TV Season Episodes ===
+  // Note: GET /shows/{id}/seasons/{season} returns an array of episodes directly
 
-  async getSeason(
+  async getSeasonEpisodes(
     tmdbId: number,
     seasonNumber: number
-  ): Promise<TraktSeasonDetails> {
-    const cacheKey = `show:season:${tmdbId}:${seasonNumber}`;
-    const cached = cache.get<TraktSeasonDetails>(cacheKey);
+  ): Promise<TraktEpisodeDetails[]> {
+    const cacheKey = `show:season:episodes:${tmdbId}:${seasonNumber}`;
+    const cached = cache.get<TraktEpisodeDetails[]>(cacheKey);
     if (cached) {
       return cached;
     }
 
-    // Fetch season with episodes
-    const endpoint = `/shows/${tmdbId}/seasons/${seasonNumber}`;
-    const params = { extended: "full,images,episodes" };
+    // First lookup the Trakt slug from TMDB ID
+    const slug = await this.getTraktSlugFromTmdbId(tmdbId, "show");
 
-    const result = await this.fetch<TraktSeasonDetails>(endpoint, params);
+    // Fetch episodes for season - returns array of episodes directly
+    const endpoint = `/shows/${slug}/seasons/${seasonNumber}`;
+    const params = { extended: "full,images" };
+
+    const result = await this.fetch<TraktEpisodeDetails[]>(endpoint, params);
 
     // Cache for 7 days
     cache.set(cacheKey, result, 7 * 24 * 60 * 60 * 1000);
     return result;
+  }
+
+  // Legacy alias for backward compatibility
+  async getSeason(
+    tmdbId: number,
+    seasonNumber: number
+  ): Promise<{ episodes: TraktEpisodeDetails[] }> {
+    const episodes = await this.getSeasonEpisodes(tmdbId, seasonNumber);
+    return { episodes };
   }
 
   // === Get All Seasons (summary) ===
@@ -911,7 +974,10 @@ class TraktService {
       return cached;
     }
 
-    const endpoint = `/shows/${tmdbId}/seasons`;
+    // First lookup the Trakt slug from TMDB ID
+    const slug = await this.getTraktSlugFromTmdbId(tmdbId, "show");
+
+    const endpoint = `/shows/${slug}/seasons`;
     const params = { extended: "full,images" };
 
     const result = await this.fetch<TraktSeasonDetails[]>(endpoint, params);

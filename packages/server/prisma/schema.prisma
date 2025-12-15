@@ -668,6 +668,16 @@ enum WorkerStatus {
 }
 
 // =============================================================================
+// Scheduler State (Persistent last run times for recurring tasks)
+// =============================================================================
+
+model SchedulerState {
+  taskId      String    @id  // Task identifier (e.g., "rss-poll", "library-sync-xxx")
+  lastRunAt   DateTime  // When the task last completed
+  updatedAt   DateTime  @updatedAt
+}
+
+// =============================================================================
 // Activity Log
 // =============================================================================
 

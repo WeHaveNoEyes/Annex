@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc.js";
 import { prisma } from "../db/client.js";
-import { getTraktService, type TraktSeasonDetails } from "../services/trakt.js";
+import { getTraktService, type TraktSeasonDetails, type TraktEpisodeDetails } from "../services/trakt.js";
 import type { TrendingResult } from "@annex/shared";
 
 const ITEMS_PER_PAGE = 20;
@@ -45,15 +45,43 @@ function extractMDBListRatings(data: { ratings?: MDBListRating[]; score?: number
 }
 
 // =============================================================================
+// Trakt Image Helper
+// =============================================================================
+
+interface TraktImageArray {
+  poster?: string[];
+  fanart?: string[];
+  banner?: string[];
+  thumb?: string[];
+  screenshot?: string[];  // Used for episode images
+}
+
+function extractTraktImage(images: TraktImageArray | undefined, type: "poster" | "fanart" | "banner" | "thumb" | "screenshot"): string | null {
+  const url = images?.[type]?.[0];
+  if (!url) return null;
+  return url.startsWith("http") ? url : `https://${url}`;
+}
+
+// Get backdrop - try fanart first, fall back to banner
+function extractTraktBackdrop(images: TraktImageArray | undefined): string | null {
+  return extractTraktImage(images, "fanart") || extractTraktImage(images, "banner");
+}
+
+// Get episode still - try screenshot first, then thumb
+function extractEpisodeStill(images: TraktImageArray | undefined): string | null {
+  return extractTraktImage(images, "screenshot") || extractTraktImage(images, "thumb");
+}
+
+// =============================================================================
 // Season Update Helper
 // =============================================================================
 
-async function updateSeasonFromTrakt(
+async function updateSeasonEpisodes(
   mediaItemId: string,
   seasonNumber: number,
-  traktSeason: TraktSeasonDetails
+  episodes: TraktEpisodeDetails[]
 ): Promise<void> {
-  // Upsert season
+  // Get or create the season first
   const season = await prisma.season.upsert({
     where: {
       mediaItemId_seasonNumber: { mediaItemId, seasonNumber },
@@ -61,50 +89,41 @@ async function updateSeasonFromTrakt(
     create: {
       mediaItemId,
       seasonNumber,
-      name: traktSeason.title || `Season ${seasonNumber}`,
-      overview: traktSeason.overview,
-      posterPath: traktSeason.images?.poster?.medium || traktSeason.images?.poster?.full || null,
-      episodeCount: traktSeason.episode_count,
-      airDate: traktSeason.first_aired?.split("T")[0] || null,
+      name: `Season ${seasonNumber}`,
+      episodeCount: episodes.length,
     },
     update: {
-      name: traktSeason.title || `Season ${seasonNumber}`,
-      overview: traktSeason.overview,
-      posterPath: traktSeason.images?.poster?.medium || traktSeason.images?.poster?.full || undefined,
-      episodeCount: traktSeason.episode_count,
-      airDate: traktSeason.first_aired?.split("T")[0] || null,
+      episodeCount: episodes.length,
     },
   });
 
-  // Upsert episodes if available
-  if (traktSeason.episodes && traktSeason.episodes.length > 0) {
-    for (const ep of traktSeason.episodes) {
-      await prisma.episode.upsert({
-        where: {
-          seasonId_episodeNumber: {
-            seasonId: season.id,
-            episodeNumber: ep.number,
-          },
-        },
-        create: {
+  // Upsert episodes
+  for (const ep of episodes) {
+    await prisma.episode.upsert({
+      where: {
+        seasonId_episodeNumber: {
           seasonId: season.id,
-          seasonNumber,
           episodeNumber: ep.number,
-          name: ep.title || `Episode ${ep.number}`,
-          overview: ep.overview,
-          stillPath: ep.images?.poster?.medium || ep.images?.poster?.full || null,
-          airDate: ep.first_aired?.split("T")[0] || null,
-          runtime: ep.runtime,
         },
-        update: {
-          name: ep.title || `Episode ${ep.number}`,
-          overview: ep.overview,
-          stillPath: ep.images?.poster?.medium || ep.images?.poster?.full || undefined,
-          airDate: ep.first_aired?.split("T")[0] || null,
-          runtime: ep.runtime,
-        },
-      });
-    }
+      },
+      create: {
+        seasonId: season.id,
+        seasonNumber,
+        episodeNumber: ep.number,
+        name: ep.title || `Episode ${ep.number}`,
+        overview: ep.overview,
+        stillPath: extractEpisodeStill(ep.images),
+        airDate: ep.first_aired?.split("T")[0] || null,
+        runtime: ep.runtime,
+      },
+      update: {
+        name: ep.title || `Episode ${ep.number}`,
+        overview: ep.overview,
+        stillPath: extractEpisodeStill(ep.images) || undefined,
+        airDate: ep.first_aired?.split("T")[0] || null,
+        runtime: ep.runtime,
+      },
+    });
   }
 }
 
@@ -533,8 +552,8 @@ export const discoveryRouter = router({
                   country: traktData.country,
                   imdbId: traktData.ids.imdb,
                   traktId: traktData.ids.trakt,
-                  posterPath: traktData.images?.poster?.medium || traktData.images?.poster?.full || cached.posterPath,
-                  backdropPath: traktData.images?.fanart?.medium || traktData.images?.fanart?.full || cached.backdropPath,
+                  posterPath: extractTraktImage(traktData.images, "poster") || cached.posterPath,
+                  backdropPath: extractTraktBackdrop(traktData.images) || cached.backdropPath,
                   videos: traktData.trailer
                     ? [{ key: trakt.extractTrailerKey(traktData.trailer) || "", type: "Trailer", site: "YouTube" }]
                     : undefined,
@@ -590,8 +609,8 @@ export const discoveryRouter = router({
         country: traktData.country,
         imdbId: traktData.ids.imdb,
         traktId: traktData.ids.trakt,
-        posterPath: traktData.images?.poster?.medium || traktData.images?.poster?.full || null,
-        backdropPath: traktData.images?.fanart?.medium || traktData.images?.fanart?.full || null,
+        posterPath: extractTraktImage(traktData.images, "poster"),
+        backdropPath: extractTraktBackdrop(traktData.images),
         videos: traktData.trailer ? [{ key: trakt.extractTrailerKey(traktData.trailer), type: "Trailer", site: "YouTube" }] : [],
         traktUpdatedAt: new Date(),
       };
@@ -727,6 +746,11 @@ export const discoveryRouter = router({
           try {
             if (traktAge >= TRAKT_CACHE_TTL) {
               const traktData = await trakt.getTvShowDetails(input.tmdbId);
+
+              // Fetch seasons
+              const traktSeasons = await trakt.getSeasons(input.tmdbId);
+              const seasonCount = traktSeasons.filter(s => s.number > 0).length;
+
               await prisma.mediaItem.update({
                 where: { id },
                 data: {
@@ -743,16 +767,81 @@ export const discoveryRouter = router({
                   imdbId: traktData.ids.imdb,
                   traktId: traktData.ids.trakt,
                   tvdbId: traktData.ids.tvdb,
+                  numberOfSeasons: seasonCount,
                   numberOfEpisodes: traktData.aired_episodes,
                   networks: traktData.network ? [{ name: traktData.network }] : undefined,
-                  posterPath: traktData.images?.poster?.medium || traktData.images?.poster?.full || cached.posterPath,
-                  backdropPath: traktData.images?.fanart?.medium || traktData.images?.fanart?.full || cached.backdropPath,
+                  posterPath: extractTraktImage(traktData.images, "poster") || cached.posterPath,
+                  backdropPath: extractTraktBackdrop(traktData.images) || cached.backdropPath,
                   videos: traktData.trailer
                     ? [{ key: trakt.extractTrailerKey(traktData.trailer) || "", type: "Trailer", site: "YouTube" }]
                     : undefined,
                   traktUpdatedAt: new Date(),
                 },
               });
+
+              // Save each season and its episodes
+              for (const season of traktSeasons) {
+                const savedSeason = await prisma.season.upsert({
+                  where: {
+                    mediaItemId_seasonNumber: {
+                      mediaItemId: id,
+                      seasonNumber: season.number,
+                    },
+                  },
+                  create: {
+                    mediaItemId: id,
+                    seasonNumber: season.number,
+                    name: season.title || `Season ${season.number}`,
+                    overview: season.overview,
+                    posterPath: extractTraktImage(season.images, "poster"),
+                    episodeCount: season.episode_count,
+                    airDate: season.first_aired?.split("T")[0] || null,
+                  },
+                  update: {
+                    name: season.title || `Season ${season.number}`,
+                    overview: season.overview,
+                    posterPath: extractTraktImage(season.images, "poster") || undefined,
+                    episodeCount: season.episode_count,
+                    airDate: season.first_aired?.split("T")[0] || null,
+                  },
+                });
+
+                // Fetch and save episodes for this season
+                try {
+                  const seasonDetails = await trakt.getSeason(input.tmdbId, season.number);
+                  if (seasonDetails.episodes) {
+                    for (const ep of seasonDetails.episodes) {
+                      await prisma.episode.upsert({
+                        where: {
+                          seasonId_episodeNumber: {
+                            seasonId: savedSeason.id,
+                            episodeNumber: ep.number,
+                          },
+                        },
+                        create: {
+                          seasonId: savedSeason.id,
+                          seasonNumber: season.number,
+                          episodeNumber: ep.number,
+                          name: ep.title || `Episode ${ep.number}`,
+                          overview: ep.overview,
+                          stillPath: extractEpisodeStill(ep.images),
+                          airDate: ep.first_aired?.split("T")[0] || null,
+                          runtime: ep.runtime,
+                        },
+                        update: {
+                          name: ep.title || `Episode ${ep.number}`,
+                          overview: ep.overview,
+                          stillPath: extractEpisodeStill(ep.images) || undefined,
+                          airDate: ep.first_aired?.split("T")[0] || null,
+                          runtime: ep.runtime,
+                        },
+                      });
+                    }
+                  }
+                } catch (epError) {
+                  console.error(`[JIT] Background: Failed to fetch episodes for season ${season.number}:`, epError);
+                }
+              }
             }
 
             if (ratingsAge >= RATINGS_CACHE_TTL) {
@@ -804,8 +893,8 @@ export const discoveryRouter = router({
         tvdbId: traktData.ids.tvdb,
         numberOfEpisodes: traktData.aired_episodes,
         networks: traktData.network ? [{ name: traktData.network }] : [],
-        posterPath: traktData.images?.poster?.medium || traktData.images?.poster?.full || null,
-        backdropPath: traktData.images?.fanart?.medium || traktData.images?.fanart?.full || null,
+        posterPath: extractTraktImage(traktData.images, "poster"),
+        backdropPath: extractTraktBackdrop(traktData.images),
         videos: traktData.trailer ? [{ key: trakt.extractTrailerKey(traktData.trailer), type: "Trailer", site: "YouTube" }] : [],
         traktUpdatedAt: new Date(),
       };
@@ -815,6 +904,84 @@ export const discoveryRouter = router({
         create: mediaItemData,
         update: mediaItemData,
       });
+
+      // Fetch and save seasons from Trakt
+      try {
+        const traktSeasons = await trakt.getSeasons(input.tmdbId);
+        const seasonCount = traktSeasons.filter(s => s.number > 0).length; // Exclude specials (season 0)
+
+        // Update numberOfSeasons
+        await prisma.mediaItem.update({
+          where: { id },
+          data: { numberOfSeasons: seasonCount },
+        });
+
+        // Save each season and its episodes
+        for (const season of traktSeasons) {
+          const savedSeason = await prisma.season.upsert({
+            where: {
+              mediaItemId_seasonNumber: {
+                mediaItemId: id,
+                seasonNumber: season.number,
+              },
+            },
+            create: {
+              mediaItemId: id,
+              seasonNumber: season.number,
+              name: season.title || `Season ${season.number}`,
+              overview: season.overview,
+              posterPath: extractTraktImage(season.images, "poster"),
+              episodeCount: season.episode_count,
+              airDate: season.first_aired?.split("T")[0] || null,
+            },
+            update: {
+              name: season.title || `Season ${season.number}`,
+              overview: season.overview,
+              posterPath: extractTraktImage(season.images, "poster") || undefined,
+              episodeCount: season.episode_count,
+              airDate: season.first_aired?.split("T")[0] || null,
+            },
+          });
+
+          // Fetch and save episodes for this season
+          try {
+            const seasonDetails = await trakt.getSeason(input.tmdbId, season.number);
+            if (seasonDetails.episodes) {
+              for (const ep of seasonDetails.episodes) {
+                await prisma.episode.upsert({
+                  where: {
+                    seasonId_episodeNumber: {
+                      seasonId: savedSeason.id,
+                      episodeNumber: ep.number,
+                    },
+                  },
+                  create: {
+                    seasonId: savedSeason.id,
+                    seasonNumber: season.number,
+                    episodeNumber: ep.number,
+                    name: ep.title || `Episode ${ep.number}`,
+                    overview: ep.overview,
+                    stillPath: extractEpisodeStill(ep.images),
+                    airDate: ep.first_aired?.split("T")[0] || null,
+                    runtime: ep.runtime,
+                  },
+                  update: {
+                    name: ep.title || `Episode ${ep.number}`,
+                    overview: ep.overview,
+                    stillPath: extractEpisodeStill(ep.images) || undefined,
+                    airDate: ep.first_aired?.split("T")[0] || null,
+                    runtime: ep.runtime,
+                  },
+                });
+              }
+            }
+          } catch (epError) {
+            console.error(`[JIT] Failed to fetch episodes for season ${season.number}:`, epError);
+          }
+        }
+      } catch (error) {
+        console.error("[JIT] Failed to fetch seasons:", error);
+      }
 
       // Fetch and save ratings from MDBList
       const mdbData = await mdblist.getByTmdbId(input.tmdbId, "show");
@@ -899,8 +1066,8 @@ export const discoveryRouter = router({
       if (cachedSeason) {
         (async () => {
           try {
-            const traktSeason = await trakt.getSeason(input.tmdbId, input.seasonNumber);
-            await updateSeasonFromTrakt(mediaItemId, input.seasonNumber, traktSeason);
+            const { episodes } = await trakt.getSeason(input.tmdbId, input.seasonNumber);
+            await updateSeasonEpisodes(mediaItemId, input.seasonNumber, episodes);
           } catch (error) {
             console.error("[JIT] Background season refresh error:", error);
           }
@@ -914,8 +1081,8 @@ export const discoveryRouter = router({
         throw new Error("Trakt API not configured");
       }
 
-      const traktSeason = await trakt.getSeason(input.tmdbId, input.seasonNumber);
-      await updateSeasonFromTrakt(mediaItemId, input.seasonNumber, traktSeason);
+      const { episodes } = await trakt.getSeason(input.tmdbId, input.seasonNumber);
+      await updateSeasonEpisodes(mediaItemId, input.seasonNumber, episodes);
 
       const fresh = await prisma.season.findUnique({
         where: {

@@ -80,12 +80,12 @@ const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
 
     // Check if item is in library
     const isInLibrary = inLibrary && inLibrary.servers.length > 0;
-    const libraryTooltip = isInLibrary
-      ? `In Library: ${inLibrary.servers.map((s) => `${s.name}${s.quality ? ` (${s.quality})` : ""}`).join(", ")}`
-      : null;
 
+    // Handle both full URLs (from Trakt) and TMDB paths
     const posterUrl = posterPath
-      ? `${TMDB_IMAGE_BASE}/w342${posterPath}`
+      ? posterPath.startsWith("http")
+        ? posterPath
+        : `${TMDB_IMAGE_BASE}/w342${posterPath}`
       : null;
 
     // Only show trailer button if we have a trailer key
@@ -198,22 +198,27 @@ const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
               </div>
             )}
 
-            {/* In Library badge - top left corner */}
+            {/* Library server badges - top left corner */}
             {isInLibrary && (
-              <Tooltip content={libraryTooltip ?? "In Library"}>
-                <div className="absolute top-2 left-2 z-10">
-                  <div className="bg-green-500/90 text-white text-xs px-1.5 py-0.5 rounded flex items-center gap-1 shadow-lg">
-                    <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+              <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
+                {inLibrary.servers.map((server) => (
+                  <div
+                    key={server.id}
+                    className="bg-green-500/90 text-white text-xs px-1.5 py-0.5 rounded flex items-center gap-1 shadow-lg"
+                  >
+                    <svg className="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path
                         fillRule="evenodd"
                         d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
                         clipRule="evenodd"
                       />
                     </svg>
-                    <span className="font-medium">In Library</span>
+                    <span className="font-medium truncate max-w-[100px]">
+                      {server.name}{server.quality ? ` - ${server.quality}` : ""}
+                    </span>
                   </div>
-                </div>
-              </Tooltip>
+                ))}
+              </div>
             )}
 
             {/* MDBList score badge - top right corner */}

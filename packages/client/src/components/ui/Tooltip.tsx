@@ -1,16 +1,24 @@
-import { useState, useRef, useLayoutEffect, ReactNode, useCallback } from "react";
+import {
+  useState,
+  useRef,
+  useLayoutEffect,
+  ReactElement,
+  useCallback,
+  cloneElement,
+  isValidElement,
+} from "react";
 import { createPortal } from "react-dom";
 
 interface TooltipProps {
   content: string;
-  children: ReactNode;
+  children: ReactElement;
   position?: "top" | "bottom";
 }
 
 export function Tooltip({ content, children, position = "top" }: TooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
-  const triggerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   // Use callback ref to position tooltip after it renders
   const setTooltipRef = useCallback(
@@ -48,14 +56,40 @@ export function Tooltip({ content, children, position = "top" }: TooltipProps) {
     }
   }, [isVisible]);
 
+  // Clone child element to attach ref and event handlers
+  if (!isValidElement(children)) {
+    return children;
+  }
+
+  const childProps = children.props as {
+    onMouseEnter?: (e: React.MouseEvent) => void;
+    onMouseLeave?: (e: React.MouseEvent) => void;
+  };
+
+  const child = cloneElement(children, {
+    ref: (node: HTMLElement | null) => {
+      triggerRef.current = node;
+      // Forward ref if child has one
+      const childRef = (children as { ref?: React.Ref<HTMLElement> }).ref;
+      if (typeof childRef === "function") {
+        childRef(node);
+      } else if (childRef && typeof childRef === "object") {
+        (childRef as React.MutableRefObject<HTMLElement | null>).current = node;
+      }
+    },
+    onMouseEnter: (e: React.MouseEvent) => {
+      setIsVisible(true);
+      if (childProps.onMouseEnter) childProps.onMouseEnter(e);
+    },
+    onMouseLeave: (e: React.MouseEvent) => {
+      setIsVisible(false);
+      if (childProps.onMouseLeave) childProps.onMouseLeave(e);
+    },
+  } as Partial<unknown>);
+
   return (
-    <div
-      ref={triggerRef}
-      onMouseEnter={() => setIsVisible(true)}
-      onMouseLeave={() => setIsVisible(false)}
-      className="inline-block"
-    >
-      {children}
+    <>
+      {child}
       {isVisible &&
         createPortal(
           <div
@@ -72,6 +106,6 @@ export function Tooltip({ content, children, position = "top" }: TooltipProps) {
           </div>,
           document.body
         )}
-    </div>
+    </>
   );
 }
