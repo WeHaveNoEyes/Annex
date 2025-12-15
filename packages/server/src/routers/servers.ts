@@ -554,7 +554,7 @@ export const serversRouter = router({
         .filter((i) => i.type === "tv")
         .map((i) => i.tmdbId);
 
-      // Query library items
+      // Query library items (movies and TV shows at series level)
       const libraryItems = await prisma.libraryItem.findMany({
         where: {
           OR: [
@@ -577,6 +577,50 @@ export const serversRouter = router({
         },
       });
 
+      // For TV shows, also get episode counts per server
+      let episodeCounts: Map<string, number> = new Map();
+      let totalEpisodeCounts: Map<number, number> = new Map();
+
+      if (tvIds.length > 0) {
+        // Get episode counts from EpisodeLibraryItem grouped by tmdbId and serverId
+        const episodeData = await prisma.episodeLibraryItem.groupBy({
+          by: ["tmdbId", "serverId"],
+          where: { tmdbId: { in: tvIds } },
+          _count: { id: true },
+        });
+
+        for (const item of episodeData) {
+          const key = `${item.tmdbId}-${item.serverId}`;
+          episodeCounts.set(key, item._count.id);
+        }
+
+        // Get total episode counts from cached MediaItem data (if available)
+        const mediaItems = await prisma.mediaItem.findMany({
+          where: {
+            tmdbId: { in: tvIds },
+            type: MediaType.TV,
+          },
+          select: {
+            tmdbId: true,
+            seasons: {
+              select: {
+                _count: { select: { episodes: true } },
+              },
+            },
+          },
+        });
+
+        for (const item of mediaItems) {
+          const totalEps = item.seasons.reduce(
+            (sum, s) => sum + s._count.episodes,
+            0
+          );
+          if (totalEps > 0) {
+            totalEpisodeCounts.set(item.tmdbId, totalEps);
+          }
+        }
+      }
+
       // Build a map of tmdbId-type -> server info
       const inLibrary: Record<
         string,
@@ -586,6 +630,9 @@ export const serversRouter = router({
             name: string;
             type: string;
             quality?: string;
+            episodeCount?: number;
+            totalEpisodes?: number;
+            isComplete?: boolean;
           }>;
         }
       > = {};
@@ -595,12 +642,38 @@ export const serversRouter = router({
         if (!inLibrary[key]) {
           inLibrary[key] = { servers: [] };
         }
-        inLibrary[key].servers.push({
+
+        const serverInfo: {
+          id: string;
+          name: string;
+          type: string;
+          quality?: string;
+          episodeCount?: number;
+          totalEpisodes?: number;
+          isComplete?: boolean;
+        } = {
           id: item.server.id,
           name: item.server.name,
           type: fromMediaServerType(item.server.mediaServerType),
           quality: item.quality || undefined,
-        });
+        };
+
+        // Add episode info for TV shows
+        if (item.type === MediaType.TV) {
+          const epKey = `${item.tmdbId}-${item.server.id}`;
+          const epCount = episodeCounts.get(epKey) || 0;
+          const totalEps = totalEpisodeCounts.get(item.tmdbId);
+
+          if (epCount > 0) {
+            serverInfo.episodeCount = epCount;
+            if (totalEps !== undefined) {
+              serverInfo.totalEpisodes = totalEps;
+              serverInfo.isComplete = epCount >= totalEps;
+            }
+          }
+        }
+
+        inLibrary[key].servers.push(serverInfo);
       }
 
       return { inLibrary };

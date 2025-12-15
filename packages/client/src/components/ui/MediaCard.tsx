@@ -12,6 +12,9 @@ interface LibraryInfo {
     name: string;
     type: string;
     quality?: string;
+    episodeCount?: number;
+    totalEpisodes?: number;
+    isComplete?: boolean;
   }>;
 }
 
@@ -201,23 +204,44 @@ const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
             {/* Library server badges - top left corner */}
             {isInLibrary && (
               <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
-                {inLibrary.servers.map((server) => (
-                  <div
-                    key={server.id}
-                    className="bg-green-500/90 text-white text-xs px-1.5 py-0.5 rounded flex items-center gap-1 shadow-lg"
-                  >
-                    <svg className="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path
-                        fillRule="evenodd"
-                        d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                    <span className="font-medium truncate max-w-[100px]">
-                      {server.name}{server.quality ? ` - ${server.quality}` : ""}
-                    </span>
-                  </div>
-                ))}
+                {inLibrary.servers.map((server) => {
+                  // For TV shows with episode info, determine if partial or complete
+                  const hasEpisodeInfo = server.episodeCount !== undefined && server.episodeCount > 0;
+                  const isPartial = hasEpisodeInfo && server.isComplete === false;
+                  const badgeColor = isPartial
+                    ? "bg-yellow-500/90"
+                    : "bg-green-500/90";
+
+                  // Build display text
+                  let displayText = server.name;
+                  if (hasEpisodeInfo) {
+                    if (server.totalEpisodes !== undefined) {
+                      displayText += ` (${server.episodeCount}/${server.totalEpisodes})`;
+                    } else {
+                      displayText += ` (${server.episodeCount} eps)`;
+                    }
+                  } else if (server.quality) {
+                    displayText += ` - ${server.quality}`;
+                  }
+
+                  return (
+                    <div
+                      key={server.id}
+                      className={`${badgeColor} text-white text-xs px-1.5 py-0.5 rounded flex items-center gap-1 shadow-lg`}
+                    >
+                      <svg className="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
+                      </svg>
+                      <span className="font-medium truncate max-w-[100px]">
+                        {displayText}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
