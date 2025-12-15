@@ -708,17 +708,30 @@ function ServerCard({
                 {formatLastSync(syncStatus.data?.lastSyncAt ?? null)}
               </span>
 
-              {/* Sync Now Button */}
+              {/* Quick Sync Button (Incremental) */}
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => triggerSync.mutate({ id: server.id })}
+                onClick={() => triggerSync.mutate({ id: server.id, incremental: true })}
                 disabled={triggerSync.isPending || syncStatus.data?.currentlySyncing}
                 className="px-3"
+                title="Only sync new items since last sync"
               >
                 {triggerSync.isPending || syncStatus.data?.currentlySyncing
                   ? "Syncing..."
-                  : "Sync Now"}
+                  : "Quick Sync"}
+              </Button>
+
+              {/* Full Sync Button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => triggerSync.mutate({ id: server.id, incremental: false })}
+                disabled={triggerSync.isPending || syncStatus.data?.currentlySyncing}
+                className="px-3 text-white/50"
+                title="Re-sync entire library"
+              >
+                Full Sync
               </Button>
             </div>
           </div>
@@ -726,6 +739,9 @@ function ServerCard({
           {/* Warning Messages */}
           {triggerSync.data?.alreadyRunning && (
             <p className="text-yellow-400/80 text-xs">Sync already in progress</p>
+          )}
+          {triggerSync.data?.isIncremental === false && !triggerSync.data?.alreadyRunning && triggerSync.isSuccess && (
+            <p className="text-blue-400/80 text-xs">Running full library sync</p>
           )}
         </div>
       )}

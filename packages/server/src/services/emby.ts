@@ -207,6 +207,8 @@ export function getEmbyImageUrl(
 
 /**
  * Extract quality info from media sources
+ * Uses both width and height to handle ultrawide aspect ratios correctly
+ * (e.g., a 1920x800 ultrawide movie should be classified as 1080p, not 720p)
  */
 function extractQuality(item: EmbyMediaItem): string | undefined {
   const videoStream = item.MediaSources?.[0]?.MediaStreams?.find(
@@ -214,14 +216,16 @@ function extractQuality(item: EmbyMediaItem): string | undefined {
   );
   if (!videoStream) return undefined;
 
+  const width = videoStream.Width;
   const height = videoStream.Height;
-  if (!height) return undefined;
+  if (!width && !height) return undefined;
 
-  if (height >= 2160) return "4K";
-  if (height >= 1080) return "1080p";
-  if (height >= 720) return "720p";
-  if (height >= 480) return "480p";
-  return `${height}p`;
+  // Check width OR height to handle ultrawide aspect ratios
+  if ((width && width >= 3840) || (height && height >= 2160)) return "4K";
+  if ((width && width >= 1920) || (height && height >= 1080)) return "1080p";
+  if ((width && width >= 1280) || (height && height >= 720)) return "720p";
+  if ((width && width >= 854) || (height && height >= 480)) return "480p";
+  return height ? `${height}p` : `${width}w`;
 }
 
 /**
@@ -574,6 +578,7 @@ export async function getEmbyGenres(type?: "movie" | "tv"): Promise<string[]> {
 /**
  * Fetch all media from an Emby server using custom URL/API key
  * Used for syncing library items to a specific storage server
+ * @param options.sinceDate - Only fetch items added/modified after this date (for incremental sync)
  */
 export async function fetchEmbyLibraryForSync(
   serverUrl: string,
@@ -581,6 +586,7 @@ export async function fetchEmbyLibraryForSync(
   options: {
     type?: "movie" | "tv";
     batchSize?: number;
+    sinceDate?: Date;
   } = {}
 ): Promise<EmbyLibraryItem[]> {
   const baseUrl = serverUrl.replace(/\/$/, "");
@@ -611,6 +617,11 @@ export async function fetchEmbyLibraryForSync(
       SortBy: "DateCreated",
       SortOrder: "Descending",
     });
+
+    // For incremental sync, only get items added after the given date
+    if (options.sinceDate) {
+      params.set("MinDateCreated", options.sinceDate.toISOString());
+    }
 
     const response = await fetch(`${baseUrl}/Items?${params}`, { headers });
     if (!response.ok) {
@@ -836,10 +847,14 @@ export interface EmbyShowWithEpisodes {
   }>;
 }
 
+/**
+ * Fetch TV shows with their episodes from Emby
+ * @param options.sinceDate - Only fetch episodes added after this date (for incremental sync)
+ */
 export async function fetchEmbyShowsWithEpisodes(
   serverUrl: string,
   apiKey: string,
-  options: { batchSize?: number } = {}
+  options: { batchSize?: number; sinceDate?: Date } = {}
 ): Promise<EmbyShowWithEpisodes[]> {
   const baseUrl = serverUrl.replace(/\/$/, "");
   const headers = {
@@ -876,7 +891,7 @@ export async function fetchEmbyShowsWithEpisodes(
       const tmdbId = show.ProviderIds?.Tmdb ? parseInt(show.ProviderIds.Tmdb, 10) : undefined;
       if (!tmdbId) continue;
 
-      // Fetch all episodes for this show
+      // Fetch episodes for this show
       const episodes: Array<{
         season: number;
         episode: number;
@@ -891,6 +906,11 @@ export async function fetchEmbyShowsWithEpisodes(
         Fields: "MediaSources",
         Limit: "1000", // Get all episodes at once
       });
+
+      // For incremental sync, only get episodes added after the given date
+      if (options.sinceDate) {
+        episodeParams.set("MinDateCreated", options.sinceDate.toISOString());
+      }
 
       try {
         const episodeResponse = await fetch(`${baseUrl}/Items?${episodeParams}`, { headers });

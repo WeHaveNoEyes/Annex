@@ -853,7 +853,22 @@ export const serversRouter = router({
 
       const jobQueue = getJobQueueService();
       const schedulerRunning = jobQueue.isServerSyncSchedulerRunning(input.id);
-      const currentlySyncing = jobQueue.isJobTypeRunning("library:sync-server");
+
+      // Check for actively running sync jobs with recent heartbeat (within 2 minutes)
+      // This prevents stuck jobs from blocking the UI indefinitely
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+      const activeSyncJob = await prisma.job.findFirst({
+        where: {
+          type: "library:sync-server",
+          status: "RUNNING",
+          heartbeatAt: { gte: twoMinutesAgo },
+          payload: {
+            path: ["serverId"],
+            equals: input.id,
+          },
+        },
+      });
+      const currentlySyncing = activeSyncJob !== null;
 
       // Get the last completed sync job for this server
       const lastSyncJob = await prisma.job.findFirst({
@@ -910,9 +925,13 @@ export const serversRouter = router({
 
   /**
    * Trigger an immediate library sync for a specific server
+   * @param incremental - If true, only sync items added since last sync
    */
   triggerSync: publicProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({
+      id: z.string(),
+      incremental: z.boolean().optional().default(false),
+    }))
     .mutation(async ({ input }) => {
       const server = await prisma.storageServer.findUnique({
         where: { id: input.id },
@@ -927,12 +946,30 @@ export const serversRouter = router({
       }
 
       const jobQueue = getJobQueueService();
-      const job = await jobQueue.triggerServerLibrarySync(input.id);
+
+      // For incremental sync, use the last sync time
+      let sinceDate: Date | undefined;
+      if (input.incremental) {
+        const lastSync = await prisma.libraryItem.findFirst({
+          where: { serverId: input.id },
+          orderBy: { syncedAt: "desc" },
+          select: { syncedAt: true },
+        });
+        sinceDate = lastSync?.syncedAt || undefined;
+
+        if (!sinceDate) {
+          // No previous sync found, do a full sync instead
+          console.log(`[LibrarySync] No previous sync found for ${server.name}, running full sync`);
+        }
+      }
+
+      const job = await jobQueue.triggerServerLibrarySync(input.id, sinceDate);
 
       return {
         success: true,
         jobId: job?.id || null,
         alreadyRunning: job === null,
+        isIncremental: !!sinceDate,
       };
     }),
 });

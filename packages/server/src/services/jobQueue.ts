@@ -29,6 +29,7 @@ export type JobType =
 
 interface LibrarySyncServerPayload {
   serverId: string;
+  sinceDate?: string; // ISO date string for incremental sync
 }
 
 // Generic payload type - specific types are defined in their respective services
@@ -78,8 +79,10 @@ class JobQueueService {
     });
 
     this.registerHandler("library:sync-server", async (payload) => {
-      const { serverId } = payload as LibrarySyncServerPayload;
-      const result = await syncServerLibrary(serverId);
+      const { serverId, sinceDate } = payload as LibrarySyncServerPayload;
+      const result = await syncServerLibrary(serverId, {
+        sinceDate: sinceDate ? new Date(sinceDate) : undefined,
+      });
       return result;
     });
   }
@@ -425,6 +428,7 @@ class JobQueueService {
 
   /**
    * Register sync task for a specific server with scheduler
+   * Auto syncs use incremental mode with sinceDate = interval + 5 min buffer
    */
   startServerSyncScheduler(serverId: string, serverName: string, intervalMinutes: number): void {
     // Unregister existing task if any
@@ -439,14 +443,14 @@ class JobQueueService {
       `Library Sync: ${serverName}`,
       intervalMs,
       async () => {
-        await this.queueServerLibrarySync(serverId);
+        await this.queueServerLibrarySync(serverId, intervalMinutes);
       }
     );
 
     this.registeredServerSyncs.add(serverId);
-    console.log(`[JobQueue] Registered library sync task for "${serverName}" (${intervalMinutes}m interval)`);
+    console.log(`[JobQueue] Registered library sync task for "${serverName}" (${intervalMinutes}m interval, incremental)`);
 
-    // Run immediately on startup
+    // Run immediately on startup (full sync for first run)
     this.queueServerLibrarySync(serverId);
   }
 
@@ -488,11 +492,29 @@ class JobQueueService {
 
   /**
    * Queue a library sync job for a specific server
+   * @param serverId - Server to sync
+   * @param intervalMinutes - If provided, uses incremental sync with sinceDate = interval + 5 min buffer
    */
-  private async queueServerLibrarySync(serverId: string): Promise<void> {
+  private async queueServerLibrarySync(serverId: string, intervalMinutes?: number): Promise<void> {
+    // Calculate sinceDate for incremental sync
+    // Use interval + 5 minute buffer to ensure overlap and no missed items
+    let sinceDate: string | undefined;
+    if (intervalMinutes) {
+      const bufferMinutes = 5;
+      const totalMinutes = intervalMinutes + bufferMinutes;
+      const since = new Date(Date.now() - totalMinutes * 60 * 1000);
+      sinceDate = since.toISOString();
+      console.log(`[JobQueue] Queueing incremental sync for ${serverId} (since ${since.toISOString()})`);
+    }
+
+    const payload: LibrarySyncServerPayload = {
+      serverId,
+      sinceDate,
+    };
+
     await this.addJobIfNotExists(
       "library:sync-server",
-      { serverId },
+      payload,
       `library:sync-server:${serverId}`,
       { priority: 1, maxAttempts: 1 }
     );
@@ -1075,13 +1097,25 @@ class JobQueueService {
   }
 
   /**
-   * Trigger an immediate library sync for a specific server
+   * Trigger an immediate library sync for a server
+   * @param serverId - The server to sync
+   * @param sinceDate - Only sync items added after this date (incremental sync)
    */
-  async triggerServerLibrarySync(serverId: string): Promise<Job | null> {
+  async triggerServerLibrarySync(serverId: string, sinceDate?: Date): Promise<Job | null> {
+    const payload: LibrarySyncServerPayload = {
+      serverId,
+      sinceDate: sinceDate?.toISOString(),
+    };
+
+    // Use different dedupe key for incremental vs full sync
+    const dedupeKey = sinceDate
+      ? `library:sync-server:${serverId}:incremental`
+      : `library:sync-server:${serverId}`;
+
     return this.addJobIfNotExists(
       "library:sync-server",
-      { serverId },
-      `library:sync-server:${serverId}`,
+      payload,
+      dedupeKey,
       { priority: 10, maxAttempts: 1 } // Higher priority for manual triggers
     );
   }

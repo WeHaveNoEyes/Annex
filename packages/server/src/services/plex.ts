@@ -362,6 +362,7 @@ export async function getPlexLibraryContents(
 
 /**
  * Fetch all media from a Plex server for library sync
+ * @param options.sinceDate - Only fetch items added after this date (for incremental sync)
  */
 export async function fetchPlexLibraryForSync(
   serverUrl: string,
@@ -369,6 +370,7 @@ export async function fetchPlexLibraryForSync(
   options: {
     type?: "movie" | "tv";
     batchSize?: number;
+    sinceDate?: Date;
   } = {}
 ): Promise<PlexLibraryItem[]> {
   const baseUrl = serverUrl.replace(/\/$/, "");
@@ -397,6 +399,13 @@ export async function fetchPlexLibraryForSync(
         "X-Plex-Container-Size": batchSize.toString(),
         includeGuids: "1",
       });
+
+      // For incremental sync, only get items added after the given date
+      // Plex uses Unix timestamps in seconds
+      if (options.sinceDate) {
+        const timestamp = Math.floor(options.sinceDate.getTime() / 1000);
+        params.set("addedAt>", timestamp.toString());
+      }
 
       const endpoint = `/library/sections/${library.key}/all?${params}`;
       const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(
@@ -827,14 +836,19 @@ export interface PlexShowWithEpisodes {
   }>;
 }
 
+/**
+ * Fetch TV shows with their episodes from Plex
+ * @param options.sinceDate - Only fetch episodes added after this date (for incremental sync)
+ */
 export async function fetchPlexShowsWithEpisodes(
   serverUrl: string,
   token: string,
-  options: { batchSize?: number } = {}
+  options: { batchSize?: number; sinceDate?: Date } = {}
 ): Promise<PlexShowWithEpisodes[]> {
   const baseUrl = serverUrl.replace(/\/$/, "");
   const batchSize = options.batchSize ?? 50;
   const results: PlexShowWithEpisodes[] = [];
+  const sinceDateTimestamp = options.sinceDate ? Math.floor(options.sinceDate.getTime() / 1000) : undefined;
 
   // Get all TV libraries
   const libraries = await getPlexLibraries(serverUrl, token);
@@ -867,7 +881,7 @@ export async function fetchPlexShowsWithEpisodes(
         const externalIds = parseExternalIds(show.Guid);
         if (!externalIds.tmdbId) continue;
 
-        // Fetch all episodes for this show
+        // Fetch episodes for this show
         const episodes: Array<{
           season: number;
           episode: number;
@@ -886,6 +900,9 @@ export async function fetchPlexShowsWithEpisodes(
 
           for (const ep of episodeData.MediaContainer.Metadata || []) {
             if (ep.parentIndex === undefined || ep.index === undefined) continue;
+
+            // For incremental sync, skip episodes added before the sinceDate
+            if (sinceDateTimestamp && ep.addedAt && ep.addedAt < sinceDateTimestamp) continue;
 
             episodes.push({
               season: ep.parentIndex,
