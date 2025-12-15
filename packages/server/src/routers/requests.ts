@@ -152,6 +152,7 @@ export const requestsRouter = router({
         tmdbId: z.number(),
         title: z.string(),
         year: z.number(),
+        posterPath: z.string().nullable().optional(),
         targets: z.array(targetSchema).min(1),
         selectedRelease: releaseSchema.optional(),
       })
@@ -166,6 +167,7 @@ export const requestsRouter = router({
           tmdbId: input.tmdbId,
           title: input.title,
           year: input.year,
+          posterPath: input.posterPath ?? null,
           targets: resolvedTargets as unknown as Prisma.JsonArray,
           status: RequestStatus.PENDING,
           progress: 0,
@@ -191,6 +193,7 @@ export const requestsRouter = router({
         tmdbId: z.number(),
         title: z.string(),
         year: z.number(),
+        posterPath: z.string().nullable().optional(),
         targets: z.array(targetSchema).min(1),
         seasons: z.array(z.number()).optional(),
         episodes: z.array(episodeRequestSchema).optional(),
@@ -207,6 +210,7 @@ export const requestsRouter = router({
           tmdbId: input.tmdbId,
           title: input.title,
           year: input.year,
+          posterPath: input.posterPath ?? null,
           requestedSeasons: input.seasons ?? [],
           requestedEpisodes: input.episodes ?? Prisma.JsonNull,
           targets: resolvedTargets as unknown as Prisma.JsonArray,
@@ -258,10 +262,7 @@ export const requestsRouter = router({
         }
       }
 
-      // Build media item IDs for poster lookup
-      const mediaItemIds = results.map((r) => `tmdb-${r.type.toLowerCase()}-${r.tmdbId}`);
-
-      const [servers, profiles, mediaItems] = await Promise.all([
+      const [servers, profiles] = await Promise.all([
         prisma.storageServer.findMany({
           where: { id: { in: Array.from(serverIds) } },
           select: { id: true, name: true },
@@ -270,27 +271,21 @@ export const requestsRouter = router({
           where: { id: { in: Array.from(profileIds) } },
           select: { id: true, name: true },
         }),
-        prisma.mediaItem.findMany({
-          where: { id: { in: mediaItemIds } },
-          select: { id: true, posterPath: true },
-        }),
       ]);
 
       const serverMap = new Map(servers.map((s) => [s.id, s.name]));
       const profileMap = new Map(profiles.map((p) => [p.id, p.name]));
-      const posterMap = new Map(mediaItems.map((m) => [m.id, m.posterPath]));
 
       return results.map((r) => {
         const targets = r.targets as unknown as RequestTarget[];
         const availableReleases = r.availableReleases as unknown[] | null;
-        const mediaItemId = `tmdb-${r.type.toLowerCase()}-${r.tmdbId}`;
         return {
           id: r.id,
           type: fromMediaType(r.type),
           tmdbId: r.tmdbId,
           title: r.title,
           year: r.year,
-          posterPath: posterMap.get(mediaItemId) || null,
+          posterPath: r.posterPath,
           targets: targets.map((t) => ({
             serverId: t.serverId,
             serverName: serverMap.get(t.serverId) || "Unknown",

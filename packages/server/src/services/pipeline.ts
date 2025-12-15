@@ -21,7 +21,7 @@ import { getDownloadService } from "./download.js";
 import { getEncodingService } from "./encoding.js";
 import { getDeliveryService } from "./delivery.js";
 import { getNamingService } from "./naming.js";
-import { getTMDBService } from "./tmdb.js";
+import { getTraktService } from "./trakt.js";
 import { getEncoderDispatchService } from "./encoderDispatch.js";
 import {
   downloadManager,
@@ -264,9 +264,26 @@ async function handleSearch(payload: SearchPayload, jobId: string): Promise<void
     currentStep: "Searching indexers...",
   });
 
-  const tmdb = getTMDBService();
-  const details = await tmdb.getMovieDetails(request.tmdbId);
-  const imdbId = details?.imdbId ?? undefined;
+  // Get IMDb ID from cache or Trakt
+  let imdbId: string | undefined;
+  const mediaItemId = `tmdb-movie-${request.tmdbId}`;
+  const cached = await prisma.mediaItem.findUnique({
+    where: { id: mediaItemId },
+    select: { imdbId: true },
+  });
+
+  if (cached?.imdbId) {
+    imdbId = cached.imdbId;
+  } else {
+    // Fallback to Trakt if not in cache
+    const trakt = getTraktService();
+    try {
+      const details = await trakt.getMovieDetails(request.tmdbId);
+      imdbId = details.ids.imdb ?? undefined;
+    } catch {
+      // Continue without IMDb ID - search will use title/year
+    }
+  }
 
   const indexer = getIndexerService();
   const searchResult = await indexer.searchMovie({

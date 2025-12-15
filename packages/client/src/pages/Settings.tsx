@@ -2016,305 +2016,31 @@ function EncodingSettings() {
 function SyncSettings() {
   const utils = trpc.useUtils();
 
-  // Get sync status
-  const syncStatus = trpc.sync.status.useQuery(undefined, {
-    refetchInterval: 5000, // Refresh every 5 seconds
+  // Get queue stats
+  const queueStats = trpc.sync.queueStats.useQuery(undefined, {
+    refetchInterval: 5000,
   });
 
   // Get running jobs
   const runningJobs = trpc.sync.getRunningJobs.useQuery(undefined, {
-    refetchInterval: 3000, // Refresh every 3 seconds
-  });
-
-  // Mutations for triggering sync jobs
-  const startFullSync = trpc.sync.startFullSync.useMutation({
-    onSuccess: () => {
-      utils.sync.status.invalidate();
-      utils.sync.getRunningJobs.invalidate();
-    },
-  });
-
-  const startIncrementalSync = trpc.sync.startIncrementalSync.useMutation({
-    onSuccess: () => {
-      utils.sync.status.invalidate();
-      utils.sync.getRunningJobs.invalidate();
-    },
-  });
-
-  const startTMDBSync = trpc.sync.startTMDBSync.useMutation({
-    onSuccess: () => {
-      utils.sync.status.invalidate();
-      utils.sync.getRunningJobs.invalidate();
-    },
-  });
-
-  const refreshStale = trpc.sync.refreshStale.useMutation({
-    onSuccess: () => {
-      utils.sync.status.invalidate();
-      utils.sync.getRunningJobs.invalidate();
-    },
+    refetchInterval: 3000,
   });
 
   const cleanupJobs = trpc.sync.cleanupJobs.useMutation({
     onSuccess: () => {
-      utils.sync.status.invalidate();
+      utils.sync.queueStats.invalidate();
     },
   });
 
-  const cancelSync = trpc.sync.cancelRunningSync.useMutation({
-    onSuccess: () => {
-      utils.sync.status.invalidate();
-      utils.sync.getRunningJobs.invalidate();
-    },
-  });
-
-  // Helper to check if a job type is running
-  const isJobRunning = (type: string) => {
-    return runningJobs.data?.jobs.some((j) => j.type === type) ?? false;
-  };
-
-  const db = syncStatus.data?.database;
-  const queue = syncStatus.data?.jobQueue;
-  const progress = syncStatus.data?.currentProgress;
+  const queue = queueStats.data;
 
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="text-xl font-semibold">Media Sync</h2>
+        <h2 className="text-xl font-semibold">Job Queue</h2>
         <p className="text-white/50 text-sm mt-1">
-          Manage background sync jobs for media data from TMDB and MDBList
+          Monitor background job queue status. Media data is fetched on-demand when viewing detail pages.
         </p>
-      </div>
-
-      {/* Database Stats */}
-      <div>
-        <h3 className="text-lg font-medium mb-4">Database Statistics</h3>
-        {syncStatus.isLoading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <div key={i} className="h-20 bg-white/5 rounded animate-pulse" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <Card className="p-4 text-center">
-              <div className="text-3xl font-bold text-blue-400">
-                {db?.totalMovies?.toLocaleString() ?? 0}
-              </div>
-              <div className="text-sm text-white/50 mt-1">Movies</div>
-            </Card>
-            <Card className="p-4 text-center">
-              <div className="text-3xl font-bold text-purple-400">
-                {db?.totalTvShows?.toLocaleString() ?? 0}
-              </div>
-              <div className="text-sm text-white/50 mt-1">TV Shows</div>
-            </Card>
-            <Card className="p-4 text-center">
-              <div className="text-3xl font-bold text-green-400">
-                {db?.tmdbHydrated?.toLocaleString() ?? 0}
-              </div>
-              <div className="text-sm text-white/50 mt-1">TMDB Hydrated</div>
-            </Card>
-            <Card className="p-4 text-center">
-              <div className="text-3xl font-bold text-yellow-400">
-                {db?.tmdbNotHydrated?.toLocaleString() ?? 0}
-              </div>
-              <div className="text-sm text-white/50 mt-1">Needs TMDB</div>
-            </Card>
-            <Card className="p-4 text-center">
-              <div className="text-3xl font-bold text-green-400">
-                {db?.freshItems?.toLocaleString() ?? 0}
-              </div>
-              <div className="text-sm text-white/50 mt-1">MDBList Fresh</div>
-            </Card>
-            <Card className="p-4 text-center">
-              <div className="text-3xl font-bold text-orange-400">
-                {db?.staleItems?.toLocaleString() ?? 0}
-              </div>
-              <div className="text-sm text-white/50 mt-1">MDBList Stale</div>
-            </Card>
-            <Card className="p-4 text-center">
-              <div className="text-3xl font-bold text-red-400">
-                {db?.neverSynced?.toLocaleString() ?? 0}
-              </div>
-              <div className="text-sm text-white/50 mt-1">Never Synced</div>
-            </Card>
-            <Card className="p-4 text-center">
-              <div className="text-3xl font-bold text-white/70">
-                {queue?.pending ?? 0}
-              </div>
-              <div className="text-sm text-white/50 mt-1">Queue Pending</div>
-            </Card>
-          </div>
-        )}
-      </div>
-
-      {/* Current Progress */}
-      {progress && (
-        <Card className="p-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium">
-              Syncing {progress.type === "movie" ? "Movies" : "TV Shows"}
-            </span>
-            <span className="text-sm text-white/50">
-              {progress.processed.toLocaleString()} / {progress.total.toLocaleString()}
-            </span>
-          </div>
-          <div className="h-2 bg-white/10 rounded overflow-hidden">
-            <div
-              className="h-full bg-annex-500 transition-all duration-300"
-              style={{ width: `${(progress.processed / progress.total) * 100}%` }}
-            />
-          </div>
-          <div className="flex justify-between text-xs text-white/40 mt-2">
-            <span>{progress.success.toLocaleString()} success</span>
-            <span>{progress.failed.toLocaleString()} failed</span>
-          </div>
-        </Card>
-      )}
-
-      {/* Sync Actions */}
-      <div>
-        <h3 className="text-lg font-medium mb-4">Sync Jobs</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Full MDBList Sync */}
-          <Card className="p-5">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h4 className="font-medium">Full MDBList Sync</h4>
-                <p className="text-sm text-white/50 mt-1">
-                  Download all movie/TV IDs from TMDB exports and hydrate ratings from MDBList.
-                  Best for initial setup or refreshing the entire database.
-                </p>
-              </div>
-            </div>
-            {isJobRunning("sync:full") ? (
-              <Button
-                variant="danger"
-                onClick={() => cancelSync.mutate({ jobType: "sync:full" })}
-                disabled={cancelSync.isPending}
-                className="w-full"
-              >
-                {cancelSync.isPending ? "Stopping..." : "Stop Sync"}
-              </Button>
-            ) : (
-              <Button
-                onClick={() => startFullSync.mutate({})}
-                disabled={startFullSync.isPending}
-                className="w-full"
-              >
-                {startFullSync.isPending ? "Starting..." : "Start Full Sync"}
-              </Button>
-            )}
-            {startFullSync.data?.alreadyRunning && (
-              <p className="text-yellow-400 text-sm mt-2">Sync already in progress</p>
-            )}
-          </Card>
-
-          {/* Full TMDB Hydration */}
-          <Card className="p-5">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h4 className="font-medium">Full TMDB Hydration</h4>
-                <p className="text-sm text-white/50 mt-1">
-                  Fetch complete details (cast, crew, videos) for all media missing TMDB data.
-                  Processes from newest to oldest.
-                </p>
-              </div>
-            </div>
-            {isJobRunning("sync:tmdb-full") ? (
-              <Button
-                variant="danger"
-                onClick={() => cancelSync.mutate({ jobType: "sync:tmdb-full" })}
-                disabled={cancelSync.isPending}
-                className="w-full"
-              >
-                {cancelSync.isPending ? "Stopping..." : "Stop Hydration"}
-              </Button>
-            ) : (
-              <Button
-                onClick={() => startTMDBSync.mutate({})}
-                disabled={startTMDBSync.isPending}
-                className="w-full"
-              >
-                {startTMDBSync.isPending ? "Starting..." : "Start TMDB Hydration"}
-              </Button>
-            )}
-            {startTMDBSync.data?.alreadyRunning && (
-              <p className="text-yellow-400 text-sm mt-2">Hydration already in progress</p>
-            )}
-          </Card>
-
-          {/* Incremental Sync */}
-          <Card className="p-5">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h4 className="font-medium">Incremental Sync</h4>
-                <p className="text-sm text-white/50 mt-1">
-                  Fetch only new and changed items from the last 24 hours using TMDB changes API.
-                  Faster than full sync.
-                </p>
-              </div>
-            </div>
-            {isJobRunning("sync:incremental") ? (
-              <Button
-                variant="danger"
-                onClick={() => cancelSync.mutate({ jobType: "sync:incremental" })}
-                disabled={cancelSync.isPending}
-                className="w-full"
-              >
-                {cancelSync.isPending ? "Stopping..." : "Stop Sync"}
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                onClick={() => startIncrementalSync.mutate()}
-                disabled={startIncrementalSync.isPending}
-                className="w-full"
-              >
-                {startIncrementalSync.isPending ? "Starting..." : "Start Incremental Sync"}
-              </Button>
-            )}
-            {startIncrementalSync.data?.alreadyRunning && (
-              <p className="text-yellow-400 text-sm mt-2">Sync already in progress</p>
-            )}
-          </Card>
-
-          {/* Refresh Stale */}
-          <Card className="p-5">
-            <div className="flex justify-between items-start mb-3">
-              <div>
-                <h4 className="font-medium">Refresh Stale Items</h4>
-                <p className="text-sm text-white/50 mt-1">
-                  Re-fetch MDBList data for items not updated in the last 24 hours.
-                  Keeps ratings and metadata current.
-                </p>
-              </div>
-            </div>
-            {isJobRunning("sync:refresh-stale") ? (
-              <Button
-                variant="danger"
-                onClick={() => cancelSync.mutate({ jobType: "sync:refresh-stale" })}
-                disabled={cancelSync.isPending}
-                className="w-full"
-              >
-                {cancelSync.isPending ? "Stopping..." : "Stop Refresh"}
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                onClick={() => refreshStale.mutate({})}
-                disabled={refreshStale.isPending}
-                className="w-full"
-              >
-                {refreshStale.isPending ? "Starting..." : "Refresh Stale Items"}
-              </Button>
-            )}
-            {refreshStale.data?.alreadyRunning && (
-              <p className="text-yellow-400 text-sm mt-2">Refresh already in progress</p>
-            )}
-          </Card>
-        </div>
       </div>
 
       {/* Maintenance */}
@@ -2345,9 +2071,17 @@ function SyncSettings() {
       </div>
 
       {/* Queue Status */}
-      {queue && (
-        <div>
-          <h3 className="text-lg font-medium mb-4">Job Queue Status</h3>
+      <div>
+        <h3 className="text-lg font-medium mb-4">Job Queue Status</h3>
+        {queueStats.isLoading ? (
+          <Card className="p-5">
+            <div className="grid grid-cols-2 sm:grid-cols-6 gap-4 text-center">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-12 bg-white/5 rounded animate-pulse" />
+              ))}
+            </div>
+          </Card>
+        ) : queue ? (
           <Card className="p-5">
             <div className="grid grid-cols-2 sm:grid-cols-6 gap-4 text-center">
               <div>
@@ -2381,13 +2115,47 @@ function SyncSettings() {
                 <div className="flex flex-wrap gap-2">
                   {Object.entries(queue.byType).map(([type, count]) => (
                     <Badge key={type} variant="default">
-                      {type}: {count}
+                      {type}: {String(count)}
                     </Badge>
                   ))}
                 </div>
               </div>
             )}
           </Card>
+        ) : null}
+      </div>
+
+      {/* Running Jobs */}
+      {runningJobs.data?.jobs && runningJobs.data.jobs.length > 0 && (
+        <div>
+          <h3 className="text-lg font-medium mb-4">Running Jobs</h3>
+          <div className="space-y-3">
+            {runningJobs.data.jobs.map((job) => (
+              <Card key={job.id} className="p-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="font-medium">{job.type}</span>
+                    <span className="text-white/50 text-sm ml-2">
+                      {job.status}
+                    </span>
+                  </div>
+                  {job.progressTotal && job.progressCurrent !== null && (
+                    <span className="text-sm text-white/50">
+                      {job.progressCurrent} / {job.progressTotal}
+                    </span>
+                  )}
+                </div>
+                {job.progress !== null && job.progress > 0 && (
+                  <div className="mt-2 h-1.5 bg-white/10 rounded overflow-hidden">
+                    <div
+                      className="h-full bg-annex-500 transition-all duration-300"
+                      style={{ width: `${job.progress}%` }}
+                    />
+                  </div>
+                )}
+              </Card>
+            ))}
+          </div>
         </div>
       )}
     </div>

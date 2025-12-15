@@ -10,7 +10,6 @@
 import { getConfig } from "../config/index.js";
 import { prisma } from "../db/client.js";
 import { MediaType, Prisma } from "@prisma/client";
-import { calculateAggregateScore } from "./ratingAggregator.js";
 
 const MDBLIST_BASE_URL = "https://api.mdblist.com";
 
@@ -286,9 +285,6 @@ class MDBListService {
     // Extract ratings from the ratings array
     const ratings = this.extractRatings(data.ratings || []);
 
-    // Calculate aggregate score from all rating sources
-    const aggregate = calculateAggregateScore(ratings);
-
     try {
       await prisma.mediaItem.upsert({
         where: { id },
@@ -316,7 +312,7 @@ class MDBListService {
           country: data.country || null,
           numberOfSeasons: data.season_count || null,
           numberOfEpisodes: data.episode_count || null,
-                    budget: data.budget ? BigInt(data.budget) : null,
+          budget: data.budget ? BigInt(data.budget) : null,
           revenue: data.revenue ? BigInt(data.revenue) : null,
           watchProviders: data.watch_providers as Prisma.InputJsonValue ?? undefined,
           mdblistUpdatedAt: new Date(),
@@ -324,11 +320,6 @@ class MDBListService {
             create: {
               ...ratings,
               mdblistScore: data.score || null,
-              aggregateScore: aggregate.aggregateScore,
-              sourceCount: aggregate.sourceCount,
-              confidenceScore: aggregate.confidenceScore,
-              isTrusted: aggregate.isTrusted,
-              aggregatedAt: aggregate.aggregatedAt,
             },
           },
         },
@@ -353,7 +344,7 @@ class MDBListService {
           country: data.country || undefined,
           numberOfSeasons: data.season_count || undefined,
           numberOfEpisodes: data.episode_count || undefined,
-                    budget: data.budget ? BigInt(data.budget) : undefined,
+          budget: data.budget ? BigInt(data.budget) : undefined,
           revenue: data.revenue ? BigInt(data.revenue) : undefined,
           watchProviders: data.watch_providers as Prisma.InputJsonValue ?? undefined,
           mdblistUpdatedAt: new Date(),
@@ -362,20 +353,10 @@ class MDBListService {
               create: {
                 ...ratings,
                 mdblistScore: data.score || null,
-                aggregateScore: aggregate.aggregateScore,
-                sourceCount: aggregate.sourceCount,
-                confidenceScore: aggregate.confidenceScore,
-                isTrusted: aggregate.isTrusted,
-                aggregatedAt: aggregate.aggregatedAt,
               },
               update: {
                 ...ratings,
                 mdblistScore: data.score || undefined,
-                aggregateScore: aggregate.aggregateScore,
-                sourceCount: aggregate.sourceCount,
-                confidenceScore: aggregate.confidenceScore,
-                isTrusted: aggregate.isTrusted,
-                aggregatedAt: aggregate.aggregatedAt,
               },
             },
           },
@@ -476,9 +457,6 @@ class MDBListService {
     const prismaType = type === "movie" ? MediaType.MOVIE : MediaType.TV;
     const ratings = this.extractRatings(data.ratings || []);
 
-    // Calculate aggregate score from all rating sources
-    const aggregate = calculateAggregateScore(ratings);
-
     try {
       await prisma.mediaItem.upsert({
         where: { id },
@@ -506,7 +484,7 @@ class MDBListService {
           country: data.country || null,
           numberOfSeasons: data.season_count || null,
           numberOfEpisodes: data.episode_count || null,
-                    budget: data.budget ? BigInt(data.budget) : null,
+          budget: data.budget ? BigInt(data.budget) : null,
           revenue: data.revenue ? BigInt(data.revenue) : null,
           watchProviders: data.watch_providers as Prisma.InputJsonValue ?? undefined,
           mdblistUpdatedAt: new Date(),
@@ -514,11 +492,6 @@ class MDBListService {
             create: {
               ...ratings,
               mdblistScore: data.score || null,
-              aggregateScore: aggregate.aggregateScore,
-              sourceCount: aggregate.sourceCount,
-              confidenceScore: aggregate.confidenceScore,
-              isTrusted: aggregate.isTrusted,
-              aggregatedAt: aggregate.aggregatedAt,
             },
           },
         },
@@ -543,7 +516,7 @@ class MDBListService {
           country: data.country || undefined,
           numberOfSeasons: data.season_count || undefined,
           numberOfEpisodes: data.episode_count || undefined,
-                    budget: data.budget ? BigInt(data.budget) : undefined,
+          budget: data.budget ? BigInt(data.budget) : undefined,
           revenue: data.revenue ? BigInt(data.revenue) : undefined,
           watchProviders: data.watch_providers as Prisma.InputJsonValue ?? undefined,
           mdblistUpdatedAt: new Date(),
@@ -552,20 +525,10 @@ class MDBListService {
               create: {
                 ...ratings,
                 mdblistScore: data.score || null,
-                aggregateScore: aggregate.aggregateScore,
-                sourceCount: aggregate.sourceCount,
-                confidenceScore: aggregate.confidenceScore,
-                isTrusted: aggregate.isTrusted,
-                aggregatedAt: aggregate.aggregatedAt,
               },
               update: {
                 ...ratings,
                 mdblistScore: data.score || undefined,
-                aggregateScore: aggregate.aggregateScore,
-                sourceCount: aggregate.sourceCount,
-                confidenceScore: aggregate.confidenceScore,
-                isTrusted: aggregate.isTrusted,
-                aggregatedAt: aggregate.aggregatedAt,
               },
             },
           },

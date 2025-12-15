@@ -17,7 +17,7 @@ import { getEncodingService } from "./encoding.js";
 import { getDeliveryService } from "./delivery.js";
 import { getEncoderDispatchService } from "./encoderDispatch.js";
 import { getNamingService } from "./naming.js";
-import { getTMDBService } from "./tmdb.js";
+import { getTraktService } from "./trakt.js";
 import {
   downloadManager,
   normalizeTitle,
@@ -193,7 +193,7 @@ async function updateOverallProgress(requestId: string): Promise<void> {
 // =============================================================================
 
 /**
- * Initialize TvEpisode records for a TV request based on TMDB data
+ * Initialize TvEpisode records for a TV request based on Trakt data
  * Also checks library availability and marks episodes as SKIPPED if already in library
  */
 export async function initializeTvEpisodes(requestId: string): Promise<number> {
@@ -205,11 +205,11 @@ export async function initializeTvEpisodes(requestId: string): Promise<number> {
     throw new Error(`Request not found: ${requestId}`);
   }
 
-  const tmdb = getTMDBService();
-  const showDetails = await tmdb.getTvShowDetails(request.tmdbId);
+  const trakt = getTraktService();
+  const traktSeasons = await trakt.getSeasons(request.tmdbId);
 
-  if (!showDetails) {
-    throw new Error(`Could not fetch TV show details for TMDB ID ${request.tmdbId}`);
+  if (!traktSeasons || traktSeasons.length === 0) {
+    throw new Error(`Could not fetch TV show seasons for TMDB ID ${request.tmdbId}`);
   }
 
   // Get target server IDs from the request
@@ -239,26 +239,28 @@ export async function initializeTvEpisodes(requestId: string): Promise<number> {
     availableMap.get(key)!.add(ep.serverId);
   }
 
-  // Get all seasons info
+  // Get all seasons info from Trakt data
   const seasons: SeasonInfo[] = [];
   const requestedSeasons = request.requestedSeasons;
-  const totalSeasons = showDetails.numberOfSeasons;
 
-  for (let seasonNum = 1; seasonNum <= totalSeasons; seasonNum++) {
+  for (const traktSeason of traktSeasons) {
+    const seasonNum = traktSeason.number;
+    // Skip specials (season 0)
+    if (seasonNum === 0) continue;
+
     // If specific seasons requested, only include those
     if (requestedSeasons.length > 0 && !requestedSeasons.includes(seasonNum)) {
       continue;
     }
 
-    const seasonDetails = await tmdb.getSeason(request.tmdbId, seasonNum);
-    if (seasonDetails && seasonDetails.episodes) {
+    if (traktSeason.episodes && traktSeason.episodes.length > 0) {
       seasons.push({
         seasonNumber: seasonNum,
-        episodeCount: seasonDetails.episodes.length,
-        episodes: seasonDetails.episodes.map((ep) => ({
-          episodeNumber: ep.episodeNumber,
-          name: ep.name || null,
-          airDate: ep.airDate,
+        episodeCount: traktSeason.episodes.length,
+        episodes: traktSeason.episodes.map((ep) => ({
+          episodeNumber: ep.number,
+          name: ep.title || null,
+          airDate: ep.first_aired,
         })),
       });
     }
@@ -486,9 +488,26 @@ export async function handleTvSearch(payload: TvSearchPayload, jobId: string): P
 
   await logActivity(requestId, ActivityType.INFO, `Searching for ${pendingEpisodes.length} episodes across ${seasonEpisodes.size} seasons`);
 
-  const tmdb = getTMDBService();
-  const showDetails = await tmdb.getTvShowDetails(request.tmdbId);
-  const imdbId = showDetails?.imdbId ?? undefined;
+  // Get IMDb ID from cache or Trakt
+  let imdbId: string | undefined;
+  const mediaItemId = `tmdb-tv-${request.tmdbId}`;
+  const cached = await prisma.mediaItem.findUnique({
+    where: { id: mediaItemId },
+    select: { imdbId: true },
+  });
+
+  if (cached?.imdbId) {
+    imdbId = cached.imdbId;
+  } else {
+    // Fallback to Trakt if not in cache
+    const trakt = getTraktService();
+    try {
+      const details = await trakt.getTvShowDetails(request.tmdbId);
+      imdbId = details.ids.imdb ?? undefined;
+    } catch {
+      // Continue without IMDb ID - search will use title/year
+    }
+  }
   const indexer = getIndexerService();
 
   // Derive quality requirements from target servers

@@ -139,8 +139,6 @@ export interface MediaRatings {
   traktScore: number | null;
   letterboxdScore: number | null;
   mdblistScore: number | null;
-  aggregateScore: number | null;
-  sourceCount?: number | null;
 }
 
 // Discovery mode presets

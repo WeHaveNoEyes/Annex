@@ -16,7 +16,6 @@ import { getIrcAnnounceMonitor } from "./services/ircAnnounce.js";
 import { getRssAnnounceMonitor } from "./services/rssAnnounce.js";
 import { getEncoderDispatchService } from "./services/encoderDispatch.js";
 import { getSchedulerService } from "./services/scheduler.js";
-import { getTasteProfileService } from "./services/tasteProfile.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -384,7 +383,6 @@ scheduler.start();
 
 // Register misc cleanup tasks with scheduler
 registerAuthTasks();
-getTasteProfileService().registerTasks();
 
 // Start the job queue worker (recovers any stuck jobs from previous run)
 jobQueue.start().catch((error) => {

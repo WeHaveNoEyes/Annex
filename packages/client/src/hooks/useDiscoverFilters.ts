@@ -1,81 +1,58 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useSearchParams, useLocation } from "react-router-dom";
 
-// TMDB Genre IDs
-export const MOVIE_GENRES = [
-  { id: 28, name: "Action" },
-  { id: 12, name: "Adventure" },
-  { id: 16, name: "Animation" },
-  { id: 35, name: "Comedy" },
-  { id: 80, name: "Crime" },
-  { id: 99, name: "Documentary" },
-  { id: 18, name: "Drama" },
-  { id: 10751, name: "Family" },
-  { id: 14, name: "Fantasy" },
-  { id: 36, name: "History" },
-  { id: 27, name: "Horror" },
-  { id: 10402, name: "Music" },
-  { id: 9648, name: "Mystery" },
-  { id: 10749, name: "Romance" },
-  { id: 878, name: "Sci-Fi" },
-  { id: 10770, name: "TV Movie" },
-  { id: 53, name: "Thriller" },
-  { id: 10752, name: "War" },
-  { id: 37, name: "Western" },
+// Trakt genre slugs (same for movies and TV)
+export const TRAKT_GENRES = [
+  { slug: "action", name: "Action" },
+  { slug: "adventure", name: "Adventure" },
+  { slug: "animation", name: "Animation" },
+  { slug: "anime", name: "Anime" },
+  { slug: "comedy", name: "Comedy" },
+  { slug: "crime", name: "Crime" },
+  { slug: "documentary", name: "Documentary" },
+  { slug: "drama", name: "Drama" },
+  { slug: "family", name: "Family" },
+  { slug: "fantasy", name: "Fantasy" },
+  { slug: "history", name: "History" },
+  { slug: "holiday", name: "Holiday" },
+  { slug: "horror", name: "Horror" },
+  { slug: "music", name: "Music" },
+  { slug: "musical", name: "Musical" },
+  { slug: "mystery", name: "Mystery" },
+  { slug: "romance", name: "Romance" },
+  { slug: "science-fiction", name: "Science Fiction" },
+  { slug: "short", name: "Short" },
+  { slug: "sports", name: "Sports" },
+  { slug: "superhero", name: "Superhero" },
+  { slug: "thriller", name: "Thriller" },
+  { slug: "war", name: "War" },
+  { slug: "western", name: "Western" },
 ] as const;
 
-export const TV_GENRES = [
-  { id: 10759, name: "Action & Adventure" },
-  { id: 16, name: "Animation" },
-  { id: 35, name: "Comedy" },
-  { id: 80, name: "Crime" },
-  { id: 99, name: "Documentary" },
-  { id: 18, name: "Drama" },
-  { id: 10751, name: "Family" },
-  { id: 10762, name: "Kids" },
-  { id: 9648, name: "Mystery" },
-  { id: 10763, name: "News" },
-  { id: 10764, name: "Reality" },
-  { id: 10765, name: "Sci-Fi & Fantasy" },
-  { id: 10766, name: "Soap" },
-  { id: 10767, name: "Talk" },
-  { id: 10768, name: "War & Politics" },
-  { id: 37, name: "Western" },
-] as const;
+export type TraktGenreSlug = typeof TRAKT_GENRES[number]["slug"];
 
-export const SORT_OPTIONS = [
-  { value: "aggregate.desc", label: "Best Rated" },
-  { value: "aggregate.asc", label: "Lowest Rated" },
-  { value: "primary_release_date.desc", label: "Newest" },
-  { value: "primary_release_date.asc", label: "Oldest" },
-  { value: "popularity.desc", label: "Most Popular" },
-  { value: "popularity.asc", label: "Least Popular" },
-  { value: "title.asc", label: "Title A-Z" },
-  { value: "title.desc", label: "Title Z-A" },
-] as const;
-
-// Discovery modes - preset filters for different use cases
+// Discovery modes - Trakt list types
 export const DISCOVERY_MODES = [
-  { value: "for_you", label: "For You", description: "Quality curated picks" },
-  { value: "trending", label: "Trending", description: "Popular right now" },
-  { value: "hidden_gems", label: "Hidden Gems", description: "Underrated favorites" },
-  { value: "new_releases", label: "New Releases", description: "Recently released" },
-  { value: "coming_soon", label: "Coming Soon", description: "Upcoming content" },
-  { value: "trakt_trending", label: "Trakt Trending", description: "Trending on Trakt.tv" },
-  { value: "custom", label: "Custom", description: "Custom filters" },
+  { value: "trending", label: "Trending", description: "Being watched right now" },
+  { value: "popular", label: "Popular", description: "Most popular all time" },
+  { value: "favorited", label: "Most Favorited", description: "Most favorited by users" },
+  { value: "played", label: "Most Played", description: "Most plays" },
+  { value: "watched", label: "Most Watched", description: "Most watchers" },
+  { value: "collected", label: "Most Downloaded", description: "Most collected" },
 ] as const;
 
 export type DiscoveryMode = typeof DISCOVERY_MODES[number]["value"];
 
-// Quality tiers - simplified rating filter
-export const QUALITY_TIERS = [
-  { value: "any", label: "Any", minScore: 0 },
-  { value: "good", label: "Good 7+", minScore: 70 },
-  { value: "great", label: "Great 8+", minScore: 80 },
-  { value: "excellent", label: "Excellent 8.5+", minScore: 85 },
+// Period options for played/watched/collected
+export const PERIOD_OPTIONS = [
+  { value: "daily", label: "Today" },
+  { value: "weekly", label: "This Week" },
+  { value: "monthly", label: "This Month" },
+  { value: "yearly", label: "This Year" },
+  { value: "all", label: "All Time" },
 ] as const;
 
-export type QualityTier = typeof QUALITY_TIERS[number]["value"];
+export type TraktPeriod = typeof PERIOD_OPTIONS[number]["value"];
 
 // Common languages for filtering (ISO 639-1 codes)
 export const LANGUAGES = [
@@ -105,181 +82,169 @@ export const LANGUAGES = [
   { code: "id", name: "Indonesian" },
 ] as const;
 
-export type LanguageCode = typeof LANGUAGES[number]["code"] | null;
+export type LanguageCode = typeof LANGUAGES[number]["code"];
 
-// Rating sources with their unique ranges and display info
+// Common countries for filtering (ISO 3166-1 alpha-2 codes)
+export const COUNTRIES = [
+  { code: "us", name: "United States" },
+  { code: "gb", name: "United Kingdom" },
+  { code: "ca", name: "Canada" },
+  { code: "au", name: "Australia" },
+  { code: "de", name: "Germany" },
+  { code: "fr", name: "France" },
+  { code: "es", name: "Spain" },
+  { code: "it", name: "Italy" },
+  { code: "jp", name: "Japan" },
+  { code: "kr", name: "South Korea" },
+  { code: "cn", name: "China" },
+  { code: "in", name: "India" },
+  { code: "br", name: "Brazil" },
+  { code: "mx", name: "Mexico" },
+  { code: "ru", name: "Russia" },
+] as const;
+
+export type CountryCode = typeof COUNTRIES[number]["code"];
+
+// Content certifications
+export const CERTIFICATIONS = {
+  movie: [
+    { code: "g", name: "G" },
+    { code: "pg", name: "PG" },
+    { code: "pg-13", name: "PG-13" },
+    { code: "r", name: "R" },
+    { code: "nc-17", name: "NC-17" },
+  ],
+  tv: [
+    { code: "tv-y", name: "TV-Y" },
+    { code: "tv-y7", name: "TV-Y7" },
+    { code: "tv-g", name: "TV-G" },
+    { code: "tv-pg", name: "TV-PG" },
+    { code: "tv-14", name: "TV-14" },
+    { code: "tv-ma", name: "TV-MA" },
+  ],
+} as const;
+
+// Rating sources supported by Trakt filters
 export const RATING_SOURCES = [
+  {
+    id: "trakt",
+    name: "Trakt",
+    min: 0,
+    max: 100,
+    step: 5,
+    format: (v: number) => `${v}%`,
+    urlKey: "ratings",
+  },
   {
     id: "imdb",
     name: "IMDb",
-    field: "imdbScore",
     min: 0,
     max: 10,
     step: 0.5,
     format: (v: number) => v.toFixed(1),
-    color: "bg-yellow-500/20 text-yellow-400",
+    urlKey: "imdb_ratings",
   },
   {
     id: "tmdb",
     name: "TMDB",
-    field: "tmdbScore",
     min: 0,
     max: 10,
     step: 0.5,
     format: (v: number) => v.toFixed(1),
-    color: "bg-sky-500/20 text-sky-400",
+    urlKey: "tmdb_ratings",
   },
   {
     id: "rt_critic",
     name: "RT Critics",
-    field: "rtCriticScore",
     min: 0,
     max: 100,
     step: 5,
     format: (v: number) => `${v}%`,
-    color: "bg-red-500/20 text-red-400",
+    urlKey: "rt_meters",
   },
   {
     id: "rt_audience",
     name: "RT Audience",
-    field: "rtAudienceScore",
     min: 0,
     max: 100,
     step: 5,
     format: (v: number) => `${v}%`,
-    color: "bg-red-500/20 text-red-300",
+    urlKey: "rt_user_meters",
   },
   {
     id: "metacritic",
     name: "Metacritic",
-    field: "metacriticScore",
     min: 0,
     max: 100,
     step: 5,
     format: (v: number) => `${v}`,
-    color: "bg-green-500/20 text-green-400",
-  },
-  {
-    id: "trakt",
-    name: "Trakt",
-    field: "traktScore",
-    min: 0,
-    max: 100,
-    step: 5,
-    format: (v: number) => `${v}%`,
-    color: "bg-rose-500/20 text-rose-400",
-  },
-  {
-    id: "letterboxd",
-    name: "Letterboxd",
-    field: "letterboxdScore",
-    min: 0,
-    max: 100,
-    step: 5,
-    format: (v: number) => `${v}%`,
-    color: "bg-orange-500/20 text-orange-400",
-  },
-  {
-    id: "mdblist",
-    name: "MDBList",
-    field: "mdblistScore",
-    min: 0,
-    max: 100,
-    step: 5,
-    format: (v: number) => `${v}`,
-    color: "bg-purple-500/20 text-purple-400",
+    urlKey: "metascores",
   },
 ] as const;
 
 export type RatingSourceId = typeof RATING_SOURCES[number]["id"];
-
-// Get presets for a rating source based on its range
-export function getRatingPresets(sourceId: RatingSourceId) {
-  const source = RATING_SOURCES.find((s) => s.id === sourceId);
-  if (!source) return [];
-
-  if (source.max === 10) {
-    // 0-10 scale (IMDb, TMDB)
-    return [
-      { value: 0, label: "Any" },
-      { value: 5, label: "5+" },
-      { value: 6, label: "6+" },
-      { value: 7, label: "7+" },
-      { value: 8, label: "8+" },
-      { value: 9, label: "9+" },
-    ];
-  } else {
-    // 0-100 scale (RT, Metacritic, Trakt, Letterboxd, MDBList)
-    return [
-      { value: 0, label: "Any" },
-      { value: 50, label: "50+" },
-      { value: 60, label: "60+" },
-      { value: 70, label: "70+" },
-      { value: 80, label: "80+" },
-      { value: 90, label: "90+" },
-    ];
-  }
-}
-
-// Year range options (from current year back to 1900)
-const currentYear = new Date().getFullYear();
-export const YEAR_OPTIONS = Array.from(
-  { length: currentYear - 1899 },
-  (_, i) => currentYear - i
-);
 
 export interface RatingRange {
   min: number;
   max: number;
 }
 
-// Map of source ID to its min/max range
 export type RatingFilters = Partial<Record<RatingSourceId, RatingRange>>;
 
-// Legacy single filter type (for backwards compat during migration)
-export interface RatingFilter {
-  source: RatingSourceId;
-  minValue: number;
-}
+// Runtime presets in minutes
+export const RUNTIME_PRESETS = [
+  { value: null, label: "Any" },
+  { value: "0-90", label: "Under 90 min" },
+  { value: "90-120", label: "90-120 min" },
+  { value: "120-180", label: "2-3 hours" },
+  { value: "180-", label: "Over 3 hours" },
+] as const;
+
+// Year presets
+const currentYear = new Date().getFullYear();
+export const YEAR_PRESETS = [
+  { value: null, label: "Any Year" },
+  { value: String(currentYear), label: String(currentYear) },
+  { value: `${currentYear - 1}-${currentYear}`, label: "Last 2 Years" },
+  { value: `${currentYear - 4}-${currentYear}`, label: "Last 5 Years" },
+  { value: "2020-2029", label: "2020s" },
+  { value: "2010-2019", label: "2010s" },
+  { value: "2000-2009", label: "2000s" },
+  { value: "1990-1999", label: "1990s" },
+] as const;
 
 export interface DiscoverFilters {
   type: "movie" | "tv";
   mode: DiscoveryMode;
-  qualityTier: QualityTier;
+  period: TraktPeriod;
   query: string;
-  genres: number[];
-  yearFrom: number | null;
-  yearTo: number | null;
+  years: string | null;
+  genres: string[];
+  languages: string[];
+  countries: string[];
+  runtimes: string | null;
+  certifications: string[];
   ratingFilters: RatingFilters;
-  language: string | null;
-  releasedOnly: boolean;
-  hideUnrated: boolean;
-  sortBy: string;
-  // Legacy - kept for backwards compatibility
-  ratingFilter?: RatingFilter | null;
 }
 
-export const DEFAULT_MODE: DiscoveryMode = "for_you";
-export const DEFAULT_QUALITY_TIER: QualityTier = "any";
-export const DEFAULT_SORT = "aggregate.desc";
-export const DEFAULT_LANGUAGE = "en"; // Default to English
+export const DEFAULT_MODE: DiscoveryMode = "trending";
+export const DEFAULT_PERIOD: TraktPeriod = "weekly";
 
 const DEFAULT_FILTERS: DiscoverFilters = {
   type: "movie",
   mode: DEFAULT_MODE,
-  qualityTier: DEFAULT_QUALITY_TIER,
+  period: DEFAULT_PERIOD,
   query: "",
+  years: null,
   genres: [],
-  yearFrom: null,
-  yearTo: null,
+  languages: ["en"],
+  countries: [],
+  runtimes: null,
+  certifications: [],
   ratingFilters: {},
-  language: DEFAULT_LANGUAGE,
-  releasedOnly: false,
-  hideUnrated: true, // On by default - hide media with no ratings
-  sortBy: DEFAULT_SORT,
 };
 
-// Helper to check if a rating filter is actually filtering (not at defaults)
+// Helper to check if a rating filter is actually filtering
 export function isRatingFilterActive(
   sourceId: RatingSourceId,
   range: RatingRange | undefined
@@ -298,7 +263,6 @@ export function countActiveRatingFilters(filters: RatingFilters): number {
 }
 
 // Serialize rating filters to URL-safe string
-// Format: "imdb:5-10,rt_critic:70-100"
 function serializeRatingFilters(filters: RatingFilters): string {
   const parts: string[] = [];
   for (const [sourceId, range] of Object.entries(filters)) {
@@ -352,6 +316,11 @@ function saveScrollPosition(key: string, position: number): void {
   }
 }
 
+// Check if mode requires period selector
+export function modeHasPeriod(mode: DiscoveryMode): boolean {
+  return mode === "played" || mode === "watched" || mode === "collected";
+}
+
 export function useDiscoverFilters() {
   const [searchParams, setSearchParams] = useSearchParams();
   const location = useLocation();
@@ -363,81 +332,58 @@ export function useDiscoverFilters() {
     const type = searchParams.get("type");
     const query = searchParams.get("q") || "";
     const genresParam = searchParams.get("genres");
-    const yearFrom = searchParams.get("yearFrom");
-    const yearTo = searchParams.get("yearTo");
-    const sortBy = searchParams.get("sort");
+    const years = searchParams.get("years");
+    const languagesParam = searchParams.get("languages");
+    const countriesParam = searchParams.get("countries");
+    const runtimes = searchParams.get("runtimes");
+    const certificationsParam = searchParams.get("certifications");
 
-    // Discovery mode - defaults to "for_you"
+    // Discovery mode - defaults to "trending"
     const modeParam = searchParams.get("mode") as DiscoveryMode | null;
-    const mode = modeParam && DISCOVERY_MODES.some(m => m.value === modeParam)
-      ? modeParam
-      : DEFAULT_MODE;
+    const mode =
+      modeParam && DISCOVERY_MODES.some((m) => m.value === modeParam)
+        ? modeParam
+        : DEFAULT_MODE;
 
-    // Quality tier - defaults to "any"
-    const qualityParam = searchParams.get("quality") as QualityTier | null;
-    const qualityTier = qualityParam && QUALITY_TIERS.some(t => t.value === qualityParam)
-      ? qualityParam
-      : DEFAULT_QUALITY_TIER;
+    // Period - defaults to "weekly"
+    const periodParam = searchParams.get("period") as TraktPeriod | null;
+    const period =
+      periodParam && PERIOD_OPTIONS.some((p) => p.value === periodParam)
+        ? periodParam
+        : DEFAULT_PERIOD;
 
-    // Parse new rating filters format
+    // Parse rating filters
     const ratingsParam = searchParams.get("ratings");
     const ratingFilters = parseRatingFilters(ratingsParam);
-
-    // Also check for legacy format and migrate
-    const legacySource = searchParams.get("ratingSource") as RatingSourceId | null;
-    const legacyMin = searchParams.get("ratingMin");
-    if (legacySource && legacyMin && Object.keys(ratingFilters).length === 0) {
-      const source = RATING_SOURCES.find((s) => s.id === legacySource);
-      if (source) {
-        const minValue = parseFloat(legacyMin);
-        if (!isNaN(minValue) && minValue > 0) {
-          ratingFilters[legacySource] = { min: minValue, max: source.max };
-        }
-      }
-    }
-
-    // Language filter - defaults to English, "any" = all languages
-    const langParam = searchParams.get("lang");
-    const language = langParam === "any" ? null : (langParam || DEFAULT_LANGUAGE);
-
-    // Released only filter
-    const releasedOnly = searchParams.get("released") === "1";
-
-    // Hide unrated filter - defaults to true (on), "0" turns it off
-    const hideUnratedParam = searchParams.get("hideUnrated");
-    const hideUnrated = hideUnratedParam === null ? true : hideUnratedParam !== "0";
 
     return {
       type: type === "tv" ? "tv" : "movie",
       mode,
-      qualityTier,
+      period,
       query,
-      genres: genresParam
-        ? genresParam.split(",").map(Number).filter(Boolean)
+      years,
+      genres: genresParam ? genresParam.split(",").filter(Boolean) : [],
+      languages: languagesParam ? languagesParam.split(",").filter(Boolean) : [],
+      countries: countriesParam ? countriesParam.split(",").filter(Boolean) : [],
+      runtimes,
+      certifications: certificationsParam
+        ? certificationsParam.split(",").filter(Boolean)
         : [],
-      yearFrom: yearFrom ? parseInt(yearFrom, 10) : null,
-      yearTo: yearTo ? parseInt(yearTo, 10) : null,
       ratingFilters,
-      language,
-      releasedOnly,
-      hideUnrated,
-      sortBy: sortBy || DEFAULT_SORT,
     };
   }, [searchParams]);
 
-  // Check if any filters are active (beyond defaults)
+  // Check if any filters are active
   const hasActiveFilters = useMemo(() => {
     return (
-      filters.mode !== DEFAULT_MODE ||
-      filters.qualityTier !== DEFAULT_QUALITY_TIER ||
+      filters.query.length > 0 ||
+      filters.years !== null ||
       filters.genres.length > 0 ||
-      filters.yearFrom !== null ||
-      filters.yearTo !== null ||
-      countActiveRatingFilters(filters.ratingFilters) > 0 ||
-      filters.language !== DEFAULT_LANGUAGE || // English is default, so other languages are active
-      filters.releasedOnly ||
-      !filters.hideUnrated || // hideUnrated is ON by default, so "off" is active
-      filters.sortBy !== DEFAULT_SORT
+      filters.languages.length > 0 ||
+      filters.countries.length > 0 ||
+      filters.runtimes !== null ||
+      filters.certifications.length > 0 ||
+      countActiveRatingFilters(filters.ratingFilters) > 0
     );
   }, [filters]);
 
@@ -463,11 +409,11 @@ export function useDiscoverFilters() {
             newParams.delete("mode");
           }
 
-          // Quality tier
-          if (newFilters.qualityTier !== DEFAULT_QUALITY_TIER) {
-            newParams.set("quality", newFilters.qualityTier);
+          // Period (only set if mode uses period)
+          if (modeHasPeriod(newFilters.mode) && newFilters.period !== DEFAULT_PERIOD) {
+            newParams.set("period", newFilters.period);
           } else {
-            newParams.delete("quality");
+            newParams.delete("period");
           }
 
           // Query
@@ -477,6 +423,13 @@ export function useDiscoverFilters() {
             newParams.delete("q");
           }
 
+          // Years
+          if (newFilters.years) {
+            newParams.set("years", newFilters.years);
+          } else {
+            newParams.delete("years");
+          }
+
           // Genres
           if (newFilters.genres.length > 0) {
             newParams.set("genres", newFilters.genres.join(","));
@@ -484,58 +437,40 @@ export function useDiscoverFilters() {
             newParams.delete("genres");
           }
 
-          // Year range
-          if (newFilters.yearFrom !== null) {
-            newParams.set("yearFrom", newFilters.yearFrom.toString());
+          // Languages
+          if (newFilters.languages.length > 0) {
+            newParams.set("languages", newFilters.languages.join(","));
           } else {
-            newParams.delete("yearFrom");
+            newParams.delete("languages");
           }
 
-          if (newFilters.yearTo !== null) {
-            newParams.set("yearTo", newFilters.yearTo.toString());
+          // Countries
+          if (newFilters.countries.length > 0) {
+            newParams.set("countries", newFilters.countries.join(","));
           } else {
-            newParams.delete("yearTo");
+            newParams.delete("countries");
           }
 
-          // Rating filters (new format)
+          // Runtimes
+          if (newFilters.runtimes) {
+            newParams.set("runtimes", newFilters.runtimes);
+          } else {
+            newParams.delete("runtimes");
+          }
+
+          // Certifications
+          if (newFilters.certifications.length > 0) {
+            newParams.set("certifications", newFilters.certifications.join(","));
+          } else {
+            newParams.delete("certifications");
+          }
+
+          // Rating filters
           const serializedRatings = serializeRatingFilters(newFilters.ratingFilters);
           if (serializedRatings) {
             newParams.set("ratings", serializedRatings);
           } else {
             newParams.delete("ratings");
-          }
-          // Clean up legacy params
-          newParams.delete("ratingSource");
-          newParams.delete("ratingMin");
-
-          // Language - English is default (no param needed), null means "any" language
-          if (newFilters.language === null) {
-            newParams.set("lang", "any");
-          } else if (newFilters.language !== DEFAULT_LANGUAGE) {
-            newParams.set("lang", newFilters.language);
-          } else {
-            newParams.delete("lang");
-          }
-
-          // Released only
-          if (newFilters.releasedOnly) {
-            newParams.set("released", "1");
-          } else {
-            newParams.delete("released");
-          }
-
-          // Hide unrated - default is ON, so only set param when OFF
-          if (!newFilters.hideUnrated) {
-            newParams.set("hideUnrated", "0");
-          } else {
-            newParams.delete("hideUnrated");
-          }
-
-          // Sort
-          if (newFilters.sortBy !== DEFAULT_FILTERS.sortBy) {
-            newParams.set("sort", newFilters.sortBy);
-          } else {
-            newParams.delete("sort");
           }
 
           return newParams;
@@ -549,33 +484,21 @@ export function useDiscoverFilters() {
   // Individual filter setters
   const setType = useCallback(
     (type: "movie" | "tv") => {
-      // Clear genres when switching type as they're different
-      setFilters({ type, genres: [] });
+      // Clear certifications when switching type as they're different
+      setFilters({ type, certifications: [] });
     },
     [setFilters]
   );
 
   const setMode = useCallback(
     (mode: DiscoveryMode) => {
-      // When switching modes (except to custom), reset filters that conflict with the mode
-      if (mode !== "custom") {
-        setFilters({
-          mode,
-          // Reset custom filters when using preset modes
-          ratingFilters: {},
-          releasedOnly: false,
-          yearFrom: null,
-          yearTo: null,
-        });
-      } else {
-        setFilters({ mode });
-      }
+      setFilters({ mode });
     },
     [setFilters]
   );
 
-  const setQualityTier = useCallback(
-    (qualityTier: QualityTier) => setFilters({ qualityTier }),
+  const setPeriod = useCallback(
+    (period: TraktPeriod) => setFilters({ period }),
     [setFilters]
   );
 
@@ -584,25 +507,74 @@ export function useDiscoverFilters() {
     [setFilters]
   );
 
+  const setYears = useCallback(
+    (years: string | null) => setFilters({ years }),
+    [setFilters]
+  );
+
   const setGenres = useCallback(
-    (genres: number[]) => setFilters({ genres }),
+    (genres: string[]) => setFilters({ genres }),
     [setFilters]
   );
 
   const toggleGenre = useCallback(
-    (genreId: number) => {
-      const newGenres = filters.genres.includes(genreId)
-        ? filters.genres.filter((g) => g !== genreId)
-        : [...filters.genres, genreId];
+    (genreSlug: string) => {
+      const newGenres = filters.genres.includes(genreSlug)
+        ? filters.genres.filter((g) => g !== genreSlug)
+        : [...filters.genres, genreSlug];
       setFilters({ genres: newGenres });
     },
     [filters.genres, setFilters]
   );
 
-  const setYearRange = useCallback(
-    (yearFrom: number | null, yearTo: number | null) =>
-      setFilters({ yearFrom, yearTo }),
+  const setLanguages = useCallback(
+    (languages: string[]) => setFilters({ languages }),
     [setFilters]
+  );
+
+  const toggleLanguage = useCallback(
+    (langCode: string) => {
+      const newLanguages = filters.languages.includes(langCode)
+        ? filters.languages.filter((l) => l !== langCode)
+        : [...filters.languages, langCode];
+      setFilters({ languages: newLanguages });
+    },
+    [filters.languages, setFilters]
+  );
+
+  const setCountries = useCallback(
+    (countries: string[]) => setFilters({ countries }),
+    [setFilters]
+  );
+
+  const toggleCountry = useCallback(
+    (countryCode: string) => {
+      const newCountries = filters.countries.includes(countryCode)
+        ? filters.countries.filter((c) => c !== countryCode)
+        : [...filters.countries, countryCode];
+      setFilters({ countries: newCountries });
+    },
+    [filters.countries, setFilters]
+  );
+
+  const setRuntimes = useCallback(
+    (runtimes: string | null) => setFilters({ runtimes }),
+    [setFilters]
+  );
+
+  const setCertifications = useCallback(
+    (certifications: string[]) => setFilters({ certifications }),
+    [setFilters]
+  );
+
+  const toggleCertification = useCallback(
+    (cert: string) => {
+      const newCerts = filters.certifications.includes(cert)
+        ? filters.certifications.filter((c) => c !== cert)
+        : [...filters.certifications, cert];
+      setFilters({ certifications: newCerts });
+    },
+    [filters.certifications, setFilters]
   );
 
   // Set a single rating source's range
@@ -619,49 +591,21 @@ export function useDiscoverFilters() {
     [filters.ratingFilters, setFilters]
   );
 
-  // Set all rating filters at once
-  const setRatingFilters = useCallback(
-    (ratingFilters: RatingFilters) => setFilters({ ratingFilters }),
-    [setFilters]
-  );
-
   // Clear all rating filters
   const clearRatingFilters = useCallback(() => {
     setFilters({ ratingFilters: {} });
   }, [setFilters]);
 
-  const setLanguage = useCallback(
-    (language: string | null) => setFilters({ language }),
-    [setFilters]
-  );
-
-  const setReleasedOnly = useCallback(
-    (releasedOnly: boolean) => setFilters({ releasedOnly }),
-    [setFilters]
-  );
-
-  const setHideUnrated = useCallback(
-    (hideUnrated: boolean) => setFilters({ hideUnrated }),
-    [setFilters]
-  );
-
-  const setSortBy = useCallback(
-    (sortBy: string) => setFilters({ sortBy }),
-    [setFilters]
-  );
-
   const clearFilters = useCallback(() => {
     setFilters({
-      mode: DEFAULT_MODE,
-      qualityTier: DEFAULT_QUALITY_TIER,
+      query: "",
+      years: null,
       genres: [],
-      yearFrom: null,
-      yearTo: null,
+      languages: ["en"],
+      countries: [],
+      runtimes: null,
+      certifications: [],
       ratingFilters: {},
-      language: DEFAULT_LANGUAGE,
-      releasedOnly: false,
-      hideUnrated: true,
-      sortBy: DEFAULT_SORT,
     });
   }, [setFilters]);
 
@@ -693,7 +637,6 @@ export function useDiscoverFilters() {
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("scroll", handleScroll);
-      // Save position when unmounting
       saveScrollPosition(location.search || "default", window.scrollY);
     };
   }, [location.search]);
@@ -703,14 +646,12 @@ export function useDiscoverFilters() {
     if (isInitialMount.current) {
       isInitialMount.current = false;
 
-      // Check if this is a back/forward navigation
       const navType =
         performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
       if (
         navType?.type === "back_forward" ||
         window.history.state?.idx !== undefined
       ) {
-        // Delay scroll restoration to allow content to render
         const restoreScroll = () => {
           if (hasRestoredScroll.current) return;
 
@@ -723,7 +664,6 @@ export function useDiscoverFilters() {
           }
         };
 
-        // Try multiple times as content loads
         restoreScroll();
         setTimeout(restoreScroll, 100);
         setTimeout(restoreScroll, 300);
@@ -732,27 +672,29 @@ export function useDiscoverFilters() {
     }
   }, [location.search]);
 
-  // Get available genres for current type
-  const availableGenres = filters.type === "movie" ? MOVIE_GENRES : TV_GENRES;
+  // Get available certifications for current type
+  const availableCertifications = CERTIFICATIONS[filters.type];
 
   return {
     filters,
     hasActiveFilters,
-    availableGenres,
+    availableCertifications,
     setType,
     setMode,
-    setQualityTier,
+    setPeriod,
     setQuery,
+    setYears,
     setGenres,
     toggleGenre,
-    setYearRange,
+    setLanguages,
+    toggleLanguage,
+    setCountries,
+    toggleCountry,
+    setRuntimes,
+    setCertifications,
+    toggleCertification,
     setRatingRange,
-    setRatingFilters,
     clearRatingFilters,
-    setLanguage,
-    setReleasedOnly,
-    setHideUnrated,
-    setSortBy,
     clearFilters,
     resetAll,
   };

@@ -1,14 +1,15 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { trpc } from "../trpc";
-import { Input, ToggleGroup, MediaCard, Button, FilterPanel, LibraryInfo } from "../components/ui";
+import { Input, ToggleGroup, MediaCard, Button, LibraryInfo } from "../components/ui";
+import { FilterPanel } from "../components/ui/FilterPanel";
 import { DiscoveryModeTabs } from "../components/ui/DiscoveryModeTabs";
-import { QualityTierSelector } from "../components/ui/QualityTierSelector";
+import { PeriodSelector } from "../components/ui/PeriodSelector";
+import { SlideOutPanel } from "../components/ui/SlideOutPanel";
 import {
   useDiscoverFilters,
-  SORT_OPTIONS,
-  DEFAULT_SORT,
   DISCOVERY_MODES,
   countActiveRatingFilters,
+  modeHasPeriod,
 } from "../hooks/useDiscoverFilters";
 
 const mediaTypeOptions = [
@@ -44,8 +45,6 @@ interface DisplayMediaItem {
     traktScore?: number | null;
     letterboxdScore?: number | null;
     mdblistScore?: number | null;
-    aggregateScore?: number | null;
-    sourceCount?: number | null;
   };
   trailerKey?: string | null;
 }
@@ -66,8 +65,6 @@ function transformResult(item: {
     traktScore?: number | null;
     letterboxdScore?: number | null;
     mdblistScore?: number | null;
-    aggregateScore?: number | null;
-    sourceCount?: number | null;
   } | null;
   trailerKey?: string | null;
 }): DisplayMediaItem {
@@ -86,29 +83,37 @@ function transformResult(item: {
       traktScore: item.ratings.traktScore,
       letterboxdScore: item.ratings.letterboxdScore,
       mdblistScore: item.ratings.mdblistScore,
-      aggregateScore: item.ratings.aggregateScore,
-      sourceCount: item.ratings.sourceCount,
     } : undefined,
     trailerKey: item.trailerKey,
   };
+}
+
+// Format rating range for Trakt API (e.g., "7-10" for IMDB)
+function formatRatingRange(min: number, max: number, sourceMax: number): string {
+  // If max is at the source max, use just the min value
+  if (max >= sourceMax) {
+    return `${min}-${sourceMax}`;
+  }
+  return `${min}-${max}`;
 }
 
 export default function DiscoverPage() {
   const {
     filters,
     hasActiveFilters,
+    availableCertifications,
     setType,
     setMode,
-    setQualityTier,
+    setPeriod,
     setQuery,
+    setYears,
     toggleGenre,
-    setYearRange,
+    toggleLanguage,
+    toggleCountry,
+    setRuntimes,
+    toggleCertification,
     setRatingRange,
     clearRatingFilters,
-    setLanguage,
-    setReleasedOnly,
-    setHideUnrated,
-    setSortBy,
     clearFilters,
   } = useDiscoverFilters();
 
@@ -143,60 +148,66 @@ export default function DiscoverPage() {
       JSON.stringify({
         type: filters.type,
         mode: filters.mode,
-        qualityTier: filters.qualityTier,
+        period: filters.period,
         query: filters.query,
+        years: filters.years,
         genres: filters.genres,
-        yearFrom: filters.yearFrom,
-        yearTo: filters.yearTo,
+        languages: filters.languages,
+        countries: filters.countries,
+        runtimes: filters.runtimes,
+        certifications: filters.certifications,
         ratingFilters: filters.ratingFilters,
-        language: filters.language,
-        releasedOnly: filters.releasedOnly,
-        hideUnrated: filters.hideUnrated,
-        sortBy: filters.sortBy,
         page,
       }),
     [filters, page]
   );
 
-  // Use the discover endpoint for most modes
-  const discoverQuery = trpc.discovery.discover.useQuery(
+  // Build rating filter strings for API
+  const ratingParams = useMemo(() => {
+    const params: Record<string, string | undefined> = {};
+
+    if (filters.ratingFilters.trakt) {
+      params.ratings = formatRatingRange(filters.ratingFilters.trakt.min, filters.ratingFilters.trakt.max, 100);
+    }
+    if (filters.ratingFilters.imdb) {
+      params.imdbRatings = formatRatingRange(filters.ratingFilters.imdb.min, filters.ratingFilters.imdb.max, 10);
+    }
+    if (filters.ratingFilters.tmdb) {
+      params.tmdbRatings = formatRatingRange(filters.ratingFilters.tmdb.min, filters.ratingFilters.tmdb.max, 10);
+    }
+    if (filters.ratingFilters.rt_critic) {
+      params.rtMeters = formatRatingRange(filters.ratingFilters.rt_critic.min, filters.ratingFilters.rt_critic.max, 100);
+    }
+    if (filters.ratingFilters.rt_audience) {
+      params.rtUserMeters = formatRatingRange(filters.ratingFilters.rt_audience.min, filters.ratingFilters.rt_audience.max, 100);
+    }
+    if (filters.ratingFilters.metacritic) {
+      params.metascores = formatRatingRange(filters.ratingFilters.metacritic.min, filters.ratingFilters.metacritic.max, 100);
+    }
+
+    return params;
+  }, [filters.ratingFilters]);
+
+  // Use the traktDiscover endpoint
+  const discoverQuery = trpc.discovery.traktDiscover.useQuery(
     {
       type: filters.type,
-      mode: filters.mode === "trakt_trending" ? "trending" : filters.mode,
-      qualityTier: filters.qualityTier,
+      listType: filters.mode,
       page,
+      period: filters.period,
       query: filters.query || undefined,
+      years: filters.years || undefined,
       genres: filters.genres.length > 0 ? filters.genres : undefined,
-      yearFrom: filters.yearFrom ?? undefined,
-      yearTo: filters.yearTo ?? undefined,
-      ratingFilters: Object.keys(filters.ratingFilters).length > 0
-        ? filters.ratingFilters
-        : undefined,
-      language: filters.language ?? undefined,
-      releasedOnly: filters.releasedOnly || undefined,
-      hideUnrated: filters.hideUnrated,
-      sortBy: filters.sortBy,
+      languages: filters.languages.length > 0 ? filters.languages : undefined,
+      countries: filters.countries.length > 0 ? filters.countries : undefined,
+      runtimes: filters.runtimes || undefined,
+      certifications: filters.certifications.length > 0 ? filters.certifications : undefined,
+      ...ratingParams,
     },
     {
       keepPreviousData: true,
-      enabled: filters.mode !== "trakt_trending",
     }
   );
-
-  // Use Trakt trending endpoint when in trakt_trending mode
-  const traktTrendingQuery = trpc.discovery.traktTrending.useQuery(
-    {
-      type: filters.type,
-      page,
-    },
-    {
-      keepPreviousData: true,
-      enabled: filters.mode === "trakt_trending",
-    }
-  );
-
-  // Combined query state - use whichever query is active
-  const activeQuery = filters.mode === "trakt_trending" ? traktTrendingQuery : discoverQuery;
 
   // Build a list of items to check for library status
   const itemsToCheck = useMemo(() => {
@@ -227,8 +238,8 @@ export default function DiscoverPage() {
 
   // Accumulate results when new data arrives
   useEffect(() => {
-    const data = activeQuery.data;
-    if (!data?.results || activeQuery.isFetching) return;
+    const data = discoverQuery.data;
+    if (!data?.results || discoverQuery.isFetching) return;
 
     // Create a unique key for this data to avoid reprocessing
     const dataKey = `${queryKey}-${data.results.length}`;
@@ -240,7 +251,6 @@ export default function DiscoverPage() {
 
     if (page === 1) {
       setAllResults(transformedResults);
-      // Only set totalResults on page 1 to ensure consistency
       setTotalResults(data.totalResults ?? 0);
     } else {
       setAllResults((prev) => {
@@ -253,7 +263,7 @@ export default function DiscoverPage() {
     }
 
     setHasMore(page < (data.totalPages ?? 1));
-  }, [activeQuery.data, activeQuery.isFetching, page, queryKey]);
+  }, [discoverQuery.data, discoverQuery.isFetching, page, queryKey]);
 
   // Reset pagination when filters change
   useEffect(() => {
@@ -265,16 +275,15 @@ export default function DiscoverPage() {
   }, [
     filters.type,
     filters.mode,
-    filters.qualityTier,
+    filters.period,
     filters.query,
+    filters.years,
     filters.genres,
-    filters.yearFrom,
-    filters.yearTo,
+    filters.languages,
+    filters.countries,
+    filters.runtimes,
+    filters.certifications,
     filters.ratingFilters,
-    filters.language,
-    filters.releasedOnly,
-    filters.hideUnrated,
-    filters.sortBy,
   ]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -287,10 +296,10 @@ export default function DiscoverPage() {
 
   // Load more function
   const loadMore = useCallback(() => {
-    if (!activeQuery.isFetching && hasMore) {
+    if (!discoverQuery.isFetching && hasMore) {
       setPage((p) => p + 1);
     }
-  }, [activeQuery.isFetching, hasMore]);
+  }, [discoverQuery.isFetching, hasMore]);
 
   // Intersection observer for infinite scroll
   useEffect(() => {
@@ -303,7 +312,7 @@ export default function DiscoverPage() {
         if (
           entry.isIntersecting &&
           hasMore &&
-          !activeQuery.isFetching &&
+          !discoverQuery.isFetching &&
           allResults.length > 0
         ) {
           loadMore();
@@ -317,10 +326,10 @@ export default function DiscoverPage() {
     return () => {
       observer.disconnect();
     };
-  }, [loadMore, hasMore, activeQuery.isFetching, allResults.length]);
+  }, [loadMore, hasMore, discoverQuery.isFetching, allResults.length]);
 
-  const isInitialLoading = activeQuery.isLoading && allResults.length === 0;
-  const isLoadingMore = activeQuery.isFetching && allResults.length > 0;
+  const isInitialLoading = discoverQuery.isLoading && allResults.length === 0;
+  const isLoadingMore = discoverQuery.isFetching && allResults.length > 0;
 
   // Build title based on active filters
   const resultsTitle = useMemo(() => {
@@ -328,123 +337,89 @@ export default function DiscoverPage() {
       return `Search Results for "${filters.query}"`;
     }
 
-    // Get mode label
     const modeLabel = DISCOVERY_MODES.find((m) => m.value === filters.mode)?.label || "Discover";
     const prefix = filters.type === "movie" ? "Movies" : "TV Shows";
 
-    // For preset modes, just show mode name + type
-    if (filters.mode !== "custom") {
-      return `${modeLabel} ${prefix}`;
-    }
+    return `${modeLabel} ${prefix}`;
+  }, [filters]);
 
-    // For custom mode, show filter details
-    const parts: string[] = [];
+  // Check if Trakt is configured
+  const traktNotConfigured = discoverQuery.data && !discoverQuery.data.configured;
 
-    // Show active rating filters count
-    const activeRatings = countActiveRatingFilters(filters.ratingFilters);
-    if (activeRatings > 0) {
-      parts.push(`${activeRatings} rating filter${activeRatings > 1 ? "s" : ""}`);
-    }
-
-    if (filters.yearFrom && filters.yearTo && filters.yearFrom === filters.yearTo) {
-      parts.push(`from ${filters.yearFrom}`);
-    } else if (filters.yearFrom || filters.yearTo) {
-      parts.push(`${filters.yearFrom || "earliest"} - ${filters.yearTo || "latest"}`);
-    }
-    const sortLabel = SORT_OPTIONS.find((o) => o.value === filters.sortBy)?.label;
-    if (sortLabel && filters.sortBy !== DEFAULT_SORT) {
-      parts.push(`sorted by ${sortLabel.toLowerCase()}`);
-    }
-    return parts.length > 0 ? `${prefix} (${parts.join(", ")})` : `Custom ${prefix}`;
+  // Count total active filters for badge
+  const totalActiveFilters = useMemo(() => {
+    let count = 0;
+    count += filters.genres.length;
+    count += filters.languages.length;
+    count += filters.countries.length;
+    count += filters.certifications.length;
+    count += countActiveRatingFilters(filters.ratingFilters);
+    if (filters.years) count++;
+    if (filters.runtimes) count++;
+    return count;
   }, [filters]);
 
   return (
-    <div className="flex gap-6">
-      {/* Sidebar filters (desktop) */}
-      <aside className="hidden lg:block w-64 shrink-0">
-        <div className="sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+    <div className="space-y-4">
+      {/* Filters slide-out panel */}
+      <SlideOutPanel
+        isOpen={showFilters}
+        onClose={() => setShowFilters(false)}
+        title="Advanced Filters"
+        side="right"
+        width="w-80"
+      >
+        <div className="p-4">
           <FilterPanel
             filters={filters}
-            mode={filters.mode}
             hasActiveFilters={hasActiveFilters}
+            availableCertifications={availableCertifications}
             onToggleGenre={toggleGenre}
-            onSetYearRange={setYearRange}
+            onSetYears={setYears}
+            onToggleLanguage={toggleLanguage}
+            onToggleCountry={toggleCountry}
+            onSetRuntimes={setRuntimes}
+            onToggleCertification={toggleCertification}
             onSetRatingRange={setRatingRange}
             onClearRatingFilters={clearRatingFilters}
-            onSetLanguage={setLanguage}
-            onSetReleasedOnly={setReleasedOnly}
-            onSetHideUnrated={setHideUnrated}
-            onSetSortBy={setSortBy}
             onClearFilters={clearFilters}
           />
         </div>
-      </aside>
-
-      {/* Mobile filter panel */}
-      {showFilters && (
-        <div className="fixed inset-0 z-50 lg:hidden">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setShowFilters(false)}
-          />
-          <div className="absolute inset-y-0 left-0 w-80 max-w-[90vw] bg-black/95 border-r border-white/10 overflow-y-auto">
-            <div className="sticky top-0 flex items-center justify-between px-4 py-3 bg-black/90 border-b border-white/10">
-              <h3 className="text-sm font-semibold">Filters</h3>
-              <button
-                onClick={() => setShowFilters(false)}
-                className="p-1 text-white/60 hover:text-white"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-            <div className="p-4">
-              <FilterPanel
-                filters={filters}
-                mode={filters.mode}
-                hasActiveFilters={hasActiveFilters}
-                onToggleGenre={toggleGenre}
-                onSetYearRange={setYearRange}
-                onSetRatingRange={setRatingRange}
-                onClearRatingFilters={clearRatingFilters}
-                onSetLanguage={setLanguage}
-                onSetReleasedOnly={setReleasedOnly}
-                onSetHideUnrated={setHideUnrated}
-                onSetSortBy={setSortBy}
-                onClearFilters={clearFilters}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      </SlideOutPanel>
 
       {/* Main content */}
-      <main className="flex-1 min-w-0 space-y-4">
+      <main className="space-y-4">
         {/* Discovery mode tabs */}
         <DiscoveryModeTabs mode={filters.mode} onModeChange={setMode} />
 
-        {/* Search bar and type toggle */}
+        {/* Period selector for played/watched/collected modes */}
+        {modeHasPeriod(filters.mode) && (
+          <PeriodSelector period={filters.period} onPeriodChange={setPeriod} />
+        )}
+
+        {/* Search bar, type toggle, and filters button */}
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1 flex gap-2">
-            {/* Mobile filter button */}
+          <div className="flex-1">
+            <Input
+              type="text"
+              placeholder="Search movies and TV shows..."
+              value={searchInput}
+              onChange={handleSearchChange}
+            />
+          </div>
+          <div className="flex gap-2">
+            <ToggleGroup
+              options={mediaTypeOptions}
+              value={filters.type}
+              onChange={handleMediaTypeChange}
+            />
             <Button
               variant="secondary"
               onClick={() => setShowFilters(true)}
-              className="lg:hidden shrink-0"
+              className="shrink-0 relative"
             >
               <svg
-                className="w-4 h-4"
+                className="w-4 h-4 mr-2"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -453,42 +428,25 @@ export default function DiscoverPage() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+                  d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
                 />
               </svg>
-              {hasActiveFilters && (
-                <span className="ml-1 w-2 h-2 bg-annex-500 rounded-full" />
+              Filters
+              {totalActiveFilters > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] flex items-center justify-center px-1 text-[10px] font-medium bg-annex-500 text-white rounded-full">
+                  {totalActiveFilters}
+                </span>
               )}
             </Button>
-            <Input
-              type="text"
-              placeholder="Search movies and TV shows..."
-              value={searchInput}
-              onChange={handleSearchChange}
-              className="flex-1"
-            />
           </div>
-          <ToggleGroup
-            options={mediaTypeOptions}
-            value={filters.type}
-            onChange={handleMediaTypeChange}
-          />
         </div>
 
-        {/* Quality tier selector (shown for non-custom modes, not for trakt_trending/coming_soon) */}
-        {filters.mode !== "custom" && filters.mode !== "coming_soon" && filters.mode !== "trakt_trending" && (
-          <QualityTierSelector
-            tier={filters.qualityTier}
-            onTierChange={setQualityTier}
-          />
-        )}
-
-        {/* Active filters pills (mobile) */}
+        {/* Active filters pills */}
         {hasActiveFilters && (
-          <div className="lg:hidden flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-white/10">
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-white/10">
             {filters.genres.length > 0 && (
               <span className="shrink-0 px-2 py-1 text-xs bg-annex-500/20 text-annex-300 rounded">
-                {filters.genres.length} genres
+                {filters.genres.length} genre{filters.genres.length > 1 ? "s" : ""}
               </span>
             )}
             {countActiveRatingFilters(filters.ratingFilters) > 0 && (
@@ -502,21 +460,36 @@ export default function DiscoverPage() {
                 </svg>
               </button>
             )}
-            {(filters.yearFrom || filters.yearTo) && (
+            {filters.years && (
               <span className="shrink-0 px-2 py-1 text-xs bg-annex-500/20 text-annex-300 rounded">
-                {filters.yearFrom || "Any"} - {filters.yearTo || "Any"}
+                {filters.years}
               </span>
             )}
-            {filters.sortBy !== DEFAULT_SORT && (
+            {filters.runtimes && (
               <span className="shrink-0 px-2 py-1 text-xs bg-annex-500/20 text-annex-300 rounded">
-                {SORT_OPTIONS.find((o) => o.value === filters.sortBy)?.label}
+                {filters.runtimes} min
+              </span>
+            )}
+            {filters.languages.length > 0 && (
+              <span className="shrink-0 px-2 py-1 text-xs bg-annex-500/20 text-annex-300 rounded">
+                {filters.languages.length} language{filters.languages.length > 1 ? "s" : ""}
+              </span>
+            )}
+            {filters.countries.length > 0 && (
+              <span className="shrink-0 px-2 py-1 text-xs bg-annex-500/20 text-annex-300 rounded">
+                {filters.countries.length} countr{filters.countries.length > 1 ? "ies" : "y"}
+              </span>
+            )}
+            {filters.certifications.length > 0 && (
+              <span className="shrink-0 px-2 py-1 text-xs bg-annex-500/20 text-annex-300 rounded">
+                {filters.certifications.join(", ")}
               </span>
             )}
             <button
               onClick={clearFilters}
-              className="shrink-0 px-2 py-1 text-xs text-white/40 hover:text-white/60"
+              className="shrink-0 px-2 py-1 text-xs text-white/40 hover:text-white/60 transition-colors"
             >
-              Clear
+              Clear all
             </button>
           </div>
         )}
@@ -533,12 +506,22 @@ export default function DiscoverPage() {
             )}
           </div>
 
+          {/* Trakt not configured warning */}
+          {traktNotConfigured && (
+            <div className="mb-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded text-yellow-200">
+              <p className="font-medium">Trakt API not configured</p>
+              <p className="text-sm mt-1 text-yellow-200/70">
+                Set ANNEX_TRAKT_CLIENT_ID in your environment to enable Trakt-powered discovery.
+              </p>
+            </div>
+          )}
+
           {/* Error state */}
-          {activeQuery.error && (
+          {discoverQuery.error && (
             <div className="text-center py-12 text-red-400">
               <p>Failed to load content.</p>
               <p className="text-sm mt-2 text-white/30">
-                {activeQuery.error.message}
+                {discoverQuery.error.message}
               </p>
             </div>
           )}
@@ -558,9 +541,10 @@ export default function DiscoverPage() {
 
           {/* Empty state */}
           {!isInitialLoading &&
-            !activeQuery.isFetching &&
+            !discoverQuery.isFetching &&
             allResults.length === 0 &&
-            activeQuery.data && (
+            discoverQuery.data &&
+            !traktNotConfigured && (
               <div className="text-center py-12 text-white/50">
                 {filters.query ? (
                   <>
@@ -585,10 +569,9 @@ export default function DiscoverPage() {
                   </>
                 ) : (
                   <>
-                    <p>No trending content available.</p>
+                    <p>No content available.</p>
                     <p className="text-sm mt-2 text-white/30">
-                      Run a sync to populate the database, or configure your TMDB
-                      API key.
+                      Try a different list or check your Trakt configuration.
                     </p>
                   </>
                 )}
@@ -631,7 +614,7 @@ export default function DiscoverPage() {
                   <Button
                     variant="secondary"
                     onClick={loadMore}
-                    disabled={activeQuery.isFetching}
+                    disabled={discoverQuery.isFetching}
                   >
                     Load More
                   </Button>

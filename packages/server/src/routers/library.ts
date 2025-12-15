@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc.js";
 import { prisma } from "../db/client.js";
-import { getTMDBService, TMDBService } from "../services/tmdb.js";
+import { TMDBService } from "../services/tmdb.js";
 import { MediaType } from "@prisma/client";
 import {
   isEmbyFullyConfigured,
@@ -95,7 +95,7 @@ export const libraryRouter = router({
                 tmdbScore: item.ratings.tmdbScore,
                 tmdbVotes: item.ratings.tmdbVotes,
                 imdbScore: item.ratings.imdbScore,
-                aggregateScore: item.ratings.aggregateScore,
+                mdblistScore: item.ratings.mdblistScore,
               }
             : null,
           createdAt: item.createdAt,
@@ -186,32 +186,6 @@ export const libraryRouter = router({
       })),
     };
   }),
-
-  /**
-   * Sync popular media from TMDB to database
-   */
-  sync: publicProcedure
-    .input(
-      z.object({
-        movies: z.boolean().default(true),
-        tvShows: z.boolean().default(true),
-        pages: z.number().min(1).max(20).default(5),
-      })
-    )
-    .mutation(async ({ input }) => {
-      const tmdb = getTMDBService();
-      const result = await tmdb.syncPopularMedia({
-        movies: input.movies,
-        tvShows: input.tvShows,
-        pages: input.pages,
-      });
-
-      return {
-        success: true,
-        synced: result,
-        message: `Synced ${result.movies} movies and ${result.tvShows} TV shows`,
-      };
-    }),
 
   /**
    * Check if a media item exists in any connected library (Plex/Emby)

@@ -122,6 +122,7 @@ function RequestDialog({
         tmdbId,
         title,
         year,
+        posterPath,
         targets,
       });
     } else {
@@ -129,6 +130,7 @@ function RequestDialog({
         tmdbId,
         title,
         year,
+        posterPath,
         targets,
         // TODO: Add season/episode selection for TV
       });

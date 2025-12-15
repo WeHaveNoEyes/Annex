@@ -1,231 +1,117 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc.js";
-import { getTMDBService } from "../services/tmdb.js";
 import { prisma } from "../db/client.js";
-import { getJobQueueService } from "../services/jobQueue.js";
-import { getTasteProfileService, type TasteProfile } from "../services/tasteProfile.js";
-import { getTraktService } from "../services/trakt.js";
+import { getTraktService, type TraktSeasonDetails } from "../services/trakt.js";
 import type { TrendingResult } from "@annex/shared";
-import { Prisma } from "@prisma/client";
 
-const STALE_THRESHOLD_MS = 24 * 60 * 60 * 1000; // 24 hours
 const ITEMS_PER_PAGE = 20;
 
-// TMDB genre ID to name mapping
-// These names must match what's stored in the database (from TMDB API)
-const GENRE_ID_TO_NAME: Record<number, string> = {
-  // Movie genres
-  28: "Action",
-  12: "Adventure",
-  16: "Animation",
-  35: "Comedy",
-  80: "Crime",
-  99: "Documentary",
-  18: "Drama",
-  10751: "Family",
-  14: "Fantasy",
-  36: "History",
-  27: "Horror",
-  10402: "Music",
-  9648: "Mystery",
-  10749: "Romance",
-  878: "Science Fiction", // Displayed as "Sci-Fi" in UI but stored as "Science Fiction"
-  10770: "TV Movie",
-  53: "Thriller",
-  10752: "War",
-  37: "Western",
-  // TV genres (some overlap with movie)
-  10759: "Action & Adventure",
-  10762: "Kids",
-  10763: "News",
-  10764: "Reality",
-  10765: "Sci-Fi & Fantasy",
-  10766: "Soap",
-  10767: "Talk",
-  10768: "War & Politics",
-};
+// =============================================================================
+// MDBList Rating Type
+// =============================================================================
 
-// Sort option mappings for Prisma orderBy
-type PrismaOrderBy = Prisma.MediaItemOrderByWithRelationInput[];
-
-function getSortOrder(sortBy: string): PrismaOrderBy {
-  switch (sortBy) {
-    case "popularity.desc":
-      return [{ ratings: { tmdbPopularity: "desc" } }, { tmdbId: "desc" }];
-    case "popularity.asc":
-      return [{ ratings: { tmdbPopularity: "asc" } }, { tmdbId: "asc" }];
-    case "vote_average.desc":
-      return [{ ratings: { tmdbScore: "desc" } }, { tmdbId: "desc" }];
-    case "vote_average.asc":
-      return [{ ratings: { tmdbScore: "asc" } }, { tmdbId: "asc" }];
-    case "aggregate.desc":
-      return [{ ratings: { aggregateScore: "desc" } }, { ratings: { confidenceScore: "desc" } }, { tmdbId: "desc" }];
-    case "aggregate.asc":
-      return [{ ratings: { aggregateScore: "asc" } }, { tmdbId: "asc" }];
-    case "primary_release_date.desc":
-    case "first_air_date.desc":
-      return [{ releaseDate: "desc" }, { tmdbId: "desc" }];
-    case "primary_release_date.asc":
-    case "first_air_date.asc":
-      return [{ releaseDate: "asc" }, { tmdbId: "asc" }];
-    case "title.asc":
-      return [{ title: "asc" }, { tmdbId: "asc" }];
-    case "title.desc":
-      return [{ title: "desc" }, { tmdbId: "desc" }];
-    default:
-      return [{ ratings: { tmdbPopularity: "desc" } }, { tmdbId: "desc" }];
-  }
+interface MDBListRating {
+  source: string;
+  value: number;
+  score: number;
+  votes: number;
 }
 
-// Discovery mode types
-type DiscoveryMode = "for_you" | "trending" | "hidden_gems" | "new_releases" | "coming_soon" | "custom";
-type QualityTier = "any" | "good" | "great" | "excellent";
+function extractMDBListRatings(data: { ratings?: MDBListRating[]; score?: number }): {
+  imdbScore: number | null;
+  rtCriticScore: number | null;
+  rtAudienceScore: number | null;
+  metacriticScore: number | null;
+  traktScore: number | null;
+  letterboxdScore: number | null;
+  mdblistScore: number | null;
+} {
+  const ratings = data.ratings || [];
 
-// Get sort order based on discovery mode
-function getSortOrderForMode(mode: DiscoveryMode, customSort?: string): PrismaOrderBy {
-  switch (mode) {
-    case "for_you":
-      return [{ ratings: { aggregateScore: "desc" } }, { ratings: { confidenceScore: "desc" } }, { tmdbId: "desc" }];
-    case "trending":
-      return [{ ratings: { tmdbPopularity: "desc" } }, { ratings: { aggregateScore: "desc" } }, { tmdbId: "desc" }];
-    case "hidden_gems":
-      return [{ ratings: { aggregateScore: "desc" } }, { ratings: { tmdbPopularity: "asc" } }, { tmdbId: "desc" }];
-    case "new_releases":
-      return [{ releaseDate: "desc" }, { ratings: { aggregateScore: "desc" } }, { tmdbId: "desc" }];
-    case "coming_soon":
-      return [{ releaseDate: "asc" }, { ratings: { tmdbPopularity: "desc" } }, { tmdbId: "desc" }];
-    case "custom":
-    default:
-      return getSortOrder(customSort || "aggregate.desc");
-  }
+  const findRating = (source: string): number | null => {
+    const rating = ratings.find((r) => r.source.toLowerCase() === source.toLowerCase());
+    return rating?.score ?? null;
+  };
+
+  return {
+    imdbScore: findRating("imdb"),
+    rtCriticScore: findRating("tomatoes"),
+    rtAudienceScore: findRating("tomatoesaudience"),
+    metacriticScore: findRating("metacritic"),
+    traktScore: findRating("trakt"),
+    letterboxdScore: findRating("letterboxd"),
+    mdblistScore: data.score ?? null,
+  };
 }
 
-// Quality tier thresholds (aggregate score is 0-100)
-const QUALITY_TIER_THRESHOLDS: Record<QualityTier, number> = {
-  any: 0,
-  good: 70,
-  great: 80,
-  excellent: 85,
-};
+// =============================================================================
+// Season Update Helper
+// =============================================================================
 
-// Personalization constants
-const PERSONALIZATION_OVERSAMPLE = 3; // Fetch 3x items for reranking
-const PERSONALIZATION_WEIGHT = 15; // Max bonus points for perfect genre match
-
-/**
- * Calculate personalization score based on genre overlap with taste profile
- * Returns a score from 0 to 1 (normalized)
- */
-function calculatePersonalScore(itemGenres: string[], profile: TasteProfile): number {
-  if (!itemGenres.length || !profile.genres.length) return 0;
-
-  const profileGenreMap = new Map(profile.genres.map((g) => [g.genre, g.weight]));
-  let score = 0;
-
-  for (const genre of itemGenres) {
-    const weight = profileGenreMap.get(genre);
-    if (weight) {
-      score += weight;
-    }
-  }
-
-  // Normalize by number of genres in the item
-  return score / itemGenres.length;
-}
-
-/**
- * Queue a background refresh job for a media item if it's stale
- * Returns immediately without waiting for the refresh
- */
-async function queueRefreshIfStale(
-  tmdbId: number,
-  type: "movie" | "tv"
+async function updateSeasonFromTrakt(
+  mediaItemId: string,
+  seasonNumber: number,
+  traktSeason: TraktSeasonDetails
 ): Promise<void> {
-  const id = `tmdb-${type}-${tmdbId}`;
-
-  const item = await prisma.mediaItem.findUnique({
-    where: { id },
-    select: { mdblistUpdatedAt: true },
-  });
-
-  // If item doesn't exist or hasn't been hydrated, queue hydration
-  if (!item || !item.mdblistUpdatedAt) {
-    const jobQueue = getJobQueueService();
-    await jobQueue.addJobIfNotExists(
-      "mdblist:hydrate",
-      { tmdbId, type },
-      `hydrate-${type}-${tmdbId}`,
-      { priority: 5 } // Medium priority
-    );
-    return;
-  }
-
-  // Check if stale (older than 24 hours)
-  const age = Date.now() - item.mdblistUpdatedAt.getTime();
-  if (age > STALE_THRESHOLD_MS) {
-    const jobQueue = getJobQueueService();
-    await jobQueue.addJobIfNotExists(
-      "mdblist:hydrate",
-      { tmdbId, type },
-      `hydrate-${type}-${tmdbId}`,
-      { priority: 3 } // Lower priority for stale refreshes
-    );
-  }
-}
-
-/**
- * Queue refresh jobs for multiple items in batch
- */
-async function queueBatchRefreshIfStale(
-  items: Array<{ tmdbId: number; type: "movie" | "tv" }>
-): Promise<void> {
-  if (items.length === 0) return;
-
-  const cutoffDate = new Date(Date.now() - STALE_THRESHOLD_MS);
-
-  // Get all items that need refresh
-  const existingItems = await prisma.mediaItem.findMany({
+  // Upsert season
+  const season = await prisma.season.upsert({
     where: {
-      OR: items.map((item) => ({
-        id: `tmdb-${item.type}-${item.tmdbId}`,
-      })),
+      mediaItemId_seasonNumber: { mediaItemId, seasonNumber },
     },
-    select: { id: true, mdblistUpdatedAt: true },
+    create: {
+      mediaItemId,
+      seasonNumber,
+      name: traktSeason.title || `Season ${seasonNumber}`,
+      overview: traktSeason.overview,
+      posterPath: traktSeason.images?.poster?.medium || traktSeason.images?.poster?.full || null,
+      episodeCount: traktSeason.episode_count,
+      airDate: traktSeason.first_aired?.split("T")[0] || null,
+    },
+    update: {
+      name: traktSeason.title || `Season ${seasonNumber}`,
+      overview: traktSeason.overview,
+      posterPath: traktSeason.images?.poster?.medium || traktSeason.images?.poster?.full || undefined,
+      episodeCount: traktSeason.episode_count,
+      airDate: traktSeason.first_aired?.split("T")[0] || null,
+    },
   });
 
-  const existingMap = new Map(
-    existingItems.map((item) => [item.id, item.mdblistUpdatedAt])
-  );
-
-  // Find items that need hydration
-  const needsHydration: Array<{ tmdbId: number; type: "movie" | "tv" }> = [];
-
-  for (const item of items) {
-    const id = `tmdb-${item.type}-${item.tmdbId}`;
-    const mdblistUpdatedAt = existingMap.get(id);
-
-    // Needs hydration if: doesn't exist, never hydrated, or stale
-    if (!mdblistUpdatedAt || mdblistUpdatedAt < cutoffDate) {
-      needsHydration.push(item);
+  // Upsert episodes if available
+  if (traktSeason.episodes && traktSeason.episodes.length > 0) {
+    for (const ep of traktSeason.episodes) {
+      await prisma.episode.upsert({
+        where: {
+          seasonId_episodeNumber: {
+            seasonId: season.id,
+            episodeNumber: ep.number,
+          },
+        },
+        create: {
+          seasonId: season.id,
+          seasonNumber,
+          episodeNumber: ep.number,
+          name: ep.title || `Episode ${ep.number}`,
+          overview: ep.overview,
+          stillPath: ep.images?.poster?.medium || ep.images?.poster?.full || null,
+          airDate: ep.first_aired?.split("T")[0] || null,
+          runtime: ep.runtime,
+        },
+        update: {
+          name: ep.title || `Episode ${ep.number}`,
+          overview: ep.overview,
+          stillPath: ep.images?.poster?.medium || ep.images?.poster?.full || undefined,
+          airDate: ep.first_aired?.split("T")[0] || null,
+          runtime: ep.runtime,
+        },
+      });
     }
-  }
-
-  if (needsHydration.length > 0) {
-    const jobQueue = getJobQueueService();
-    // Use batch hydration for efficiency
-    await jobQueue.addJobIfNotExists(
-      "mdblist:batch-hydrate",
-      { items: needsHydration },
-      `batch-hydrate-${Date.now()}`,
-      { priority: 3 }
-    );
   }
 }
 
-/**
- * Extract the best trailer key from a videos array
- * Prefers official trailers, then teasers, from YouTube
- */
+// =============================================================================
+// Trailer Extraction Helper
+// =============================================================================
+
 function extractTrailerKey(
   videos: Array<{ key: string; site: string; type: string; official?: boolean }> | null | undefined
 ): string | null {
@@ -254,9 +140,10 @@ function extractTrailerKey(
   return null;
 }
 
-/**
- * Transform a database MediaItem with ratings into a TrendingResult
- */
+// =============================================================================
+// Result Transformation Helper
+// =============================================================================
+
 function mediaItemToTrendingResult(
   item: {
     tmdbId: number;
@@ -276,13 +163,10 @@ function mediaItemToTrendingResult(
       traktScore: number | null;
       letterboxdScore: number | null;
       mdblistScore: number | null;
-      aggregateScore: number | null;
-      sourceCount: number | null;
       tmdbPopularity: number | null;
     } | null;
   }
 ): TrendingResult {
-  // Extract trailer key from videos JSON
   const trailerKey = extractTrailerKey(
     item.videos as Array<{ key: string; site: string; type: string; official?: boolean }> | null
   );
@@ -305,1223 +189,80 @@ function mediaItemToTrendingResult(
       traktScore: item.ratings.traktScore,
       letterboxdScore: item.ratings.letterboxdScore,
       mdblistScore: item.ratings.mdblistScore,
-      aggregateScore: item.ratings.aggregateScore,
-      sourceCount: item.ratings.sourceCount,
     } : undefined,
     trailerKey,
   };
 }
 
+// =============================================================================
+// Discovery Router
+// =============================================================================
+
 export const discoveryRouter = router({
   /**
-   * Get trending movies or TV shows from local database
-   * Sorted by popularity (tmdbPopularity) which reflects current trending
-   * Falls back to TMDB API if local database has insufficient data
+   * Get Trakt genres for movies or TV shows
    */
-  trending: publicProcedure
+  traktGenres: publicProcedure
     .input(
       z.object({
         type: z.enum(["movie", "tv"]),
-        page: z.number().min(1).default(1),
-        timeWindow: z.enum(["day", "week"]).default("week"),
       })
     )
     .query(async ({ input }) => {
-      const prismaType = input.type === "movie" ? "MOVIE" : "TV";
-      const skip = (input.page - 1) * ITEMS_PER_PAGE;
+      const trakt = getTraktService();
 
-      // Query local database for items with ratings, sorted by popularity
-      // Include both MDBList-hydrated items and TMDB-only items (which have ratings but no mdblistUpdatedAt)
-      // Filter out items without useful data (no poster, TBA titles, etc.)
-      const [items, totalCount] = await Promise.all([
-        prisma.mediaItem.findMany({
-          where: {
-            type: prismaType,
-            ratings: { isNot: null }, // Has ratings (from either MDBList or TMDB)
-            posterPath: { not: null }, // Must have a poster
-            title: {
-              not: { in: ["TBA", "TBD", "Untitled", ""] },
-            },
-            year: { not: null }, // Must have a year
-          },
-          select: {
-            tmdbId: true,
-            type: true,
-            title: true,
-            posterPath: true,
-            backdropPath: true,
-            year: true,
-            overview: true,
-            videos: true,
-            ratings: true,
-          },
-          orderBy: [
-            { ratings: { tmdbPopularity: "desc" } },
-            { tmdbId: "desc" }, // Secondary sort for stable ordering
-          ],
-          skip,
-          take: ITEMS_PER_PAGE,
-        }),
-        prisma.mediaItem.count({
-          where: {
-            type: prismaType,
-            ratings: { isNot: null },
-            posterPath: { not: null },
-            title: {
-              not: { in: ["TBA", "TBD", "Untitled", ""] },
-            },
-            year: { not: null },
-          },
-        }),
-      ]);
-
-      // If we have local data, use it
-      if (items.length > 0) {
-        const results: TrendingResult[] = items.map(mediaItemToTrendingResult);
-
-        // Queue background refresh for stale items (fire and forget)
-        const staleItems = items.map((item) => ({
-          tmdbId: item.tmdbId,
-          type: input.type,
-        }));
-        queueBatchRefreshIfStale(staleItems).catch(console.error);
-
+      if (!trakt.isConfigured()) {
         return {
-          results,
-          page: input.page,
-          totalPages: Math.ceil(totalCount / ITEMS_PER_PAGE),
-          totalResults: totalCount,
+          configured: false,
+          genres: [],
+          message: "Trakt API not configured. Set ANNEX_TRAKT_CLIENT_ID in your environment.",
         };
       }
 
-      // Fallback to TMDB API if no local data
-      const tmdb = getTMDBService();
-      const result = await tmdb.getTrending(input.type, input.timeWindow, input.page);
-
-      // Queue background refresh for stale items (fire and forget)
-      const tmdbItems = result.results.map((item) => ({
-        tmdbId: item.tmdbId,
-        type: input.type,
-      }));
-      queueBatchRefreshIfStale(tmdbItems).catch(console.error);
-
-      return result;
-    }),
-
-  /**
-   * Search for movies or TV shows
-   * Searches local database first, falls back to TMDB API
-   */
-  search: publicProcedure
-    .input(
-      z.object({
-        query: z.string().min(1),
-        type: z.enum(["movie", "tv", "multi"]).default("multi"),
-        page: z.number().min(1).default(1),
-      })
-    )
-    .query(async ({ input }) => {
-      const skip = (input.page - 1) * ITEMS_PER_PAGE;
-
-      // Build the type filter
-      const typeFilter = input.type === "multi"
-        ? {}
-        : { type: input.type === "movie" ? "MOVIE" as const : "TV" as const };
-
-      // Search local database first using case-insensitive title match
-      // Include both MDBList-hydrated items and TMDB-only items
-      // Filter out items without useful data (no poster, TBA titles, etc.)
-      const [items, totalCount] = await Promise.all([
-        prisma.mediaItem.findMany({
-          where: {
-            ...typeFilter,
-            ratings: { isNot: null },
-            posterPath: { not: null },
-            year: { not: null },
-            title: {
-              contains: input.query,
-              mode: "insensitive",
-              not: { in: ["TBA", "TBD", "Untitled", ""] },
-            },
-          },
-          select: {
-            tmdbId: true,
-            type: true,
-            title: true,
-            posterPath: true,
-            backdropPath: true,
-            year: true,
-            overview: true,
-            videos: true,
-            ratings: true,
-          },
-          orderBy: [
-            { ratings: { tmdbPopularity: "desc" } },
-            { tmdbId: "desc" }, // Secondary sort for stable ordering
-          ],
-          skip,
-          take: ITEMS_PER_PAGE,
-        }),
-        prisma.mediaItem.count({
-          where: {
-            ...typeFilter,
-            ratings: { isNot: null },
-            posterPath: { not: null },
-            year: { not: null },
-            title: {
-              contains: input.query,
-              mode: "insensitive",
-              not: { in: ["TBA", "TBD", "Untitled", ""] },
-            },
-          },
-        }),
-      ]);
-
-      // If we have local results, use them
-      if (items.length > 0) {
-        const results: TrendingResult[] = items.map(mediaItemToTrendingResult);
+      try {
+        const genres = await trakt.getGenres(input.type);
         return {
-          results,
-          page: input.page,
-          totalPages: Math.ceil(totalCount / ITEMS_PER_PAGE),
-          totalResults: totalCount,
+          configured: true,
+          genres,
+          message: null,
         };
-      }
-
-      // Fallback to TMDB API if no local results
-      const tmdb = getTMDBService();
-      const result = await tmdb.search(input.query, input.type, input.page);
-
-      // Queue background hydration for search results
-      const tmdbItems = result.results.map((item) => ({
-        tmdbId: item.tmdbId,
-        type: item.type,
-      }));
-      queueBatchRefreshIfStale(tmdbItems).catch(console.error);
-
-      return result;
-    }),
-
-  /**
-   * Get movie details by TMDB ID
-   * Automatically queues refresh if data is stale (>24 hours)
-   */
-  movie: publicProcedure
-    .input(z.object({ tmdbId: z.number() }))
-    .query(async ({ input }) => {
-      const tmdb = getTMDBService();
-      const result = await tmdb.getMovie(input.tmdbId);
-
-      // Queue background refresh if stale (fire and forget)
-      queueRefreshIfStale(input.tmdbId, "movie").catch(console.error);
-
-      return result;
-    }),
-
-  /**
-   * Get TV show details by TMDB ID
-   * Automatically queues refresh if data is stale (>24 hours)
-   */
-  tvShow: publicProcedure
-    .input(z.object({ tmdbId: z.number() }))
-    .query(async ({ input }) => {
-      const tmdb = getTMDBService();
-      const result = await tmdb.getTvShow(input.tmdbId);
-
-      // Queue background refresh if stale (fire and forget)
-      queueRefreshIfStale(input.tmdbId, "tv").catch(console.error);
-
-      return result;
-    }),
-
-  /**
-   * Get extended movie details including videos, credits, spoken languages
-   * Automatically queues refresh if data is stale (>24 hours)
-   */
-  movieDetails: publicProcedure
-    .input(z.object({ tmdbId: z.number() }))
-    .query(async ({ input }) => {
-      const tmdb = getTMDBService();
-      const result = await tmdb.getMovieDetails(input.tmdbId);
-
-      // Queue background refresh if stale (fire and forget)
-      queueRefreshIfStale(input.tmdbId, "movie").catch(console.error);
-
-      return result;
-    }),
-
-  /**
-   * Get extended TV show details including videos, credits, spoken languages
-   * Automatically queues refresh if data is stale (>24 hours)
-   */
-  tvShowDetails: publicProcedure
-    .input(z.object({ tmdbId: z.number() }))
-    .query(async ({ input }) => {
-      const tmdb = getTMDBService();
-      const result = await tmdb.getTvShowDetails(input.tmdbId);
-
-      // Queue background refresh if stale (fire and forget)
-      queueRefreshIfStale(input.tmdbId, "tv").catch(console.error);
-
-      return result;
-    }),
-
-  /**
-   * Get ratings for a media item from local database
-   * Returns all available ratings (TMDB, IMDb, RT, Metacritic, Trakt, Letterboxd, MDBList)
-   */
-  ratings: publicProcedure
-    .input(
-      z.object({
-        tmdbId: z.number(),
-        type: z.enum(["movie", "tv"]),
-      })
-    )
-    .query(async ({ input }) => {
-      const id = `tmdb-${input.type}-${input.tmdbId}`;
-
-      const item = await prisma.mediaItem.findUnique({
-        where: { id },
-        include: { ratings: true },
-      });
-
-      if (!item?.ratings) {
-        // Queue hydration if not in database
-        queueRefreshIfStale(input.tmdbId, input.type).catch(console.error);
-        return null;
-      }
-
-      return {
-        tmdbScore: item.ratings.tmdbScore,
-        tmdbPopularity: item.ratings.tmdbPopularity,
-        imdbScore: item.ratings.imdbScore,
-        imdbVotes: item.ratings.imdbVotes,
-        rtCriticScore: item.ratings.rtCriticScore,
-        rtAudienceScore: item.ratings.rtAudienceScore,
-        metacriticScore: item.ratings.metacriticScore,
-        traktScore: item.ratings.traktScore,
-        letterboxdScore: item.ratings.letterboxdScore,
-        mdblistScore: item.ratings.mdblistScore,
-        aggregateScore: item.ratings.aggregateScore,
-        updatedAt: item.mdblistUpdatedAt,
-      };
-    }),
-
-  /**
-   * Get TV season details with episodes
-   */
-  season: publicProcedure
-    .input(
-      z.object({
-        tmdbId: z.number(),
-        seasonNumber: z.number(),
-      })
-    )
-    .query(async ({ input }) => {
-      const tmdb = getTMDBService();
-      return tmdb.getSeason(input.tmdbId, input.seasonNumber);
-    }),
-
-  /**
-   * Discover movies with filters
-   * Automatically queues stale items for background refresh
-   */
-  discoverMovies: publicProcedure
-    .input(
-      z.object({
-        page: z.number().min(1).default(1),
-        sortBy: z.string().optional(),
-        year: z.number().optional(),
-        withGenres: z.string().optional(),
-        voteAverageGte: z.number().optional(),
-      })
-    )
-    .query(async ({ input }) => {
-      const tmdb = getTMDBService();
-      const result = await tmdb.discoverMovies(input);
-
-      // Queue background refresh for stale items
-      const items = result.results.map((item) => ({
-        tmdbId: item.tmdbId,
-        type: "movie" as const,
-      }));
-      queueBatchRefreshIfStale(items).catch(console.error);
-
-      return result;
-    }),
-
-  /**
-   * Discover TV shows with filters
-   * Automatically queues stale items for background refresh
-   */
-  discoverTvShows: publicProcedure
-    .input(
-      z.object({
-        page: z.number().min(1).default(1),
-        sortBy: z.string().optional(),
-        year: z.number().optional(),
-        withGenres: z.string().optional(),
-        voteAverageGte: z.number().optional(),
-      })
-    )
-    .query(async ({ input }) => {
-      const tmdb = getTMDBService();
-      const result = await tmdb.discoverTvShows(input);
-
-      // Queue background refresh for stale items
-      const items = result.results.map((item) => ({
-        tmdbId: item.tmdbId,
-        type: "tv" as const,
-      }));
-      queueBatchRefreshIfStale(items).catch(console.error);
-
-      return result;
-    }),
-
-  /**
-   * Get popular movies
-   * Automatically queues stale items for background refresh
-   */
-  popularMovies: publicProcedure
-    .input(z.object({ page: z.number().min(1).default(1) }))
-    .query(async ({ input }) => {
-      const tmdb = getTMDBService();
-      const result = await tmdb.getPopularMovies(input.page);
-
-      // Queue background refresh for stale items
-      const items = result.results.map((item) => ({
-        tmdbId: item.tmdbId,
-        type: "movie" as const,
-      }));
-      queueBatchRefreshIfStale(items).catch(console.error);
-
-      return result;
-    }),
-
-  /**
-   * Get popular TV shows
-   * Automatically queues stale items for background refresh
-   */
-  popularTvShows: publicProcedure
-    .input(z.object({ page: z.number().min(1).default(1) }))
-    .query(async ({ input }) => {
-      const tmdb = getTMDBService();
-      const result = await tmdb.getPopularTvShows(input.page);
-
-      // Queue background refresh for stale items
-      const items = result.results.map((item) => ({
-        tmdbId: item.tmdbId,
-        type: "tv" as const,
-      }));
-      queueBatchRefreshIfStale(items).catch(console.error);
-
-      return result;
-    }),
-
-  /**
-   * Advanced discover endpoint with comprehensive filtering
-   * Queries local database with support for genres, year range, ratings, and sorting
-   * Falls back to TMDB API if local database has insufficient data
-   */
-  discover: publicProcedure
-    .input(
-      z.object({
-        type: z.enum(["movie", "tv"]),
-        page: z.number().min(1).default(1),
-        // Discovery mode - presets for different use cases
-        mode: z.enum(["for_you", "trending", "hidden_gems", "new_releases", "coming_soon", "custom"]).default("for_you"),
-        // Quality tier - simplified rating filter
-        qualityTier: z.enum(["any", "good", "great", "excellent"]).default("any"),
-        query: z.string().optional(),
-        genres: z.array(z.number()).optional(),
-        yearFrom: z.number().optional(),
-        yearTo: z.number().optional(),
-        // Multiple rating filters - each source can have min/max (used in custom mode)
-        ratingFilters: z.record(
-          z.enum([
-            "imdb", "tmdb", "rt_critic", "rt_audience",
-            "metacritic", "trakt", "letterboxd", "mdblist"
-          ]),
-          z.object({
-            min: z.number(),
-            max: z.number(),
-          })
-        ).optional(),
-        language: z.string().optional(), // ISO 639-1 language code (e.g., "en", "ja")
-        releasedOnly: z.boolean().optional(), // Filter to only show released content
-        hideUnrated: z.boolean().default(true), // Hide media without any ratings (default: true)
-        sortBy: z.string().default("aggregate.desc"),
-      })
-    )
-    .query(async ({ input, ctx }) => {
-      const prismaType = input.type === "movie" ? "MOVIE" : "TV";
-      const skip = (input.page - 1) * ITEMS_PER_PAGE;
-      const today = new Date().toISOString().split("T")[0];
-      const currentYear = new Date().getFullYear();
-
-      // Check if personalization is available (user authenticated with linked account)
-      let tasteProfile: TasteProfile | null = null;
-      const mode = input.mode as DiscoveryMode;
-
-      if (mode === "for_you" && ctx.user) {
-        try {
-          const tasteService = getTasteProfileService();
-          tasteProfile = await tasteService.getTasteProfile(
-            ctx.user.id,
-            ctx.user.plexAccount,
-            ctx.user.embyAccount
-          );
-        } catch (error) {
-          console.error("[Discovery] Failed to get taste profile:", error);
-          // Continue without personalization
-        }
-      }
-
-      // Build base where clause
-      const where: Prisma.MediaItemWhereInput = {
-        type: prismaType,
-        ratings: { isNot: null },
-        posterPath: { not: null },
-        title: {
-          not: { in: ["TBA", "TBD", "Untitled", ""] },
-        },
-        year: { not: null },
-      };
-
-      // Apply mode-specific filters
-      const qualityTier = input.qualityTier as QualityTier;
-
-      switch (mode) {
-        case "for_you":
-          // Smart curated: released, trusted ratings (2+ sources), minimum quality
-          where.status = { in: ["Released", "released", "Ended", "Returning Series", "Canceled", "Cancelled"] };
-          where.releaseDate = { lte: today };
-          where.ratings = {
-            is: {
-              isTrusted: true,
-              aggregateScore: { gte: 65 },
-            },
-          };
-          break;
-
-        case "trending":
-          // Recent popular with quality filtering
-          where.status = { in: ["Released", "released", "Ended", "Returning Series", "Canceled", "Cancelled"] };
-          where.releaseDate = { lte: today };
-          where.year = { gte: currentYear - 2, not: null };
-          where.ratings = {
-            is: {
-              tmdbPopularity: { gte: 10 },
-              sourceCount: { gte: 1 },
-            },
-          };
-          break;
-
-        case "hidden_gems":
-          // High ratings, lower popularity
-          where.status = { in: ["Released", "released", "Ended", "Returning Series", "Canceled", "Cancelled"] };
-          where.releaseDate = { lte: today };
-          where.ratings = {
-            is: {
-              isTrusted: true,
-              aggregateScore: { gte: 75 },
-              tmdbPopularity: { lt: 50 },
-            },
-          };
-          break;
-
-        case "new_releases":
-          // Recently released with ratings
-          where.status = { in: ["Released", "released", "Ended", "Returning Series", "Canceled", "Cancelled"] };
-          where.releaseDate = {
-            gte: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
-            lte: today,
-          };
-          where.ratings = {
-            is: {
-              sourceCount: { gte: 1 },
-            },
-          };
-          break;
-
-        case "coming_soon":
-          // Unreleased, sorted by anticipation
-          where.OR = [
-            { releaseDate: { gt: today } },
-            { status: { in: ["In Production", "Planned", "Post Production"] } },
-          ];
-          break;
-
-        case "custom":
-        default:
-          // Apply manual filters for custom mode
-          break;
-      }
-
-      // Apply quality tier filter (except for coming_soon mode)
-      if (mode !== "coming_soon" && qualityTier !== "any") {
-        const minScore = QUALITY_TIER_THRESHOLDS[qualityTier];
-        const existingRatingsIs = (where.ratings as { is?: Prisma.MediaRatingsWhereInput })?.is || {};
-        where.ratings = {
-          is: {
-            ...existingRatingsIs,
-            isTrusted: true,
-            aggregateScore: { gte: minScore },
-          },
-        };
-      }
-
-      // Search query filter (title search) - applies to all modes
-      if (input.query && input.query.trim()) {
-        where.title = {
-          contains: input.query.trim(),
-          mode: "insensitive",
-          not: { in: ["TBA", "TBD", "Untitled", ""] },
-        };
-      }
-
-      // Genre filter - matches if ANY of the genres are present
-      // Convert genre IDs to names for database query
-      if (input.genres && input.genres.length > 0) {
-        const genreNames = input.genres
-          .map(id => GENRE_ID_TO_NAME[id])
-          .filter(Boolean); // Remove any unmapped IDs
-
-        if (genreNames.length > 0) {
-          where.genres = {
-            hasSome: genreNames,
-          };
-        }
-      }
-
-      // Year range filter (only in custom mode to avoid conflicts)
-      if (mode === "custom" && (input.yearFrom !== undefined || input.yearTo !== undefined)) {
-        where.year = {
-          ...(input.yearFrom !== undefined ? { gte: input.yearFrom } : {}),
-          ...(input.yearTo !== undefined ? { lte: input.yearTo } : {}),
-          not: null,
-        };
-      }
-
-      // Multi-source rating filters with min/max ranges (only in custom mode)
-      // Maps rating source IDs to their Prisma field names
-      if (mode === "custom" && input.ratingFilters && Object.keys(input.ratingFilters).length > 0) {
-        const ratingFieldMap: Record<string, string> = {
-          imdb: "imdbScore",
-          tmdb: "tmdbScore",
-          rt_critic: "rtCriticScore",
-          rt_audience: "rtAudienceScore",
-          metacritic: "metacriticScore",
-          trakt: "traktScore",
-          letterboxd: "letterboxdScore",
-          mdblist: "mdblistScore",
-        };
-
-        // Get the default max values for each source
-        const sourceMaxValues: Record<string, number> = {
-          imdb: 10,
-          tmdb: 10,
-          rt_critic: 100,
-          rt_audience: 100,
-          metacritic: 100,
-          trakt: 100,
-          letterboxd: 100,
-          mdblist: 100,
-        };
-
-        // Build rating conditions - all must match (AND logic)
-        const ratingConditions: Prisma.MediaRatingsWhereInput = {};
-
-        for (const [sourceId, range] of Object.entries(input.ratingFilters)) {
-          const field = ratingFieldMap[sourceId];
-          const maxValue = sourceMaxValues[sourceId] ?? 100;
-
-          if (field) {
-            // Build conditions for this field
-            // Always require the field to not be null when filtering on it
-            const conditions: { not?: null; gte?: number; lte?: number } = {
-              not: null, // Exclude items without this rating
-            };
-
-            if (range.min > 0) {
-              conditions.gte = range.min;
-            }
-            if (range.max < maxValue) {
-              conditions.lte = range.max;
-            }
-
-            (ratingConditions as Record<string, unknown>)[field] = conditions;
-          }
-        }
-
-        if (Object.keys(ratingConditions).length > 0) {
-          const existingRatingsIs = (where.ratings as { is?: Prisma.MediaRatingsWhereInput })?.is || {};
-          where.ratings = {
-            is: {
-              ...existingRatingsIs,
-              ...ratingConditions,
-            },
-          };
-        }
-      }
-
-      // Language filter
-      if (input.language) {
-        where.language = input.language;
-      }
-
-      // Released only filter (only applies in custom mode)
-      // Now also checks releaseDate to ensure content is actually released
-      if (mode === "custom" && input.releasedOnly) {
-        where.status = {
-          in: ["Released", "released", "Ended", "Returning Series", "Canceled", "Cancelled"],
-        };
-        where.releaseDate = { lte: today };
-      }
-
-      // Hide unrated filter - requires at least one non-zero rating score to be present
-      if (input.hideUnrated) {
-        // Add condition to require at least one rating score that is not null AND greater than 0
-        // This filters out both null ratings and 0.0 placeholder ratings
-        // The OR must be inside 'is' for relation filters in Prisma
-        const existingRatingsIs = (where.ratings as { is?: Prisma.MediaRatingsWhereInput })?.is || {};
-        where.ratings = {
-          is: {
-            ...existingRatingsIs,
-            OR: [
-              { imdbScore: { gt: 0 } },
-              { tmdbScore: { gt: 0 } },
-              { rtCriticScore: { gt: 0 } },
-              { rtAudienceScore: { gt: 0 } },
-              { metacriticScore: { gt: 0 } },
-              { traktScore: { gt: 0 } },
-              { letterboxdScore: { gt: 0 } },
-              { mdblistScore: { gt: 0 } },
-            ],
-          },
-        };
-      }
-
-      // Get sort order based on mode (or custom sort for custom mode)
-      const orderBy = getSortOrderForMode(mode, input.sortBy);
-
-      // Determine how many items to fetch
-      // If personalization is active, oversample for reranking
-      const fetchCount = tasteProfile && tasteProfile.genres.length > 0
-        ? ITEMS_PER_PAGE * PERSONALIZATION_OVERSAMPLE
-        : ITEMS_PER_PAGE;
-
-      // Query local database
-      const [items, totalCount] = await Promise.all([
-        prisma.mediaItem.findMany({
-          where,
-          select: {
-            tmdbId: true,
-            type: true,
-            title: true,
-            posterPath: true,
-            backdropPath: true,
-            year: true,
-            overview: true,
-            videos: true,
-            ratings: true,
-            genres: true, // Include genres for personalization scoring
-          },
-          orderBy,
-          skip,
-          take: fetchCount,
-        }),
-        prisma.mediaItem.count({ where }),
-      ]);
-
-      // Apply personalization if taste profile is available
-      let finalItems = items;
-      if (tasteProfile && tasteProfile.genres.length > 0 && items.length > 0) {
-        // Score and rerank items based on taste profile
-        const scoredItems = items.map((item) => {
-          const personalScore = calculatePersonalScore(item.genres, tasteProfile);
-          const aggregateScore = (item.ratings as { aggregateScore?: number | null } | null)?.aggregateScore ?? 0;
-          // Combined score: aggregate score + personalization bonus
-          const combinedScore = aggregateScore + personalScore * PERSONALIZATION_WEIGHT;
-          return { ...item, personalScore, combinedScore };
-        });
-
-        // Sort by combined score (highest first)
-        scoredItems.sort((a, b) => b.combinedScore - a.combinedScore);
-
-        // Take only the page size
-        finalItems = scoredItems.slice(0, ITEMS_PER_PAGE);
-      }
-
-      // Always return local data - don't fall back to TMDB mid-pagination
-      // This ensures consistent totalResults across all pages
-      const results: TrendingResult[] = finalItems.map(mediaItemToTrendingResult);
-
-      // Queue background refresh for stale items (fire and forget)
-      if (items.length > 0) {
-        const staleItems = items.map((item) => ({
-          tmdbId: item.tmdbId,
-          type: input.type,
-        }));
-        queueBatchRefreshIfStale(staleItems).catch(console.error);
-      }
-
-      return {
-        results,
-        page: input.page,
-        totalPages: Math.ceil(totalCount / ITEMS_PER_PAGE),
-        totalResults: totalCount,
-      };
-    }),
-
-  /**
-   * Get available genres from the local database
-   * Returns distinct genres that exist in the database
-   */
-  availableGenres: publicProcedure
-    .input(
-      z.object({
-        type: z.enum(["movie", "tv"]),
-      })
-    )
-    .query(async ({ input }) => {
-      const prismaType = input.type === "movie" ? "MOVIE" : "TV";
-
-      // Get all unique genres from media items
-      const items = await prisma.mediaItem.findMany({
-        where: {
-          type: prismaType,
-          genres: { isEmpty: false },
-        },
-        select: {
-          genres: true,
-        },
-        take: 10000, // Limit to prevent memory issues
-      });
-
-      // Aggregate and count genres
-      const genreCounts = new Map<string, number>();
-      for (const item of items) {
-        for (const genre of item.genres) {
-          genreCounts.set(genre, (genreCounts.get(genre) || 0) + 1);
-        }
-      }
-
-      // Convert to array and sort by count
-      return Array.from(genreCounts.entries())
-        .map(([name, count]) => ({ name, count }))
-        .sort((a, b) => b.count - a.count);
-    }),
-
-  /**
-   * Get trailer video for a media item
-   * Returns the best available YouTube trailer (prefers official trailers)
-   */
-  getTrailer: publicProcedure
-    .input(
-      z.object({
-        tmdbId: z.number(),
-        type: z.enum(["movie", "tv"]),
-      })
-    )
-    .query(async ({ input }) => {
-      const id = `tmdb-${input.type}-${input.tmdbId}`;
-
-      // First try to get from local database
-      const item = await prisma.mediaItem.findUnique({
-        where: { id },
-        select: { videos: true },
-      });
-
-      if (item?.videos && Array.isArray(item.videos) && item.videos.length > 0) {
-        const videos = item.videos as Array<{ key: string; name: string; site: string; type: string }>;
-        const trailer = videos.find((v) => v.type === "Trailer" || v.type === "Teaser");
-        if (trailer) {
-          return {
-            key: trailer.key,
-            name: trailer.name,
-            site: trailer.site,
-            type: trailer.type,
-          };
-        }
-      }
-
-      // Fall back to TMDB API if not in database
-      const tmdb = getTMDBService();
-      const details = input.type === "movie"
-        ? await tmdb.getMovieDetails(input.tmdbId)
-        : await tmdb.getTvShowDetails(input.tmdbId);
-
-      const trailer = details.videos.find(
-        (v) => v.type === "Trailer" || v.type === "Teaser"
-      );
-
-      if (!trailer) {
-        return null;
-      }
-
-      return {
-        key: trailer.key,
-        name: trailer.name,
-        site: trailer.site,
-        type: trailer.type,
-      };
-    }),
-
-  /**
-   * Get movie details from local database only
-   * Returns null if not found or not fully hydrated
-   */
-  movieDetailsLocal: publicProcedure
-    .input(z.object({ tmdbId: z.number() }))
-    .query(async ({ input }) => {
-      const id = `tmdb-movie-${input.tmdbId}`;
-
-      const item = await prisma.mediaItem.findUnique({
-        where: { id },
-        include: { ratings: true },
-      });
-
-      if (!item) {
-        return null;
-      }
-
-      // Transform to MovieDetails shape
-      return {
-        tmdbId: item.tmdbId,
-        title: item.title,
-        originalTitle: item.originalTitle,
-        year: item.year ?? 0,
-        overview: item.overview ?? "",
-        posterPath: item.posterPath,
-        backdropPath: item.backdropPath,
-        releaseDate: item.releaseDate ?? "",
-        runtime: item.runtime,
-        genres: item.genres,
-        voteAverage: item.ratings?.tmdbScore ?? 0,
-        voteCount: item.ratings?.tmdbVotes ?? 0,
-        tagline: item.tagline,
-        budget: item.budget ? Number(item.budget) : null,
-        revenue: item.revenue ? Number(item.revenue) : null,
-        originalLanguage: item.language,
-        spokenLanguages: (item.spokenLanguages || []).map((iso) => ({
-          englishName: iso,
-          iso,
-          name: iso,
-        })),
-        productionCompanies: (item.productionCompanies as Array<{
-          id: number;
-          name: string;
-          logoPath: string | null;
-          originCountry: string;
-        }>) || [],
-        productionCountries: item.productionCountries || [],
-        videos: (item.videos as Array<{
-          id: string;
-          key: string;
-          name: string;
-          site: string;
-          type: string;
-          official: boolean;
-        }>) || [],
-        cast: (item.cast as Array<{
-          id: number;
-          name: string;
-          character: string;
-          profilePath: string | null;
-          order: number;
-        }>) || [],
-        crew: (item.crew as Array<{
-          id: number;
-          name: string;
-          job: string;
-          department: string;
-          profilePath: string | null;
-        }>) || [],
-        director: item.director,
-        imdbId: item.imdbId,
-        // Include ratings
-        ratings: item.ratings ? {
-          tmdbScore: item.ratings.tmdbScore,
-          imdbScore: item.ratings.imdbScore,
-          rtCriticScore: item.ratings.rtCriticScore,
-          rtAudienceScore: item.ratings.rtAudienceScore,
-          metacriticScore: item.ratings.metacriticScore,
-          traktScore: item.ratings.traktScore,
-          letterboxdScore: item.ratings.letterboxdScore,
-          mdblistScore: item.ratings.mdblistScore,
-          aggregateScore: item.ratings.aggregateScore,
-        } : null,
-        // Hydration status
-        isFullyHydrated: item.tmdbUpdatedAt !== null,
-        tmdbUpdatedAt: item.tmdbUpdatedAt,
-      };
-    }),
-
-  /**
-   * Get TV show details from local database only
-   * Returns null if not found
-   */
-  tvShowDetailsLocal: publicProcedure
-    .input(z.object({ tmdbId: z.number() }))
-    .query(async ({ input }) => {
-      const id = `tmdb-tv-${input.tmdbId}`;
-
-      const item = await prisma.mediaItem.findUnique({
-        where: { id },
-        include: {
-          ratings: true,
-          seasons: {
-            include: {
-              episodes: {
-                orderBy: { episodeNumber: "asc" },
-              },
-            },
-            orderBy: { seasonNumber: "asc" },
-          },
-        },
-      });
-
-      if (!item) {
-        return null;
-      }
-
-      // Transform to TvShowDetails shape
-      return {
-        tmdbId: item.tmdbId,
-        title: item.title,
-        originalTitle: item.originalTitle,
-        year: item.year ?? 0,
-        overview: item.overview ?? "",
-        posterPath: item.posterPath,
-        backdropPath: item.backdropPath,
-        firstAirDate: item.releaseDate ?? "",
-        lastAirDate: null, // Not stored separately
-        status: (item.status as "Returning Series" | "Ended" | "Canceled" | "In Production") ?? "Returning Series",
-        genres: item.genres,
-        voteAverage: item.ratings?.tmdbScore ?? 0,
-        voteCount: item.ratings?.tmdbVotes ?? 0,
-        numberOfSeasons: item.numberOfSeasons ?? 0,
-        numberOfEpisodes: item.numberOfEpisodes ?? 0,
-        tagline: item.tagline,
-        originalLanguage: item.language,
-        spokenLanguages: (item.spokenLanguages || []).map((iso) => ({
-          englishName: iso,
-          iso,
-          name: iso,
-        })),
-        productionCompanies: (item.productionCompanies as Array<{
-          id: number;
-          name: string;
-          logoPath: string | null;
-          originCountry: string;
-        }>) || [],
-        productionCountries: item.productionCountries || [],
-        networks: (item.networks as Array<{
-          id: number;
-          name: string;
-          logoPath: string | null;
-          originCountry: string;
-        }>) || [],
-        createdBy: item.createdBy || [],
-        videos: (item.videos as Array<{
-          id: string;
-          key: string;
-          name: string;
-          site: string;
-          type: string;
-          official: boolean;
-        }>) || [],
-        cast: (item.cast as Array<{
-          id: number;
-          name: string;
-          character: string;
-          profilePath: string | null;
-          order: number;
-        }>) || [],
-        crew: (item.crew as Array<{
-          id: number;
-          name: string;
-          job: string;
-          department: string;
-          profilePath: string | null;
-        }>) || [],
-        imdbId: item.imdbId,
-        // Include ratings
-        ratings: item.ratings ? {
-          tmdbScore: item.ratings.tmdbScore,
-          imdbScore: item.ratings.imdbScore,
-          rtCriticScore: item.ratings.rtCriticScore,
-          rtAudienceScore: item.ratings.rtAudienceScore,
-          metacriticScore: item.ratings.metacriticScore,
-          traktScore: item.ratings.traktScore,
-          letterboxdScore: item.ratings.letterboxdScore,
-          mdblistScore: item.ratings.mdblistScore,
-          aggregateScore: item.ratings.aggregateScore,
-        } : null,
-        // Include seasons with episodes
-        seasons: item.seasons.map((season) => ({
-          seasonNumber: season.seasonNumber,
-          name: season.name,
-          overview: season.overview,
-          posterPath: season.posterPath,
-          airDate: season.airDate,
-          episodeCount: season.episodeCount,
-          episodes: season.episodes.map((ep) => ({
-            episodeNumber: ep.episodeNumber,
-            seasonNumber: ep.seasonNumber,
-            name: ep.name,
-            overview: ep.overview,
-            stillPath: ep.stillPath,
-            airDate: ep.airDate,
-            runtime: ep.runtime,
-          })),
-        })),
-        // Hydration status
-        isFullyHydrated: item.tmdbUpdatedAt !== null,
-        tmdbUpdatedAt: item.tmdbUpdatedAt,
-      };
-    }),
-
-  /**
-   * Get TV season with episodes from local database
-   * Returns null if not found
-   */
-  seasonLocal: publicProcedure
-    .input(
-      z.object({
-        tmdbId: z.number(),
-        seasonNumber: z.number(),
-      })
-    )
-    .query(async ({ input }) => {
-      const mediaItemId = `tmdb-tv-${input.tmdbId}`;
-
-      const season = await prisma.season.findUnique({
-        where: {
-          mediaItemId_seasonNumber: {
-            mediaItemId,
-            seasonNumber: input.seasonNumber,
-          },
-        },
-        include: {
-          episodes: {
-            orderBy: { episodeNumber: "asc" },
-          },
-        },
-      });
-
-      if (!season) {
-        return null;
-      }
-
-      return {
-        seasonNumber: season.seasonNumber,
-        name: season.name,
-        overview: season.overview ?? "",
-        posterPath: season.posterPath,
-        airDate: season.airDate,
-        episodeCount: season.episodeCount,
-        episodes: season.episodes.map((ep) => ({
-          episodeNumber: ep.episodeNumber,
-          seasonNumber: ep.seasonNumber,
-          name: ep.name,
-          overview: ep.overview ?? "",
-          stillPath: ep.stillPath,
-          airDate: ep.airDate,
-          runtime: ep.runtime,
-        })),
-      };
-    }),
-
-  /**
-   * Get all seasons for a TV show from local database
-   */
-  seasonsLocal: publicProcedure
-    .input(z.object({ tmdbId: z.number() }))
-    .query(async ({ input }) => {
-      const mediaItemId = `tmdb-tv-${input.tmdbId}`;
-
-      const seasons = await prisma.season.findMany({
-        where: { mediaItemId },
-        orderBy: { seasonNumber: "asc" },
-        include: {
-          episodes: {
-            orderBy: { episodeNumber: "asc" },
-          },
-        },
-      });
-
-      return seasons.map((season) => ({
-        seasonNumber: season.seasonNumber,
-        name: season.name,
-        overview: season.overview ?? "",
-        posterPath: season.posterPath,
-        airDate: season.airDate,
-        episodeCount: season.episodeCount,
-        episodes: season.episodes.map((ep) => ({
-          episodeNumber: ep.episodeNumber,
-          seasonNumber: ep.seasonNumber,
-          name: ep.name,
-          overview: ep.overview ?? "",
-          stillPath: ep.stillPath,
-          airDate: ep.airDate,
-          runtime: ep.runtime,
-        })),
-      }));
-    }),
-
-  /**
-   * Queue TMDB hydration for a single media item
-   * Use this when a user navigates to a detail page and data is missing
-   */
-  hydrateMedia: publicProcedure
-    .input(
-      z.object({
-        tmdbId: z.number(),
-        type: z.enum(["movie", "tv"]),
-        includeSeasons: z.boolean().default(false),
-      })
-    )
-    .mutation(async ({ input }) => {
-      const jobQueue = getJobQueueService();
-
-      const job = await jobQueue.addJobIfNotExists(
-        "tmdb:hydrate",
-        {
-          tmdbId: input.tmdbId,
-          type: input.type,
-          includeSeasons: input.includeSeasons,
-        },
-        `tmdb-hydrate-${input.type}-${input.tmdbId}`,
-        { priority: 10 } // High priority for user-requested hydration
-      );
-
-      if (!job) {
+      } catch (error) {
+        console.error("[Trakt] Error fetching genres:", error);
         return {
-          message: "Hydration already in progress",
-          jobId: null,
-          alreadyQueued: true,
+          configured: true,
+          genres: [],
+          message: error instanceof Error ? error.message : "Failed to fetch Trakt genres",
         };
       }
-
-      return {
-        message: "Hydration queued",
-        jobId: job.id,
-        alreadyQueued: false,
-      };
     }),
 
   /**
-   * Get trending movies/shows from Trakt
-   * Returns results in the same format as discover endpoint
+   * Unified Trakt discovery endpoint
+   * Supports all 6 Trakt list types with native filtering
    * Items are enriched with local database info when available
    */
-  traktTrending: publicProcedure
+  traktDiscover: publicProcedure
     .input(
       z.object({
         type: z.enum(["movie", "tv"]),
+        listType: z.enum(["trending", "popular", "favorited", "played", "watched", "collected"]),
         page: z.number().min(1).default(1),
+        period: z.enum(["daily", "weekly", "monthly", "yearly", "all"]).default("weekly"),
+        // Trakt native filters
+        query: z.string().optional(),
+        years: z.string().optional(),
+        genres: z.array(z.string()).optional(),
+        languages: z.array(z.string()).optional(),
+        countries: z.array(z.string()).optional(),
+        runtimes: z.string().optional(),
+        certifications: z.array(z.string()).optional(),
+        // Rating filters
+        ratings: z.string().optional(),
+        tmdbRatings: z.string().optional(),
+        imdbRatings: z.string().optional(),
+        rtMeters: z.string().optional(),
+        rtUserMeters: z.string().optional(),
+        metascores: z.string().optional(),
       })
     )
     .query(async ({ input }) => {
@@ -1539,8 +280,42 @@ export const discoveryRouter = router({
       }
 
       try {
-        // Fetch trending from Trakt (they return ~10 items per page by default)
-        const traktItems = await trakt.getTrending(input.type, input.page, ITEMS_PER_PAGE);
+        // Build filter params
+        const filters = {
+          years: input.years,
+          genres: input.genres?.join(","),
+          languages: input.languages?.join(","),
+          countries: input.countries?.join(","),
+          runtimes: input.runtimes,
+          certifications: input.certifications?.join(","),
+          ratings: input.ratings,
+          tmdb_ratings: input.tmdbRatings,
+          imdb_ratings: input.imdbRatings,
+          rt_meters: input.rtMeters,
+          rt_user_meters: input.rtUserMeters,
+          metascores: input.metascores,
+        };
+
+        // Fetch from Trakt - use search endpoint if query provided, otherwise use list endpoint
+        let traktItems;
+        if (input.query && input.query.trim()) {
+          traktItems = await trakt.search(
+            input.query,
+            input.type,
+            input.page,
+            ITEMS_PER_PAGE,
+            filters
+          );
+        } else {
+          traktItems = await trakt.getList(
+            input.listType,
+            input.type,
+            input.page,
+            ITEMS_PER_PAGE,
+            input.period,
+            filters
+          );
+        }
 
         if (traktItems.length === 0) {
           return {
@@ -1553,7 +328,7 @@ export const discoveryRouter = router({
           };
         }
 
-        // Batch fetch from our database to enrich with posters and ratings
+        // Batch fetch from our database to enrich with ratings and trailer info
         const mediaItemIds = traktItems.map(
           (item) => `tmdb-${item.type}-${item.tmdbId}`
         );
@@ -1583,17 +358,16 @@ export const discoveryRouter = router({
           const local = localMap.get(localId);
 
           if (local) {
-            // Use local data (has poster, ratings, etc.)
             return mediaItemToTrendingResult(local);
           }
 
-          // Fall back to basic Trakt data (no poster/ratings)
+          // Fall back to Trakt data with images from Trakt
           return {
             type: traktItem.type,
             tmdbId: traktItem.tmdbId,
             title: traktItem.title,
-            posterPath: null,
-            backdropPath: null,
+            posterPath: traktItem.posterUrl || null,
+            backdropPath: traktItem.fanartUrl || null,
             year: traktItem.year,
             voteAverage: 0,
             overview: "",
@@ -1601,15 +375,6 @@ export const discoveryRouter = router({
             trailerKey: null,
           };
         });
-
-        // Queue background hydration for items not in our database
-        const itemsToHydrate = traktItems
-          .filter((item) => !localMap.has(`tmdb-${item.type}-${item.tmdbId}`))
-          .map((item) => ({ tmdbId: item.tmdbId, type: item.type }));
-
-        if (itemsToHydrate.length > 0) {
-          queueBatchRefreshIfStale(itemsToHydrate).catch(console.error);
-        }
 
         // Trakt doesn't give us total count, estimate based on whether we got a full page
         const hasMore = traktItems.length === ITEMS_PER_PAGE;
@@ -1623,15 +388,545 @@ export const discoveryRouter = router({
           message: null,
         };
       } catch (error) {
-        console.error("[Trakt] Error fetching trending:", error);
+        console.error("[Trakt] Error fetching discover:", error);
         return {
           configured: true,
           results: [],
           page: input.page,
           totalPages: 0,
           totalResults: 0,
-          message: error instanceof Error ? error.message : "Failed to fetch Trakt trending",
+          message: error instanceof Error ? error.message : "Failed to fetch Trakt discover",
         };
       }
+    }),
+
+  /**
+   * Get trailer video for a media item from local database cache
+   */
+  getTrailer: publicProcedure
+    .input(
+      z.object({
+        tmdbId: z.number(),
+        type: z.enum(["movie", "tv"]),
+      })
+    )
+    .query(async ({ input }) => {
+      const id = `tmdb-${input.type}-${input.tmdbId}`;
+
+      const item = await prisma.mediaItem.findUnique({
+        where: { id },
+        select: { videos: true },
+      });
+
+      if (item?.videos && Array.isArray(item.videos) && item.videos.length > 0) {
+        const videos = item.videos as Array<{ key: string; name?: string; site: string; type: string }>;
+        const trailer = videos.find((v) => v.type === "Trailer" || v.type === "Teaser");
+        if (trailer) {
+          return {
+            key: trailer.key,
+            name: trailer.name || "Trailer",
+            site: trailer.site,
+            type: trailer.type,
+          };
+        }
+      }
+
+      return null;
+    }),
+
+  /**
+   * JIT Movie Details endpoint
+   * Fetches from Trakt API with database caching (7-day TTL for Trakt, 1-hour for ratings)
+   * Uses stale-while-revalidate: returns cached data immediately, refreshes in background if stale
+   */
+  traktMovieDetails: publicProcedure
+    .input(z.object({ tmdbId: z.number() }))
+    .query(async ({ input }) => {
+      const trakt = getTraktService();
+      const { getMDBListService } = await import("../services/mdblist.js");
+      const mdblist = getMDBListService();
+
+      const TRAKT_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+      const RATINGS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+      const id = `tmdb-movie-${input.tmdbId}`;
+
+      // Check local cache
+      const cached = await prisma.mediaItem.findUnique({
+        where: { id },
+        include: { ratings: true },
+      });
+
+      const now = Date.now();
+      const traktAge = cached?.traktUpdatedAt ? now - cached.traktUpdatedAt.getTime() : Infinity;
+      const ratingsAge = cached?.mdblistUpdatedAt ? now - cached.mdblistUpdatedAt.getTime() : Infinity;
+
+      // Helper to return cached data in the expected format
+      const formatResponse = (item: typeof cached) => {
+        if (!item) return null;
+
+        const videos = item.videos as Array<{ key: string; site: string; type: string }> | null;
+        const trailer = videos?.find(v => v.type === "Trailer" && v.site === "YouTube");
+
+        return {
+          tmdbId: item.tmdbId,
+          imdbId: item.imdbId,
+          traktId: item.traktId,
+          type: "movie" as const,
+          title: item.title,
+          originalTitle: item.originalTitle,
+          year: item.year,
+          releaseDate: item.releaseDate,
+          overview: item.overview,
+          tagline: item.tagline,
+          runtime: item.runtime,
+          status: item.status,
+          certification: item.certification,
+          genres: item.genres,
+          language: item.language,
+          country: item.country,
+          posterPath: item.posterPath,
+          backdropPath: item.backdropPath,
+          trailerKey: trailer?.key || null,
+          cast: item.cast,
+          crew: item.crew,
+          director: item.director,
+          ratings: item.ratings ? {
+            tmdbScore: item.ratings.tmdbScore,
+            imdbScore: item.ratings.imdbScore,
+            rtCriticScore: item.ratings.rtCriticScore,
+            rtAudienceScore: item.ratings.rtAudienceScore,
+            metacriticScore: item.ratings.metacriticScore,
+            traktScore: item.ratings.traktScore,
+            letterboxdScore: item.ratings.letterboxdScore,
+            mdblistScore: item.ratings.mdblistScore,
+          } : null,
+          traktUpdatedAt: item.traktUpdatedAt,
+          mdblistUpdatedAt: item.mdblistUpdatedAt,
+        };
+      };
+
+      // If we have fresh data, return it immediately
+      if (cached && traktAge < TRAKT_CACHE_TTL && ratingsAge < RATINGS_CACHE_TTL) {
+        return formatResponse(cached);
+      }
+
+      // If we have stale data, return it and refresh in background
+      if (cached) {
+        (async () => {
+          try {
+            if (traktAge >= TRAKT_CACHE_TTL) {
+              const traktData = await trakt.getMovieDetails(input.tmdbId);
+              await prisma.mediaItem.update({
+                where: { id },
+                data: {
+                  title: traktData.title,
+                  year: traktData.year,
+                  overview: traktData.overview,
+                  tagline: traktData.tagline,
+                  runtime: traktData.runtime,
+                  status: traktData.status,
+                  certification: traktData.certification,
+                  releaseDate: traktData.released,
+                  genres: traktData.genres,
+                  language: traktData.language,
+                  country: traktData.country,
+                  imdbId: traktData.ids.imdb,
+                  traktId: traktData.ids.trakt,
+                  posterPath: traktData.images?.poster?.medium || traktData.images?.poster?.full || cached.posterPath,
+                  backdropPath: traktData.images?.fanart?.medium || traktData.images?.fanart?.full || cached.backdropPath,
+                  videos: traktData.trailer
+                    ? [{ key: trakt.extractTrailerKey(traktData.trailer) || "", type: "Trailer", site: "YouTube" }]
+                    : undefined,
+                  traktUpdatedAt: new Date(),
+                },
+              });
+            }
+
+            if (ratingsAge >= RATINGS_CACHE_TTL) {
+              const mdbData = await mdblist.getByTmdbId(input.tmdbId, "movie");
+              if (mdbData) {
+                const ratings = extractMDBListRatings(mdbData);
+                await prisma.mediaRatings.upsert({
+                  where: { mediaId: id },
+                  create: { mediaId: id, ...ratings },
+                  update: ratings,
+                });
+                await prisma.mediaItem.update({
+                  where: { id },
+                  data: { mdblistUpdatedAt: new Date() },
+                });
+              }
+            }
+          } catch (error) {
+            console.error("[JIT] Background refresh error:", error);
+          }
+        })().catch(console.error);
+
+        return formatResponse(cached);
+      }
+
+      // No cache - fetch from APIs and save
+      if (!trakt.isConfigured()) {
+        throw new Error("Trakt API not configured");
+      }
+
+      const traktData = await trakt.getMovieDetails(input.tmdbId);
+
+      const mediaItemData = {
+        id,
+        tmdbId: input.tmdbId,
+        type: "MOVIE" as const,
+        title: traktData.title,
+        year: traktData.year,
+        overview: traktData.overview,
+        tagline: traktData.tagline,
+        runtime: traktData.runtime,
+        status: traktData.status,
+        certification: traktData.certification,
+        releaseDate: traktData.released,
+        genres: traktData.genres,
+        language: traktData.language,
+        country: traktData.country,
+        imdbId: traktData.ids.imdb,
+        traktId: traktData.ids.trakt,
+        posterPath: traktData.images?.poster?.medium || traktData.images?.poster?.full || null,
+        backdropPath: traktData.images?.fanart?.medium || traktData.images?.fanart?.full || null,
+        videos: traktData.trailer ? [{ key: trakt.extractTrailerKey(traktData.trailer), type: "Trailer", site: "YouTube" }] : [],
+        traktUpdatedAt: new Date(),
+      };
+
+      await prisma.mediaItem.upsert({
+        where: { id },
+        create: mediaItemData,
+        update: mediaItemData,
+      });
+
+      // Fetch and save ratings from MDBList
+      const mdbData = await mdblist.getByTmdbId(input.tmdbId, "movie");
+      if (mdbData) {
+        const ratings = extractMDBListRatings(mdbData);
+        await prisma.mediaRatings.upsert({
+          where: { mediaId: id },
+          create: { mediaId: id, ...ratings },
+          update: ratings,
+        });
+        await prisma.mediaItem.update({
+          where: { id },
+          data: { mdblistUpdatedAt: new Date() },
+        });
+      }
+
+      const fresh = await prisma.mediaItem.findUnique({
+        where: { id },
+        include: { ratings: true },
+      });
+
+      return formatResponse(fresh);
+    }),
+
+  /**
+   * JIT TV Show Details endpoint
+   * Fetches from Trakt API with database caching (7-day TTL for Trakt, 1-hour for ratings)
+   * Uses stale-while-revalidate: returns cached data immediately, refreshes in background if stale
+   */
+  traktTvShowDetails: publicProcedure
+    .input(z.object({ tmdbId: z.number() }))
+    .query(async ({ input }) => {
+      const trakt = getTraktService();
+      const { getMDBListService } = await import("../services/mdblist.js");
+      const mdblist = getMDBListService();
+
+      const TRAKT_CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+      const RATINGS_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+      const id = `tmdb-tv-${input.tmdbId}`;
+
+      // Check local cache
+      const cached = await prisma.mediaItem.findUnique({
+        where: { id },
+        include: { ratings: true, seasons: { include: { episodes: true } } },
+      });
+
+      const now = Date.now();
+      const traktAge = cached?.traktUpdatedAt ? now - cached.traktUpdatedAt.getTime() : Infinity;
+      const ratingsAge = cached?.mdblistUpdatedAt ? now - cached.mdblistUpdatedAt.getTime() : Infinity;
+
+      // Helper to return cached data in the expected format
+      const formatResponse = (item: typeof cached) => {
+        if (!item) return null;
+
+        const videos = item.videos as Array<{ key: string; site: string; type: string }> | null;
+        const trailer = videos?.find(v => v.type === "Trailer" && v.site === "YouTube");
+
+        return {
+          tmdbId: item.tmdbId,
+          imdbId: item.imdbId,
+          traktId: item.traktId,
+          tvdbId: item.tvdbId,
+          type: "tv" as const,
+          title: item.title,
+          originalTitle: item.originalTitle,
+          year: item.year,
+          releaseDate: item.releaseDate,
+          overview: item.overview,
+          runtime: item.runtime,
+          status: item.status,
+          certification: item.certification,
+          genres: item.genres,
+          language: item.language,
+          country: item.country,
+          posterPath: item.posterPath,
+          backdropPath: item.backdropPath,
+          trailerKey: trailer?.key || null,
+          cast: item.cast,
+          crew: item.crew,
+          networks: item.networks,
+          createdBy: item.createdBy,
+          numberOfSeasons: item.numberOfSeasons,
+          numberOfEpisodes: item.numberOfEpisodes,
+          seasons: item.seasons?.map(s => ({
+            seasonNumber: s.seasonNumber,
+            name: s.name,
+            overview: s.overview,
+            posterPath: s.posterPath,
+            episodeCount: s.episodeCount,
+            airDate: s.airDate,
+            episodes: s.episodes?.map(e => ({
+              episodeNumber: e.episodeNumber,
+              name: e.name,
+              overview: e.overview,
+              stillPath: e.stillPath,
+              airDate: e.airDate,
+              runtime: e.runtime,
+            })),
+          })) || [],
+          ratings: item.ratings ? {
+            tmdbScore: item.ratings.tmdbScore,
+            imdbScore: item.ratings.imdbScore,
+            rtCriticScore: item.ratings.rtCriticScore,
+            rtAudienceScore: item.ratings.rtAudienceScore,
+            metacriticScore: item.ratings.metacriticScore,
+            traktScore: item.ratings.traktScore,
+            letterboxdScore: item.ratings.letterboxdScore,
+            mdblistScore: item.ratings.mdblistScore,
+          } : null,
+          traktUpdatedAt: item.traktUpdatedAt,
+          mdblistUpdatedAt: item.mdblistUpdatedAt,
+        };
+      };
+
+      // If we have fresh data, return it immediately
+      if (cached && traktAge < TRAKT_CACHE_TTL && ratingsAge < RATINGS_CACHE_TTL) {
+        return formatResponse(cached);
+      }
+
+      // If we have stale data, return it and refresh in background
+      if (cached) {
+        (async () => {
+          try {
+            if (traktAge >= TRAKT_CACHE_TTL) {
+              const traktData = await trakt.getTvShowDetails(input.tmdbId);
+              await prisma.mediaItem.update({
+                where: { id },
+                data: {
+                  title: traktData.title,
+                  year: traktData.year,
+                  overview: traktData.overview,
+                  runtime: traktData.runtime,
+                  status: traktData.status,
+                  certification: traktData.certification,
+                  releaseDate: traktData.first_aired?.split("T")[0] || null,
+                  genres: traktData.genres,
+                  language: traktData.language,
+                  country: traktData.country,
+                  imdbId: traktData.ids.imdb,
+                  traktId: traktData.ids.trakt,
+                  tvdbId: traktData.ids.tvdb,
+                  numberOfEpisodes: traktData.aired_episodes,
+                  networks: traktData.network ? [{ name: traktData.network }] : undefined,
+                  posterPath: traktData.images?.poster?.medium || traktData.images?.poster?.full || cached.posterPath,
+                  backdropPath: traktData.images?.fanart?.medium || traktData.images?.fanart?.full || cached.backdropPath,
+                  videos: traktData.trailer
+                    ? [{ key: trakt.extractTrailerKey(traktData.trailer) || "", type: "Trailer", site: "YouTube" }]
+                    : undefined,
+                  traktUpdatedAt: new Date(),
+                },
+              });
+            }
+
+            if (ratingsAge >= RATINGS_CACHE_TTL) {
+              const mdbData = await mdblist.getByTmdbId(input.tmdbId, "show");
+              if (mdbData) {
+                const ratings = extractMDBListRatings(mdbData);
+                await prisma.mediaRatings.upsert({
+                  where: { mediaId: id },
+                  create: { mediaId: id, ...ratings },
+                  update: ratings,
+                });
+                await prisma.mediaItem.update({
+                  where: { id },
+                  data: { mdblistUpdatedAt: new Date() },
+                });
+              }
+            }
+          } catch (error) {
+            console.error("[JIT] Background refresh error:", error);
+          }
+        })().catch(console.error);
+
+        return formatResponse(cached);
+      }
+
+      // No cache - fetch from APIs and save
+      if (!trakt.isConfigured()) {
+        throw new Error("Trakt API not configured");
+      }
+
+      const traktData = await trakt.getTvShowDetails(input.tmdbId);
+
+      const mediaItemData = {
+        id,
+        tmdbId: input.tmdbId,
+        type: "TV" as const,
+        title: traktData.title,
+        year: traktData.year,
+        overview: traktData.overview,
+        runtime: traktData.runtime,
+        status: traktData.status,
+        certification: traktData.certification,
+        releaseDate: traktData.first_aired?.split("T")[0] || null,
+        genres: traktData.genres,
+        language: traktData.language,
+        country: traktData.country,
+        imdbId: traktData.ids.imdb,
+        traktId: traktData.ids.trakt,
+        tvdbId: traktData.ids.tvdb,
+        numberOfEpisodes: traktData.aired_episodes,
+        networks: traktData.network ? [{ name: traktData.network }] : [],
+        posterPath: traktData.images?.poster?.medium || traktData.images?.poster?.full || null,
+        backdropPath: traktData.images?.fanart?.medium || traktData.images?.fanart?.full || null,
+        videos: traktData.trailer ? [{ key: trakt.extractTrailerKey(traktData.trailer), type: "Trailer", site: "YouTube" }] : [],
+        traktUpdatedAt: new Date(),
+      };
+
+      await prisma.mediaItem.upsert({
+        where: { id },
+        create: mediaItemData,
+        update: mediaItemData,
+      });
+
+      // Fetch and save ratings from MDBList
+      const mdbData = await mdblist.getByTmdbId(input.tmdbId, "show");
+      if (mdbData) {
+        const ratings = extractMDBListRatings(mdbData);
+        await prisma.mediaRatings.upsert({
+          where: { mediaId: id },
+          create: { mediaId: id, ...ratings },
+          update: ratings,
+        });
+        await prisma.mediaItem.update({
+          where: { id },
+          data: { mdblistUpdatedAt: new Date() },
+        });
+      }
+
+      const fresh = await prisma.mediaItem.findUnique({
+        where: { id },
+        include: { ratings: true, seasons: { include: { episodes: true } } },
+      });
+
+      return formatResponse(fresh);
+    }),
+
+  /**
+   * JIT TV Season Details endpoint
+   * Fetches season with episodes from Trakt API with database caching
+   */
+  traktSeason: publicProcedure
+    .input(z.object({
+      tmdbId: z.number(),
+      seasonNumber: z.number(),
+    }))
+    .query(async ({ input }) => {
+      const trakt = getTraktService();
+
+      const CACHE_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+      const mediaItemId = `tmdb-tv-${input.tmdbId}`;
+
+      // Check if we have cached season data
+      const cachedSeason = await prisma.season.findUnique({
+        where: {
+          mediaItemId_seasonNumber: {
+            mediaItemId,
+            seasonNumber: input.seasonNumber,
+          },
+        },
+        include: { episodes: true },
+      });
+
+      const now = Date.now();
+      const seasonAge = cachedSeason?.updatedAt ? now - cachedSeason.updatedAt.getTime() : Infinity;
+
+      // Helper to format response
+      const formatSeasonResponse = (season: typeof cachedSeason) => {
+        if (!season) return null;
+        return {
+          seasonNumber: season.seasonNumber,
+          name: season.name,
+          overview: season.overview,
+          posterPath: season.posterPath,
+          episodeCount: season.episodeCount,
+          airDate: season.airDate,
+          episodes: season.episodes.map((e: { episodeNumber: number; name: string; overview: string | null; stillPath: string | null; airDate: string | null; runtime: number | null }) => ({
+            episodeNumber: e.episodeNumber,
+            name: e.name,
+            overview: e.overview,
+            stillPath: e.stillPath,
+            airDate: e.airDate,
+            runtime: e.runtime,
+          })),
+        };
+      };
+
+      // If fresh, return cached
+      if (cachedSeason && seasonAge < CACHE_TTL) {
+        return formatSeasonResponse(cachedSeason);
+      }
+
+      // If stale, return cached and refresh in background
+      if (cachedSeason) {
+        (async () => {
+          try {
+            const traktSeason = await trakt.getSeason(input.tmdbId, input.seasonNumber);
+            await updateSeasonFromTrakt(mediaItemId, input.seasonNumber, traktSeason);
+          } catch (error) {
+            console.error("[JIT] Background season refresh error:", error);
+          }
+        })().catch(console.error);
+
+        return formatSeasonResponse(cachedSeason);
+      }
+
+      // No cache - fetch and save
+      if (!trakt.isConfigured()) {
+        throw new Error("Trakt API not configured");
+      }
+
+      const traktSeason = await trakt.getSeason(input.tmdbId, input.seasonNumber);
+      await updateSeasonFromTrakt(mediaItemId, input.seasonNumber, traktSeason);
+
+      const fresh = await prisma.season.findUnique({
+        where: {
+          mediaItemId_seasonNumber: {
+            mediaItemId,
+            seasonNumber: input.seasonNumber,
+          },
+        },
+        include: { episodes: true },
+      });
+
+      return formatSeasonResponse(fresh);
     }),
 });

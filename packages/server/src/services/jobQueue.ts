@@ -7,9 +7,6 @@
 
 import { prisma } from "../db/client.js";
 import { getConfig } from "../config/index.js";
-import { getMDBListService } from "./mdblist.js";
-import { getSyncService } from "./sync.js";
-import { getTMDBService } from "./tmdb.js";
 import { syncAllLibraries, syncServerLibrary } from "./librarySync.js";
 import { getJobEventService, type JobEventData, type JobUpdateType } from "./jobEvents.js";
 import { getSchedulerService } from "./scheduler.js";
@@ -18,15 +15,6 @@ import type { Job } from "@prisma/client";
 
 // Job type definitions
 export type JobType =
-  | "mdblist:hydrate"
-  | "mdblist:batch-hydrate"
-  | "tmdb:hydrate"
-  | "tmdb:batch-hydrate"
-  | "sync:full"
-  | "sync:incremental"
-  | "sync:refresh-stale"
-  | "sync:tmdb-full"
-  | "sync:tmdb-missing"
   | "library:sync"
   | "library:sync-server"
   | "pipeline:search"
@@ -39,71 +27,13 @@ export type JobType =
   | "tv:download-episode"
   | "tv:check-new-episodes";
 
-interface MDBListHydratePayload {
-  tmdbId: number;
-  type: "movie" | "tv";
-}
-
-interface MDBListBatchHydratePayload {
-  items: Array<{ tmdbId: number; type: "movie" | "tv" }>;
-}
-
-interface TMDBHydratePayload {
-  tmdbId: number;
-  type: "movie" | "tv";
-  includeSeasons?: boolean;
-}
-
-interface TMDBBatchHydratePayload {
-  items: Array<{ tmdbId: number; type: "movie" | "tv" }>;
-  includeSeasons?: boolean;
-}
-
-interface SyncFullPayload {
-  movies?: boolean;
-  tvShows?: boolean;
-  popularityThreshold?: number;
-  maxItems?: number;
-}
-
-interface SyncTMDBFullPayload {
-  movies?: boolean;
-  tvShows?: boolean;
-  popularityThreshold?: number;
-  maxItems?: number;
-  includeSeasons?: boolean;
-}
-
-interface SyncTMDBMissingPayload {
-  movies?: boolean;
-  tvShows?: boolean;
-  limit?: number;
-}
-
-interface SyncRefreshStalePayload {
-  limit?: number;
-}
-
-interface LibrarySyncPayload {
-  // Empty - syncs all servers
-}
-
 interface LibrarySyncServerPayload {
   serverId: string;
 }
 
-type JobPayload =
-  | MDBListHydratePayload
-  | MDBListBatchHydratePayload
-  | LibrarySyncPayload
-  | LibrarySyncServerPayload
-  | TMDBHydratePayload
-  | TMDBBatchHydratePayload
-  | SyncFullPayload
-  | SyncTMDBFullPayload
-  | SyncTMDBMissingPayload
-  | SyncRefreshStalePayload
-  | Record<string, never>;
+// Generic payload type - specific types are defined in their respective services
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type JobPayload = any;
 
 interface JobHandler {
   (payload: JobPayload, jobId: string): Promise<unknown>;
@@ -142,70 +72,6 @@ class JobQueueService {
    * Register default job handlers
    */
   private registerDefaultHandlers(): void {
-    this.registerHandler("mdblist:hydrate", async (payload) => {
-      const { tmdbId, type } = payload as MDBListHydratePayload;
-      const mdblist = getMDBListService();
-      const success = await mdblist.hydrateMediaItem(tmdbId, type);
-      return { success, tmdbId, type };
-    });
-
-    this.registerHandler("mdblist:batch-hydrate", async (payload) => {
-      const { items } = payload as MDBListBatchHydratePayload;
-      const mdblist = getMDBListService();
-      const result = await mdblist.batchHydrateMediaItems(items);
-      return result;
-    });
-
-    this.registerHandler("sync:full", async (payload, jobId) => {
-      const options = payload as SyncFullPayload;
-      const sync = getSyncService();
-      const result = await sync.fullSync({ ...options, jobId });
-      return result;
-    });
-
-    this.registerHandler("sync:incremental", async () => {
-      const sync = getSyncService();
-      const result = await sync.incrementalSync();
-      return result;
-    });
-
-    this.registerHandler("sync:refresh-stale", async (payload) => {
-      const { limit } = payload as SyncRefreshStalePayload;
-      const sync = getSyncService();
-      const refreshed = await sync.refreshStaleItems(limit);
-      return { refreshed };
-    });
-
-    this.registerHandler("tmdb:hydrate", async (payload) => {
-      const { tmdbId, type, includeSeasons } = payload as TMDBHydratePayload;
-      const tmdb = getTMDBService();
-      const success = type === "movie"
-        ? await tmdb.hydrateMovie(tmdbId)
-        : await tmdb.hydrateTvShow(tmdbId, includeSeasons ?? true);
-      return { success, tmdbId, type };
-    });
-
-    this.registerHandler("tmdb:batch-hydrate", async (payload) => {
-      const { items, includeSeasons } = payload as TMDBBatchHydratePayload;
-      const tmdb = getTMDBService();
-      const result = await tmdb.batchHydrate(items, { includeSeasons: includeSeasons ?? false });
-      return result;
-    });
-
-    this.registerHandler("sync:tmdb-full", async (payload, jobId) => {
-      const options = payload as SyncTMDBFullPayload;
-      const sync = getSyncService();
-      const result = await sync.fullTMDBSync({ ...options, jobId });
-      return result;
-    });
-
-    this.registerHandler("sync:tmdb-missing", async (payload, jobId) => {
-      const options = payload as SyncTMDBMissingPayload;
-      const sync = getSyncService();
-      const result = await sync.syncMissingFromTMDB({ ...options, jobId });
-      return result;
-    });
-
     this.registerHandler("library:sync", async () => {
       const result = await syncAllLibraries();
       return result;

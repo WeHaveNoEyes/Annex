@@ -26,24 +26,6 @@ function formatAirDate(dateStr: string | null): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-// Helper to check if data has essential fields populated
-function hasEssentialData(data: { cast?: unknown[]; videos?: unknown[] } | null): boolean {
-  if (!data) return false;
-  // Consider data "complete" if it has cast or videos
-  const hasCast = Boolean(data.cast && data.cast.length > 0);
-  const hasVideos = Boolean(data.videos && data.videos.length > 0);
-  return hasCast || hasVideos;
-}
-
-function formatCurrency(amount: number | null): string | null {
-  if (!amount || amount === 0) return null;
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(amount);
-}
-
 function formatRuntime(minutes: number | null): string | null {
   if (!minutes) return null;
   const hours = Math.floor(minutes / 60);
@@ -58,7 +40,6 @@ export default function MediaDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tmdbId = parseInt(id || "0", 10);
   const [showAllCast, setShowAllCast] = useState(false);
-  const [hydrationRequested, setHydrationRequested] = useState(false);
   const [showRequestDialog, setShowRequestDialog] = useState(false);
   const [expandedSeasons, setExpandedSeasons] = useState<Set<number>>(new Set());
 
@@ -74,62 +55,24 @@ export default function MediaDetailPage() {
     }
   }, [searchParams, setSearchParams]);
 
-  // Query local database first
-  const movieLocal = trpc.discovery.movieDetailsLocal.useQuery(
+  // JIT data fetching - handles caching and background refresh automatically
+  const movieQuery = trpc.discovery.traktMovieDetails.useQuery(
     { tmdbId },
     { enabled: type === "movie" && tmdbId > 0 }
   );
 
-  const tvShowLocal = trpc.discovery.tvShowDetailsLocal.useQuery(
+  const tvShowQuery = trpc.discovery.traktTvShowDetails.useQuery(
     { tmdbId },
     { enabled: type === "tv" && tmdbId > 0 }
   );
 
-  // Mutation to trigger hydration if needed
-  const hydrateMutation = trpc.discovery.hydrateMedia.useMutation();
+  // Get the data based on type
+  const isLoading = type === "movie" ? movieQuery.isLoading : tvShowQuery.isLoading;
+  const error = type === "movie" ? movieQuery.error : tvShowQuery.error;
+  const data = type === "movie" ? movieQuery.data : tvShowQuery.data;
 
-  // Get the local data
-  const localData = type === "movie" ? movieLocal.data : tvShowLocal.data;
-  const localIsLoading = type === "movie" ? movieLocal.isLoading : tvShowLocal.isLoading;
-  const localError = type === "movie" ? movieLocal.error : tvShowLocal.error;
-
-  // Check if we need to hydrate (no data or missing essential fields)
-  const needsHydration = !localIsLoading && (!localData || !hasEssentialData(localData));
-
-  // Trigger hydration if needed
-  useEffect(() => {
-    if (needsHydration && !hydrationRequested && tmdbId > 0) {
-      setHydrationRequested(true);
-      hydrateMutation.mutate(
-        { tmdbId, type, includeSeasons: type === "tv" },
-        {
-          onSuccess: () => {
-            // Refetch local data after a short delay to allow hydration to complete
-            setTimeout(() => {
-              if (type === "movie") {
-                movieLocal.refetch();
-              } else {
-                tvShowLocal.refetch();
-              }
-            }, 2000);
-          },
-        }
-      );
-    }
-  }, [needsHydration, hydrationRequested, tmdbId, type]);
-
-  // Reset hydration state when navigating to a different item
-  useEffect(() => {
-    setHydrationRequested(false);
-  }, [tmdbId]);
-
-  // Use local data - the ratings are now included in the local response
-  const isLoading = localIsLoading;
-  const error = localError;
-  const data = localData;
-
-  // Extract ratings from local data
-  const ratingsData = localData?.ratings;
+  // Extract ratings from data
+  const ratingsData = data?.ratings;
 
   if (isLoading) {
     return (
@@ -162,17 +105,6 @@ export default function MediaDetailPage() {
   }
 
   if (!data) {
-    // If we're hydrating, show a loading state
-    if (hydrateMutation.isPending || hydrationRequested) {
-      return (
-        <div className="flex flex-col items-center justify-center py-24">
-          <div className="animate-spin w-8 h-8 border-2 border-annex-500/30 border-t-annex-500 rounded-full mb-4" />
-          <p className="text-white/70 text-lg">Loading media details...</p>
-          <p className="text-white/40 text-sm mt-2">Fetching from TMDB</p>
-        </div>
-      );
-    }
-
     return (
       <div className="text-center py-24">
         <p className="text-white/50 text-lg">Not found</p>
@@ -192,11 +124,14 @@ export default function MediaDetailPage() {
     : null;
 
   const isTvShow = type === "tv";
-  const tvData = isTvShow ? (data as typeof tvShowLocal.data) : null;
-  const movieData = !isTvShow ? (data as typeof movieLocal.data) : null;
+  const tvData = isTvShow ? (data as NonNullable<typeof tvShowQuery.data>) : null;
+  const movieData = !isTvShow ? (data as NonNullable<typeof movieQuery.data>) : null;
 
-  const trailer = data.videos?.[0];
-  const displayCast = showAllCast ? data.cast : data.cast?.slice(0, 12);
+  // Trailer key is now provided directly instead of videos array
+  const trailerKey = data.trailerKey;
+  const cast = (data.cast || []) as Array<{ id: number; name: string; character: string; profilePath: string | null }>;
+  const crew = (data.crew || []) as Array<{ id: number; name: string; job: string }>;
+  const displayCast = showAllCast ? cast : cast.slice(0, 12);
 
   return (
     <div className="min-h-screen">
@@ -244,8 +179,8 @@ export default function MediaDetailPage() {
                 {data.originalTitle !== data.title && (
                   <p className="text-white/60 mt-1 text-lg">{data.originalTitle}</p>
                 )}
-                {data.tagline && (
-                  <p className="text-white/70 mt-3 text-lg italic">"{data.tagline}"</p>
+                {movieData?.tagline && (
+                  <p className="text-white/70 mt-3 text-lg italic">"{movieData.tagline}"</p>
                 )}
               </div>
 
@@ -278,10 +213,10 @@ export default function MediaDetailPage() {
               {/* Compact Ratings Row */}
               {ratingsData && (
                 <div className="flex flex-wrap items-center gap-2">
-                  {ratingsData.aggregateScore !== null && (
-                    <Tooltip content="MDBList Aggregate Score">
+                  {ratingsData.mdblistScore !== null && (
+                    <Tooltip content="MDBList Score">
                       <div className="flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-annex-500/20 to-gold-500/20 border border-annex-500/30 rounded text-sm cursor-default">
-                        <span className="font-bold text-white">{ratingsData.aggregateScore}</span>
+                        <span className="font-bold text-white">{ratingsData.mdblistScore}</span>
                         <span className="text-white/50">MDBList</span>
                       </div>
                     </Tooltip>
@@ -336,13 +271,6 @@ export default function MediaDetailPage() {
                   )}
                 </div>
               )}
-              {/* Show hydration status indicator when data is loading or being hydrated */}
-              {(hydrateMutation.isPending || needsHydration) && !ratingsData && (
-                <div className="flex gap-2 items-center">
-                  <div className="animate-spin w-4 h-4 border-2 border-annex-500/30 border-t-annex-500 rounded-full" />
-                  <span className="text-white/50 text-sm">Loading ratings...</span>
-                </div>
-              )}
 
               {/* Genres */}
               {data.genres.length > 0 && (
@@ -363,9 +291,9 @@ export default function MediaDetailPage() {
                 <Button variant="primary" size="lg" onClick={() => setShowRequestDialog(true)}>
                   Request {type === "movie" ? "Movie" : "TV Show"}
                 </Button>
-                {trailer && (
+                {trailerKey && (
                   <a
-                    href={`https://www.youtube.com/watch?v=${trailer.key}`}
+                    href={`https://www.youtube.com/watch?v=${trailerKey}`}
                     target="_blank"
                     rel="noopener noreferrer"
                   >
@@ -401,35 +329,18 @@ export default function MediaDetailPage() {
             )}
 
             {/* Trailer Section */}
-            {trailer && (
+            {trailerKey && (
               <div>
-                <h2 className="text-xl font-semibold text-white mb-4">
-                  {trailer.type === "Trailer" ? "Trailer" : trailer.type}
-                </h2>
+                <h2 className="text-xl font-semibold text-white mb-4">Trailer</h2>
                 <div className="aspect-video rounded overflow-hidden border border-white/10">
                   <iframe
-                    src={`https://www.youtube.com/embed/${trailer.key}`}
-                    title={trailer.name}
+                    src={`https://www.youtube.com/embed/${trailerKey}`}
+                    title="Trailer"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                     allowFullScreen
                     className="w-full h-full"
                   />
                 </div>
-                {data.videos && data.videos.length > 1 && (
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    {data.videos.slice(1, 5).map((video) => (
-                      <a
-                        key={video.id}
-                        href={`https://www.youtube.com/watch?v=${video.key}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm px-3 py-1.5 bg-white/5 text-white/70 rounded border border-white/10 hover:bg-white/10 hover:text-white transition-colors"
-                      >
-                        {video.type}: {video.name}
-                      </a>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
 
@@ -588,38 +499,24 @@ export default function MediaDetailPage() {
                 </div>
               )}
 
-              {tvData?.networks && tvData.networks.length > 0 && (
+              {tvData?.networks && (tvData.networks as Array<{ name: string }>).length > 0 && (
                 <div>
                   <div className="text-xs text-white/40 uppercase tracking-wide mb-1">Network</div>
-                  <div className="text-white/90">{tvData.networks.map((n: { name: string }) => n.name).join(", ")}</div>
+                  <div className="text-white/90">{(tvData.networks as Array<{ name: string }>).map((n) => n.name).join(", ")}</div>
                 </div>
               )}
 
-              {data.spokenLanguages && data.spokenLanguages.length > 0 && (
+              {data.language && (
                 <div>
-                  <div className="text-xs text-white/40 uppercase tracking-wide mb-1">Languages</div>
-                  <div className="text-white/90">{data.spokenLanguages.map(l => l.englishName).join(", ")}</div>
+                  <div className="text-xs text-white/40 uppercase tracking-wide mb-1">Language</div>
+                  <div className="text-white/90">{data.language}</div>
                 </div>
               )}
 
-              {data.productionCountries && data.productionCountries.length > 0 && (
+              {data.country && (
                 <div>
-                  <div className="text-xs text-white/40 uppercase tracking-wide mb-1">Countries</div>
-                  <div className="text-white/90">{data.productionCountries.join(", ")}</div>
-                </div>
-              )}
-
-              {movieData && formatCurrency(movieData.budget) && (
-                <div>
-                  <div className="text-xs text-white/40 uppercase tracking-wide mb-1">Budget</div>
-                  <div className="text-white/90">{formatCurrency(movieData.budget)}</div>
-                </div>
-              )}
-
-              {movieData && formatCurrency(movieData.revenue) && (
-                <div>
-                  <div className="text-xs text-white/40 uppercase tracking-wide mb-1">Box Office</div>
-                  <div className="text-white/90">{formatCurrency(movieData.revenue)}</div>
+                  <div className="text-xs text-white/40 uppercase tracking-wide mb-1">Country</div>
+                  <div className="text-white/90">{data.country}</div>
                 </div>
               )}
 
@@ -659,36 +556,15 @@ export default function MediaDetailPage() {
               </a>
             </div>
 
-            {/* Production Companies */}
-            {data.productionCompanies && data.productionCompanies.length > 0 && (
-              <div className="bg-white/5 rounded-lg border border-white/10 p-6">
-                <h3 className="text-lg font-semibold text-white mb-4">Production</h3>
-                <div className="space-y-3">
-                  {data.productionCompanies.slice(0, 5).map((company) => (
-                    <div key={company.id} className="flex items-center gap-3">
-                      {company.logoPath ? (
-                        <img
-                          src={`${TMDB_IMAGE_BASE}/w92${company.logoPath}`}
-                          alt={company.name}
-                          className="h-6 w-auto object-contain brightness-0 invert opacity-60"
-                        />
-                      ) : (
-                        <span className="text-sm text-white/60">{company.name}</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
         </div>
 
         {/* Cast Section */}
-        {data.cast && data.cast.length > 0 && (
+        {cast.length > 0 && (
           <div>
             <h2 className="text-xl font-semibold text-white mb-6">Cast</h2>
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 2xl:grid-cols-12 gap-4">
-              {displayCast?.map((person) => (
+              {displayCast.map((person) => (
                 <div key={person.id} className="text-center group">
                   {person.profilePath ? (
                     <img
@@ -708,23 +584,23 @@ export default function MediaDetailPage() {
                 </div>
               ))}
             </div>
-            {data.cast.length > 12 && (
+            {cast.length > 12 && (
               <button
                 onClick={() => setShowAllCast(!showAllCast)}
                 className="mt-6 text-sm text-annex-400 hover:text-annex-300 transition-colors"
               >
-                {showAllCast ? "Show less" : `Show all ${data.cast.length} cast members`}
+                {showAllCast ? "Show less" : `Show all ${cast.length} cast members`}
               </button>
             )}
           </div>
         )}
 
         {/* Crew Section */}
-        {data.crew && data.crew.length > 0 && (
+        {crew.length > 0 && (
           <div>
             <h2 className="text-xl font-semibold text-white mb-6">Crew</h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-              {data.crew.map((person, index) => (
+              {crew.map((person, index) => (
                 <div
                   key={`${person.id}-${person.job}-${index}`}
                   className="bg-white/5 rounded px-4 py-3 border border-white/10"
@@ -745,7 +621,7 @@ export default function MediaDetailPage() {
         tmdbId={tmdbId}
         type={type}
         title={data.title}
-        year={data.year}
+        year={data.year ?? 0}
         posterPath={data.posterPath}
       />
     </div>

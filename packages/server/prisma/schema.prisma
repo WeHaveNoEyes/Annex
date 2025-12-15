@@ -259,6 +259,7 @@ model MediaRequest {
   tmdbId           Int
   title            String
   year             Int
+  posterPath       String?       // Store for list display
   requestedSeasons Int[]         // For TV shows (empty = all seasons)
   requestedEpisodes Json?        // For specific episodes: [{season: 1, episode: 1}]
 
@@ -799,6 +800,7 @@ model MediaItem {
   updatedAt        DateTime  @updatedAt
   tmdbUpdatedAt    DateTime? // Last time we fetched full details from TMDB
   mdblistUpdatedAt DateTime? // Last time we fetched from MDBList
+  traktUpdatedAt   DateTime? // Last time we fetched from Trakt
 
   // Relations
   ratings       MediaRatings?
@@ -810,6 +812,7 @@ model MediaItem {
   @@index([releaseDate])
   @@index([tmdbUpdatedAt])
   @@index([mdblistUpdatedAt])
+  @@index([traktUpdatedAt])
   @@index([language])
   @@index([spokenLanguages])
 }
@@ -901,23 +904,15 @@ model MediaRatings {
   mdblistScore          Int?     // 0-100
   mdblistRank           Int?     // Overall rank
 
-  // Our computed aggregates
-  aggregateScore        Float?   // Weighted average of all sources (0-100)
+  // Popularity tracking
   popularityScore       Float?   // Based on votes/plays/watchers
-  sourceCount           Int?     // Number of rating sources with data (0-8)
-  confidenceScore       Float?   // Weighted confidence based on vote counts (0-1)
-  isTrusted             Boolean  @default(false)  // Has 2+ sources with good data
-  aggregatedAt          DateTime? // When aggregate was last calculated
 
   // Relations
   media                 MediaItem @relation(fields: [mediaId], references: [id], onDelete: Cascade)
   mediaId               String    @unique
 
-  @@index([aggregateScore])
   @@index([popularityScore])
   @@index([mdblistScore])
-  @@index([isTrusted, aggregateScore])
-  @@index([sourceCount])
 }
 
 // =============================================================================
