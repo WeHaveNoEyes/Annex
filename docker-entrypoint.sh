@@ -59,7 +59,7 @@ mkdir -p "$ANNEX_CONFIG_DIR"
 # Run database migrations
 echo "[Annex] Running database migrations..."
 cd /app/server
-npx prisma migrate deploy --schema=./prisma/schema.prisma
+bunx prisma migrate deploy --schema=./prisma/schema.prisma
 
 # Set internal server port (nginx proxies from 80)
 export PORT="${PORT:-3001}"
@@ -83,7 +83,7 @@ if [ "$USE_INTERNAL_ENCODER" = "true" ]; then
   fi
 
   # Start encoder in background
-  node /app/encoder/index.js &
+  bun /app/encoder/index.js &
   ENCODER_PID=$!
   echo "[Annex] Internal encoder started (PID: $ENCODER_PID)"
 fi
@@ -114,4 +114,4 @@ trap cleanup SIGTERM SIGINT
 # Start server
 echo "[Annex] Starting server on port ${PORT:-3001}..."
 cd /app/server
-exec node index.js
+exec bun index.js

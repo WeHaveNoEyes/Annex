@@ -13,7 +13,7 @@ Media acquisition platform: discovery → request → download → encode (AV1) 
 ## Tech Stack
 
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS, tRPC client
-- **Backend**: Node.js, TypeScript, tRPC, PostgreSQL, Prisma ORM
+- **Backend**: Bun, TypeScript, tRPC, PostgreSQL, Prisma ORM
 - **Encoding**: Remote encoders with FFmpeg VAAPI (Intel Arc AV1)
 - **External APIs**: TMDB (metadata), MDBList (ratings), qBittorrent (downloads), Plex/Emby (library)
 
@@ -28,12 +28,12 @@ packages/
 │       ├── pages/       # Route pages
 │       ├── hooks/       # React hooks
 │       └── trpc.ts      # tRPC client setup
-├── server/              # Node.js backend
+├── server/              # Bun backend
 │   └── src/
 │       ├── routers/     # tRPC routers (discovery, requests, servers, indexers, encoders, library, sync, system)
 │       ├── services/    # Business logic (metadata, indexer, download, encoderDispatch, delivery, naming, plex, emby, mdblist, sync, jobQueue)
-│       └── index.ts     # Entry point, Express + WebSocket server
-├── encoder/             # Remote encoder package (standalone, bundled with esbuild)
+│       └── index.ts     # Entry point, Bun.serve() with native WebSocket
+├── encoder/             # Remote encoder package (standalone, bundled with Bun)
 │   └── src/
 │       ├── client.ts    # WebSocket client
 │       ├── encoder.ts   # FFmpeg VAAPI wrapper
@@ -46,14 +46,14 @@ packages/
 ## Commands
 
 ```bash
-pnpm install          # Install dependencies
-pnpm dev              # Start dev servers (backend :3000, frontend :5173)
-pnpm build            # Build all packages
-pnpm prisma migrate   # Run database migrations
-pnpm prisma studio    # Open Prisma database GUI
+bun install           # Install dependencies
+bun run dev           # Start dev servers (backend :3000, frontend :5173)
+bun run build         # Build all packages
+bunx prisma migrate   # Run database migrations
+bunx prisma studio    # Open Prisma database GUI
 
 # Encoder package
-node packages/encoder/scripts/build-dist.js  # Build distributable tarball
+bun packages/encoder/scripts/build-dist.js  # Build distributable tarball
 ```
 
 ## Key Data Models (Prisma)

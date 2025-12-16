@@ -8,7 +8,6 @@
  * - Auto-reconnection with exponential backoff
  */
 
-import WebSocket from "ws";
 import * as os from "os";
 import type {
   EncoderState,
@@ -42,8 +41,8 @@ export class EncoderClient {
   private ws: WebSocket | null = null;
   private state: EncoderState = "OFFLINE";
   private reconnectAttempts = 0;
-  private reconnectTimer: NodeJS.Timeout | null = null;
-  private heartbeatTimer: NodeJS.Timeout | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private activeJobs: Map<string, ActiveJob> = new Map();
   private shuttingDown = false;
 
@@ -142,25 +141,25 @@ Server: ${this.config.serverUrl}
 
     this.ws = new WebSocket(this.config.serverUrl);
 
-    this.ws.on("open", () => {
+    this.ws.onopen = () => {
       console.log("[Client] Connected");
       this.state = "REGISTERING";
       this.reconnectAttempts = 0;
       this.register();
-    });
+    };
 
-    this.ws.on("message", (data) => {
-      this.handleMessage(data.toString());
-    });
+    this.ws.onmessage = (event) => {
+      this.handleMessage(typeof event.data === "string" ? event.data : event.data.toString());
+    };
 
-    this.ws.on("close", (code, reason) => {
-      console.log(`[Client] Disconnected: ${code} ${reason.toString()}`);
+    this.ws.onclose = (event) => {
+      console.log(`[Client] Disconnected: ${event.code} ${event.reason}`);
       this.handleDisconnect();
-    });
+    };
 
-    this.ws.on("error", (error) => {
-      console.error("[Client] WebSocket error:", error.message);
-    });
+    this.ws.onerror = (event) => {
+      console.error("[Client] WebSocket error:", event);
+    };
   }
 
   /**

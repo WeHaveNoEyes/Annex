@@ -12,19 +12,19 @@
     }
   },
   "scripts": {
-    "dev": "nodemon --watch src --ext ts,json --exec 'tsx --env-file=.env src/index.ts' --legacy-watch",
-    "build": "prisma generate && tsc",
-    "start": "node dist/index.js",
+    "dev": "bun --watch --env-file=.env src/index.ts",
+    "build": "bunx prisma generate && tsc",
+    "start": "bun dist/index.js",
     "clean": "rm -rf dist",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev",
-    "db:migrate:prod": "prisma migrate deploy",
-    "db:studio": "prisma studio",
-    "db:push": "prisma db push"
+    "test": "bun test",
+    "test:watch": "bun test --watch",
+    "test:coverage": "bun test --coverage",
+    "db:generate": "bunx prisma generate",
+    "db:migrate": "bunx prisma migrate dev",
+    "db:migrate:prod": "bunx prisma migrate deploy",
+    "db:studio": "bunx prisma studio",
+    "db:push": "bunx prisma db push"
   },
   "dependencies": {
     "@annex/shared": "workspace:*",
@@ -36,19 +36,12 @@
     "ssh2-sftp-client": "^12.0.1",
     "superjson": "^2.2.2",
     "uuid": "^13.0.0",
-    "ws": "^8.18.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/node": "^22.10.1",
     "@types/ssh2-sftp-client": "^9.0.6",
     "@types/uuid": "^11.0.0",
-    "@types/ws": "^8.5.13",
-    "@vitest/coverage-v8": "^2.1.8",
-    "nodemon": "^3.1.11",
     "prisma": "^6.1.0",
-    "tsx": "^4.19.2",
-    "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "typescript": "^5.7.2"
   }
 }

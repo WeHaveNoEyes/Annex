@@ -32,7 +32,6 @@ ANNEX_GPU_DEVICE="/dev/dri/renderD128"
 ANNEX_MAX_CONCURRENT=1
 ANNEX_YES=false
 ANNEX_SKIP_GPU_DRIVERS=false
-NODE_VERSION="20"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -216,16 +215,18 @@ apt-get install -y \
   libva-x11-2
 
 # =============================================================================
-# Step 4: Install Node.js
+# Step 4: Install Bun
 # =============================================================================
 
 echo ""
-echo -e "${BLUE}[4/7] Installing Node.js ${NODE_VERSION}...${NC}"
+echo -e "${BLUE}[4/7] Installing Bun...${NC}"
 
-curl -fsSL https://deb.nodesource.com/setup_${NODE_VERSION}.x | bash -
-apt-get install -y nodejs
+curl -fsSL https://bun.sh/install | bash
 
-echo "Node.js version: $(node --version)"
+# Symlink bun to /usr/local/bin for system-wide access
+ln -sf /root/.bun/bin/bun /usr/local/bin/bun
+
+echo "Bun version: $(bun --version)"
 
 # =============================================================================
 # Step 5: Create User and Directories
@@ -283,7 +284,7 @@ echo -e "${BLUE}[7/7] Downloading encoder package from server...${NC}"
 if ! curl -sf "$ANNEX_HTTP_URL/api/encoder/package/info" >/dev/null 2>&1; then
   echo -e "${RED}Error: Cannot reach Annex server at $ANNEX_HTTP_URL${NC}"
   echo "Make sure the server is running and the encoder package is built:"
-  echo "  pnpm --filter @annex/encoder build:dist"
+  echo "  bun run --filter @annex/encoder build:dist"
   exit 1
 fi
 
@@ -343,7 +344,7 @@ User=$ANNEX_USER
 Group=$ANNEX_USER
 WorkingDirectory=$ANNEX_HOME
 EnvironmentFile=/etc/annex-encoder.env
-ExecStart=/usr/bin/node $ANNEX_HOME/encoder.js
+ExecStart=/usr/local/bin/bun $ANNEX_HOME/encoder.js
 Restart=always
 RestartSec=10
 
@@ -392,9 +393,9 @@ else
   echo -e "${RED}FAILED${NC}"
 fi
 
-echo -n "  Node.js: "
-if node --version &>/dev/null; then
-  echo -e "${GREEN}OK ($(node --version))${NC}"
+echo -n "  Bun: "
+if bun --version &>/dev/null; then
+  echo -e "${GREEN}OK ($(bun --version))${NC}"
 else
   echo -e "${RED}FAILED${NC}"
 fi

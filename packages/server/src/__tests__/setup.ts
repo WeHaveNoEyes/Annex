@@ -1,10 +1,10 @@
 /**
- * Vitest Test Setup
+ * Bun Test Setup
  *
  * Global setup for all tests. Runs before each test file.
  */
 
-import { vi, beforeAll, afterAll, afterEach } from "vitest";
+import { beforeAll, afterAll, afterEach, mock, spyOn } from "bun:test";
 import { randomBytes } from "crypto";
 import { mkdtempSync, rmSync, existsSync, writeFileSync, chmodSync } from "fs";
 import { tmpdir } from "os";
@@ -12,6 +12,10 @@ import { join } from "path";
 
 // Test temp directory for key files
 let testTempDir: string;
+
+// Store spies so we can restore them
+let consoleLogSpy: ReturnType<typeof spyOn> | null = null;
+let consoleWarnSpy: ReturnType<typeof spyOn> | null = null;
 
 beforeAll(() => {
   // Create temp directory for test files
@@ -22,14 +26,13 @@ beforeAll(() => {
 
   // Suppress console output during tests unless DEBUG is set
   if (!process.env.DEBUG) {
-    vi.spyOn(console, "log").mockImplementation(() => {});
-    vi.spyOn(console, "warn").mockImplementation(() => {});
+    consoleLogSpy = spyOn(console, "log").mockImplementation(() => {});
+    consoleWarnSpy = spyOn(console, "warn").mockImplementation(() => {});
   }
 });
 
 afterEach(() => {
-  // Clear mocks between tests
-  vi.clearAllMocks();
+  // Note: Bun doesn't have clearAllMocks, mocks are cleared individually if needed
 });
 
 afterAll(() => {
@@ -39,7 +42,8 @@ afterAll(() => {
   }
 
   // Restore console
-  vi.restoreAllMocks();
+  consoleLogSpy?.mockRestore();
+  consoleWarnSpy?.mockRestore();
 });
 
 /**
@@ -67,10 +71,10 @@ export function createMockPrisma() {
 
   return {
     setting: {
-      findUnique: vi.fn(async ({ where }: { where: { key: string } }) => {
+      findUnique: mock(async ({ where }: { where: { key: string } }) => {
         return store.get(where.key) || null;
       }),
-      findMany: vi.fn(async (args?: { select?: { key: boolean }; where?: { key?: { startsWith: string } } }) => {
+      findMany: mock(async (args?: { select?: { key: boolean }; where?: { key?: { startsWith: string } } }) => {
         let results = Array.from(store.values());
 
         // Apply startsWith filter if provided
@@ -81,7 +85,7 @@ export function createMockPrisma() {
 
         return results;
       }),
-      upsert: vi.fn(
+      upsert: mock(
         async ({
           where,
           create,
@@ -101,19 +105,19 @@ export function createMockPrisma() {
           return record;
         }
       ),
-      delete: vi.fn(async ({ where }: { where: { key: string } }) => {
+      delete: mock(async ({ where }: { where: { key: string } }) => {
         const record = store.get(where.key);
         store.delete(where.key);
         return record;
       }),
-      count: vi.fn(async () => store.size),
+      count: mock(async () => store.size),
     },
     _store: store, // Expose for test inspection
     _clear: () => store.clear(), // Helper to reset between tests
   };
 }
 
-// Declare vitest globals
+// Declare globals
 declare global {
   var testTempDir: string;
 }

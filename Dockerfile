@@ -5,39 +5,33 @@
 # =============================================================================
 # Stage 1: Build
 # =============================================================================
-FROM node:20-alpine AS builder
+FROM oven/bun:1 AS builder
 
 WORKDIR /app
 
-# Install build dependencies
-RUN apk add --no-cache python3 make g++
-
-# Enable pnpm
-RUN corepack enable && corepack prepare pnpm@9.14.2 --activate
-
 # Copy package files for dependency installation
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json bun.lock ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/server/package.json packages/server/
 COPY packages/client/package.json packages/client/
 COPY packages/encoder/package.json packages/encoder/
 
 # Install dependencies
-RUN pnpm install --frozen-lockfile
+RUN bun install --frozen-lockfile
 
 # Copy source code
 COPY . .
 
 # Build all packages
-RUN pnpm build
+RUN bun run build
 
 # Prune dev dependencies for smaller image
-RUN pnpm prune --prod
+RUN rm -rf node_modules && bun install --production
 
 # =============================================================================
 # Stage 2: Runtime
 # =============================================================================
-FROM node:20-slim AS runtime
+FROM oven/bun:1-slim AS runtime
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \

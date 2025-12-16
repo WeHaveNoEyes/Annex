@@ -5,8 +5,7 @@
  * Handles encoder registration, health monitoring, job assignment, and retries.
  */
 
-import { WebSocketServer, WebSocket } from "ws";
-import type { Server as HttpServer } from "http";
+import type { ServerWebSocket } from "bun";
 import { existsSync } from "fs";
 import { prisma } from "../db/client.js";
 import { getJobEventService } from "./jobEvents.js";
@@ -28,8 +27,14 @@ import type { EncodingProfile, RemoteEncoder, EncoderAssignment } from "@prisma/
 // Types
 // =============================================================================
 
+// WebSocket data for encoder connections
+export interface EncoderWebSocketData {
+  type: "encoder";
+  encoderId: string | null;
+}
+
 interface ConnectedEncoder {
-  ws: WebSocket;
+  ws: ServerWebSocket<EncoderWebSocketData>;
   encoderId: string;
   lastHeartbeat: Date;
   currentJobs: Set<string>;
@@ -99,7 +104,6 @@ export interface QueueEncodingJobResult {
 // =============================================================================
 
 class EncoderDispatchService {
-  private wss: WebSocketServer | null = null;
   private encoders: Map<string, ConnectedEncoder> = new Map();
   private jobCompletionCallbacks: Map<string, {
     resolve: (assignment: EncoderAssignment) => void;
@@ -127,98 +131,78 @@ class EncoderDispatchService {
   // ==========================================================================
 
   /**
-   * Initialize the WebSocket server for encoder connections
-   * @deprecated Use initializeWithWss instead for manual upgrade handling
+   * Initialize the encoder dispatch service
    */
-  initialize(server: HttpServer, path: string = "/encoder"): void {
-    this.wss = new WebSocketServer({ server, path });
-
-    this.wss.on("connection", (ws) => {
-      this.handleConnection(ws);
-    });
-
-    // Start health check loop
+  initialize(): void {
     this.startHealthCheck();
     this.startProgressFlush();
+    console.log(`[EncoderDispatch] Initialized`);
+  }
 
-    console.log(`[EncoderDispatch] WebSocket server started on path ${path}`);
+  // ==========================================================================
+  // WebSocket Handlers (called from Bun.serve())
+  // ==========================================================================
+
+  /**
+   * Handle a new WebSocket connection
+   */
+  handleConnection(): void {
+    console.log(`[EncoderDispatch] New encoder connection`);
   }
 
   /**
-   * Initialize with an existing WebSocket server (for manual upgrade routing)
+   * Handle a WebSocket message
    */
-  initializeWithWss(wss: WebSocketServer): void {
-    this.wss = wss;
+  async handleMessage(ws: ServerWebSocket<EncoderWebSocketData>, data: string | Buffer): Promise<void> {
+    try {
+      const dataStr = typeof data === "string" ? data : data.toString();
+      const msg = JSON.parse(dataStr) as EncoderMessage;
 
-    this.wss.on("connection", (ws) => {
-      this.handleConnection(ws);
-    });
+      switch (msg.type) {
+        case "register":
+          await this.handleRegister(ws, msg);
+          break;
 
-    // Start health check loop
-    this.startHealthCheck();
-    this.startProgressFlush();
+        case "heartbeat":
+          await this.handleHeartbeat(msg);
+          break;
 
-    console.log(`[EncoderDispatch] WebSocket handler initialized`);
+        case "job:accepted":
+          console.log(`[EncoderDispatch] Job ${msg.jobId} accepted by ${msg.encoderId}`);
+          break;
+
+        case "job:progress":
+          await this.handleJobProgress(msg);
+          break;
+
+        case "job:complete":
+          await this.handleJobComplete(msg);
+          break;
+
+        case "job:failed":
+          await this.handleJobFailed(msg);
+          break;
+      }
+    } catch (error) {
+      console.error(`[EncoderDispatch] Message handling error:`, error);
+    }
   }
 
-  // ==========================================================================
-  // Connection Handling
-  // ==========================================================================
-
-  private handleConnection(ws: WebSocket): void {
-    let encoderId: string | null = null;
-
-    ws.on("message", async (data) => {
-      try {
-        const msg = JSON.parse(data.toString()) as EncoderMessage;
-
-        switch (msg.type) {
-          case "register":
-            encoderId = msg.encoderId;
-            await this.handleRegister(ws, msg);
-            break;
-
-          case "heartbeat":
-            await this.handleHeartbeat(msg);
-            break;
-
-          case "job:accepted":
-            console.log(`[EncoderDispatch] Job ${msg.jobId} accepted by ${msg.encoderId}`);
-            break;
-
-          case "job:progress":
-            await this.handleJobProgress(msg);
-            break;
-
-          case "job:complete":
-            await this.handleJobComplete(msg);
-            break;
-
-          case "job:failed":
-            await this.handleJobFailed(msg);
-            break;
-        }
-      } catch (error) {
-        console.error(`[EncoderDispatch] Message handling error:`, error);
-      }
-    });
-
-    ws.on("close", () => {
-      if (encoderId) {
-        this.handleDisconnect(encoderId);
-      }
-    });
-
-    ws.on("error", (error) => {
-      console.error(`[EncoderDispatch] WebSocket error:`, error);
-    });
+  /**
+   * Handle a WebSocket close
+   */
+  handleClose(ws: ServerWebSocket<EncoderWebSocketData>): void {
+    const encoderId = ws.data.encoderId;
+    if (encoderId) {
+      this.handleDisconnect(encoderId);
+    }
   }
 
   // ==========================================================================
   // Message Handlers
   // ==========================================================================
 
-  private async handleRegister(ws: WebSocket, msg: RegisterMessage): Promise<void> {
+  private async handleRegister(ws: ServerWebSocket<EncoderWebSocketData>, msg: RegisterMessage): Promise<void> {
     const { encoderId, gpuDevice, maxConcurrent, currentJobs, hostname, version } = msg;
 
     // Upsert encoder in database
@@ -244,6 +228,9 @@ class EncoderDispatchService {
         lastHeartbeat: new Date(),
       },
     });
+
+    // Store encoderId in WebSocket data for close handling
+    ws.data.encoderId = encoderId;
 
     // Track connection
     this.encoders.set(encoderId, {
@@ -1108,8 +1095,9 @@ class EncoderDispatchService {
   // Utility Methods
   // ==========================================================================
 
-  private send(ws: WebSocket, msg: ServerMessage): void {
-    if (ws.readyState === WebSocket.OPEN) {
+  private send(ws: ServerWebSocket<EncoderWebSocketData>, msg: ServerMessage): void {
+    // Bun WebSocket readyState: 0 = CONNECTING, 1 = OPEN, 2 = CLOSING, 3 = CLOSED
+    if (ws.readyState === 1) {
       ws.send(JSON.stringify(msg));
     }
   }
@@ -1205,7 +1193,6 @@ class EncoderDispatchService {
     }
 
     this.encoders.clear();
-    this.wss?.close();
   }
 }
 

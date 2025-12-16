@@ -9,7 +9,7 @@
  * - Edge cases
  */
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { SecretsService, resetSecretsService } from "../../services/secrets.js";
 import { CryptoService, resetCryptoService } from "../../services/crypto.js";
 import { join } from "path";
@@ -56,7 +56,7 @@ describe("SecretsService", () => {
     if (existsSync(tempDir)) {
       rmSync(tempDir, { recursive: true, force: true });
     }
-    vi.restoreAllMocks();
+    // Mocks are cleared by creating fresh mockPrisma each test
   });
 
   describe("Basic Operations", () => {
@@ -156,7 +156,8 @@ describe("SecretsService", () => {
       await secretsService.setSecret("cached.key", "value");
 
       // Reset mock call count
-      vi.clearAllMocks();
+      mockPrisma.setting.findUnique.mockClear();
+      mockPrisma.setting.upsert.mockClear();
 
       // Read multiple times
       await secretsService.getSecret("cached.key");
@@ -174,7 +175,8 @@ describe("SecretsService", () => {
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       // Reset mock call count
-      vi.clearAllMocks();
+      mockPrisma.setting.findUnique.mockClear();
+      mockPrisma.setting.upsert.mockClear();
 
       // Read again - should hit DB
       await secretsService.getSecret("ttl.key");
@@ -186,7 +188,8 @@ describe("SecretsService", () => {
       await secretsService.setSecret("key2", "value2");
 
       secretsService.clearCache();
-      vi.clearAllMocks();
+      mockPrisma.setting.findUnique.mockClear();
+      mockPrisma.setting.upsert.mockClear();
 
       // Both should hit DB now
       await secretsService.getSecret("key1");
@@ -200,7 +203,8 @@ describe("SecretsService", () => {
       await secretsService.setSecret("invalidate.key", "value2");
 
       secretsService.invalidateCache("invalidate.key");
-      vi.clearAllMocks();
+      mockPrisma.setting.findUnique.mockClear();
+      mockPrisma.setting.upsert.mockClear();
 
       // keep.key should be cached
       await secretsService.getSecret("keep.key");
@@ -214,7 +218,7 @@ describe("SecretsService", () => {
 
   describe("Event Emission", () => {
     it("emits change event when secret is set", async () => {
-      const changeHandler = vi.fn();
+      const changeHandler = mock();
       secretsService.on("change", changeHandler);
 
       await secretsService.setSecret("event.key", "value");
@@ -225,7 +229,7 @@ describe("SecretsService", () => {
     it("emits change event when secret is deleted", async () => {
       await secretsService.setSecret("delete.key", "value");
 
-      const changeHandler = vi.fn();
+      const changeHandler = mock();
       secretsService.on("change", changeHandler);
 
       await secretsService.deleteSecret("delete.key");
@@ -236,7 +240,7 @@ describe("SecretsService", () => {
     it("emits delete event when secret is deleted", async () => {
       await secretsService.setSecret("delete.key", "value");
 
-      const deleteHandler = vi.fn();
+      const deleteHandler = mock();
       secretsService.on("delete", deleteHandler);
 
       await secretsService.deleteSecret("delete.key");
@@ -363,9 +367,8 @@ describe("SecretsService", () => {
     });
 
     it("delete non-existent secret does not throw", async () => {
-      await expect(
-        secretsService.deleteSecret("never.existed")
-      ).resolves.not.toThrow();
+      // Should complete without throwing
+      await secretsService.deleteSecret("never.existed");
     });
 
     it("concurrent setSecret calls don't corrupt data", async () => {

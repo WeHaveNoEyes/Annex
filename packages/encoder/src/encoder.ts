@@ -4,7 +4,6 @@
  * Handles FFmpeg execution for AV1 encoding with VAAPI hardware acceleration.
  */
 
-import { spawn, type ChildProcess } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import type { EncodingProfileData, JobProgressMessage } from "@annex/shared";
@@ -60,72 +59,54 @@ const MKV_COMPATIBLE_SUBTITLE_CODECS = new Set([
  * Probe a media file to get its properties
  */
 export async function probeMedia(filePath: string): Promise<MediaInfo> {
-  return new Promise((resolve, reject) => {
-    const ffprobe = spawn("ffprobe", [
-      "-v", "quiet",
-      "-print_format", "json",
-      "-show_format",
-      "-show_streams",
-      filePath,
-    ]);
-
-    let stdout = "";
-    let stderr = "";
-
-    ffprobe.stdout.on("data", (data) => {
-      stdout += data.toString();
-    });
-
-    ffprobe.stderr.on("data", (data) => {
-      stderr += data.toString();
-    });
-
-    ffprobe.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error(`ffprobe failed: ${stderr}`));
-        return;
-      }
-
-      try {
-        const data = JSON.parse(stdout);
-        const videoStream = data.streams?.find((s: { codec_type: string }) => s.codec_type === "video");
-
-        if (!videoStream) {
-          reject(new Error("No video stream found"));
-          return;
-        }
-
-        // Parse frame rate
-        let fps = 24;
-        if (videoStream.r_frame_rate) {
-          const [num, den] = videoStream.r_frame_rate.split("/").map(Number);
-          if (den > 0) fps = num / den;
-        }
-
-        // Parse subtitle streams
-        const subtitleStreams: SubtitleStream[] = (data.streams || [])
-          .filter((s: { codec_type: string }) => s.codec_type === "subtitle")
-          .map((s: { index: number; codec_name: string; tags?: { language?: string } }) => ({
-            index: s.index,
-            codec: s.codec_name || "unknown",
-            language: s.tags?.language,
-          }));
-
-        resolve({
-          duration: parseFloat(data.format?.duration || "0"),
-          width: videoStream.width || 1920,
-          height: videoStream.height || 1080,
-          fps: fps,
-          fileSize: parseInt(data.format?.size || "0", 10),
-          subtitleStreams,
-        });
-      } catch (e) {
-        reject(new Error(`Failed to parse ffprobe output: ${e}`));
-      }
-    });
-
-    ffprobe.on("error", reject);
+  const proc = Bun.spawn(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath], {
+    stdout: "pipe",
+    stderr: "pipe",
   });
+
+  const stdout = await new Response(proc.stdout).text();
+  const stderr = await new Response(proc.stderr).text();
+  const exitCode = await proc.exited;
+
+  if (exitCode !== 0) {
+    throw new Error(`ffprobe failed: ${stderr}`);
+  }
+
+  try {
+    const data = JSON.parse(stdout);
+    const videoStream = data.streams?.find((s: { codec_type: string }) => s.codec_type === "video");
+
+    if (!videoStream) {
+      throw new Error("No video stream found");
+    }
+
+    // Parse frame rate
+    let fps = 24;
+    if (videoStream.r_frame_rate) {
+      const [num, den] = videoStream.r_frame_rate.split("/").map(Number);
+      if (den > 0) fps = num / den;
+    }
+
+    // Parse subtitle streams
+    const subtitleStreams: SubtitleStream[] = (data.streams || [])
+      .filter((s: { codec_type: string }) => s.codec_type === "subtitle")
+      .map((s: { index: number; codec_name: string; tags?: { language?: string } }) => ({
+        index: s.index,
+        codec: s.codec_name || "unknown",
+        language: s.tags?.language,
+      }));
+
+    return {
+      duration: parseFloat(data.format?.duration || "0"),
+      width: videoStream.width || 1920,
+      height: videoStream.height || 1080,
+      fps: fps,
+      fileSize: parseInt(data.format?.size || "0", 10),
+      subtitleStreams,
+    };
+  } catch (e) {
+    throw new Error(`Failed to parse ffprobe output: ${e}`);
+  }
 }
 
 /**
@@ -440,106 +421,118 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
 
   console.log(`[Encoder] Starting: ffmpeg ${args.join(" ")}`);
 
-  return new Promise((resolve, reject) => {
-    const ffmpeg: ChildProcess = spawn("ffmpeg", args);
-
-    const progressState: {
-      frame: number;
-      fps: number;
-      bitrate: number;
-      totalSize: number;
-      outTimeUs: number;
-      speed: number;
-    } = {
-      frame: 0,
-      fps: 0,
-      bitrate: 0,
-      totalSize: 0,
-      outTimeUs: 0,
-      speed: 0,
-    };
-
-    // Handle abort signal
-    if (job.abortSignal) {
-      job.abortSignal.addEventListener("abort", () => {
-        console.log(`[Encoder] Job ${job.jobId} cancelled`);
-        ffmpeg.kill("SIGKILL");
-      });
-    }
-
-    // Parse progress from stdout
-    ffmpeg.stdout?.on("data", (data: Buffer) => {
-      const lines = data.toString().split("\n");
-      for (const line of lines) {
-        const parsed = parseProgress(line.trim());
-        Object.assign(progressState, parsed);
-
-        // Calculate progress percentage
-        const elapsedTime = progressState.outTimeUs / 1_000_000;
-        const progress = mediaInfo.duration > 0
-          ? Math.min(100, (elapsedTime / mediaInfo.duration) * 100)
-          : 0;
-
-        // Calculate ETA
-        const eta = progressState.speed > 0
-          ? Math.round((mediaInfo.duration - elapsedTime) / progressState.speed)
-          : 0;
-
-        job.onProgress({
-          type: "job:progress",
-          jobId: job.jobId,
-          progress,
-          frame: progressState.frame,
-          fps: progressState.fps,
-          bitrate: progressState.bitrate,
-          totalSize: progressState.totalSize,
-          elapsedTime,
-          speed: progressState.speed,
-          eta,
-        });
-      }
-    });
-
-    let stderr = "";
-    ffmpeg.stderr?.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    ffmpeg.on("close", (code) => {
-      const duration = (Date.now() - startTime) / 1000;
-
-      if (code !== 0) {
-        // Clean up partial output
-        try {
-          if (fs.existsSync(job.outputPath)) {
-            fs.unlinkSync(job.outputPath);
-          }
-        } catch { /* ignore */ }
-
-        reject(new Error(`FFmpeg exited with code ${code}: ${stderr.slice(-500)}`));
-        return;
-      }
-
-      // Get output file size
-      let outputSize = 0;
-      try {
-        outputSize = fs.statSync(job.outputPath).size;
-      } catch { /* ignore */ }
-
-      const compressionRatio = mediaInfo.fileSize > 0
-        ? mediaInfo.fileSize / outputSize
-        : 1;
-
-      console.log(`[Encoder] Complete: ${(outputSize / 1024 / 1024 / 1024).toFixed(2)}GB (${compressionRatio.toFixed(1)}x compression) in ${duration.toFixed(0)}s`);
-
-      resolve({
-        outputPath: job.outputPath,
-        outputSize,
-        compressionRatio,
-        duration,
-      });
-    });
-
-    ffmpeg.on("error", reject);
+  const ffmpeg = Bun.spawn(["ffmpeg", ...args], {
+    stdout: "pipe",
+    stderr: "pipe",
   });
+
+  const progressState = {
+    frame: 0,
+    fps: 0,
+    bitrate: 0,
+    totalSize: 0,
+    outTimeUs: 0,
+    speed: 0,
+  };
+
+  // Handle abort signal
+  if (job.abortSignal) {
+    job.abortSignal.addEventListener("abort", () => {
+      console.log(`[Encoder] Job ${job.jobId} cancelled`);
+      ffmpeg.kill(9); // SIGKILL
+    });
+  }
+
+  // Process stdout for progress in background
+  const stdoutReader = (async () => {
+    const reader = ffmpeg.stdout.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const parsed = parseProgress(line.trim());
+          Object.assign(progressState, parsed);
+
+          // Calculate progress percentage
+          const elapsedTime = progressState.outTimeUs / 1_000_000;
+          const progress = mediaInfo.duration > 0
+            ? Math.min(100, (elapsedTime / mediaInfo.duration) * 100)
+            : 0;
+
+          // Calculate ETA
+          const eta = progressState.speed > 0
+            ? Math.round((mediaInfo.duration - elapsedTime) / progressState.speed)
+            : 0;
+
+          job.onProgress({
+            type: "job:progress",
+            jobId: job.jobId,
+            progress,
+            frame: progressState.frame,
+            fps: progressState.fps,
+            bitrate: progressState.bitrate,
+            totalSize: progressState.totalSize,
+            elapsedTime,
+            speed: progressState.speed,
+            eta,
+          });
+        }
+      }
+    } catch {
+      // Stream closed, ignore
+    }
+  })();
+
+  // Collect stderr
+  const stderrPromise = new Response(ffmpeg.stderr).text();
+
+  // Wait for process to exit
+  const [exitCode, stderr] = await Promise.all([
+    ffmpeg.exited,
+    stderrPromise,
+  ]);
+
+  // Also wait for stdout processing to complete
+  await stdoutReader;
+
+  const duration = (Date.now() - startTime) / 1000;
+
+  if (exitCode !== 0) {
+    // Clean up partial output
+    try {
+      if (fs.existsSync(job.outputPath)) {
+        fs.unlinkSync(job.outputPath);
+      }
+    } catch { /* ignore */ }
+
+    throw new Error(`FFmpeg exited with code ${exitCode}: ${stderr.slice(-500)}`);
+  }
+
+  // Get output file size
+  let outputSize = 0;
+  try {
+    outputSize = fs.statSync(job.outputPath).size;
+  } catch { /* ignore */ }
+
+  const compressionRatio = mediaInfo.fileSize > 0
+    ? mediaInfo.fileSize / outputSize
+    : 1;
+
+  console.log(`[Encoder] Complete: ${(outputSize / 1024 / 1024 / 1024).toFixed(2)}GB (${compressionRatio.toFixed(1)}x compression) in ${duration.toFixed(0)}s`);
+
+  return {
+    outputPath: job.outputPath,
+    outputSize,
+    compressionRatio,
+    duration,
+  };
 }

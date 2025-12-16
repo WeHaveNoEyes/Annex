@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
  * Build script for creating distributable encoder package
  *
@@ -9,13 +9,10 @@
  * - Systemd service template
  */
 
-import * as esbuild from "esbuild";
 import * as fs from "fs";
 import * as path from "path";
-import { execSync } from "child_process";
-import { fileURLToPath } from "url";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = path.dirname(new URL(import.meta.url).pathname);
 const ROOT = path.resolve(__dirname, "..");
 const DIST_DIR = path.join(ROOT, "dist-package");
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf-8"));
@@ -29,40 +26,47 @@ async function build() {
   }
   fs.mkdirSync(DIST_DIR, { recursive: true });
 
-  // Bundle with esbuild
-  console.log("[Build] Bundling with esbuild...");
-  await esbuild.build({
-    entryPoints: [path.join(ROOT, "src/index.ts")],
-    bundle: true,
-    platform: "node",
-    target: "node20",
-    format: "cjs",  // Use CommonJS to avoid dynamic require issues with ws
-    outfile: path.join(DIST_DIR, "encoder.js"),
-    banner: {
-      js: "#!/usr/bin/env node",
-    },
-    // Minify for smaller distribution
+  // Bundle with Bun.build()
+  console.log("[Build] Bundling with Bun...");
+  const result = await Bun.build({
+    entrypoints: [path.join(ROOT, "src/index.ts")],
+    outdir: DIST_DIR,
+    target: "bun",
+    format: "esm",
     minify: false,
-    // Keep names for debugging
-    keepNames: true,
-    // Source maps for debugging
-    sourcemap: true,
+    sourcemap: "external",
+    naming: "encoder.js",
   });
+
+  if (!result.success) {
+    console.error("[Build] Bundle failed:");
+    for (const log of result.logs) {
+      console.error(log);
+    }
+    process.exit(1);
+  }
+
+  // Add shebang to the bundled file
+  const bundledPath = path.join(DIST_DIR, "encoder.js");
+  const bundledContent = fs.readFileSync(bundledPath, "utf-8");
+  fs.writeFileSync(bundledPath, `#!/usr/bin/env bun\n${bundledContent}`);
+  fs.chmodSync(bundledPath, 0o755);
 
   // Create minimal package.json
   const distPackage = {
     name: "annex-encoder",
     version: PKG.version,
     description: PKG.description,
+    type: "module",
     main: "encoder.js",
     bin: {
       "annex-encoder": "./encoder.js",
     },
     scripts: {
-      start: "node encoder.js",
+      start: "bun encoder.js",
     },
     engines: {
-      node: ">=20.0.0",
+      bun: ">=1.0.0",
     },
   };
   fs.writeFileSync(
@@ -87,7 +91,7 @@ User=annex
 Group=annex
 WorkingDirectory=/opt/annex-encoder
 EnvironmentFile=/etc/annex-encoder.env
-ExecStart=/usr/bin/node /opt/annex-encoder/encoder.js
+ExecStart=/usr/local/bin/bun /opt/annex-encoder/encoder.js
 Restart=always
 RestartSec=10
 
@@ -106,12 +110,17 @@ WantedBy=multi-user.target
 `;
   fs.writeFileSync(path.join(DIST_DIR, "annex-encoder.service"), systemdService);
 
-  // Create tarball
+  // Create tarball using Bun shell
   console.log("[Build] Creating tarball...");
   const tarballName = `annex-encoder-${PKG.version}.tar.gz`;
-  execSync(`tar -czf ${tarballName} -C ${DIST_DIR} .`, { cwd: ROOT });
+  const tarProc = Bun.spawn(["tar", "-czf", tarballName, "-C", DIST_DIR, "."], {
+    cwd: ROOT,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  await tarProc.exited;
 
-  // Also create a "latest" symlink-style copy
+  // Also create a "latest" copy
   fs.copyFileSync(
     path.join(ROOT, tarballName),
     path.join(ROOT, "annex-encoder-latest.tar.gz")

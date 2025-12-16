@@ -2,8 +2,7 @@
 
 ## Prerequisites
 
-- Node.js 20+
-- pnpm 9+
+- Bun 1.0+
 - PostgreSQL 14+
 - qBittorrent (optional, for download testing)
 
@@ -12,7 +11,7 @@
 ```bash
 git clone git@github.com:WeHaveNoEyes/Annex.git
 cd Annex
-pnpm install
+bun install
 ```
 
 ## Database Setup
@@ -53,13 +52,13 @@ Optional variables for full functionality:
 ## Run Migrations
 
 ```bash
-pnpm --filter @annex/server prisma migrate dev
+bun run --filter @annex/server db:migrate
 ```
 
 ## Start Development Servers
 
 ```bash
-pnpm dev
+bun run dev
 ```
 
 This starts:
@@ -73,7 +72,7 @@ The frontend proxies API requests to the backend automatically.
 ```
 packages/
 ├── client/     # React frontend (Vite)
-├── server/     # Node.js backend (tRPC + Express)
+├── server/     # Bun backend (tRPC + Bun.serve)
 ├── encoder/    # Remote encoder package
 └── shared/     # Shared TypeScript types
 ```
@@ -82,27 +81,27 @@ packages/
 
 | Command | Description |
 |---------|-------------|
-| `pnpm dev` | Start all dev servers |
-| `pnpm build` | Build all packages |
-| `pnpm start` | Start production server |
-| `pnpm typecheck` | Run TypeScript checks |
-| `pnpm lint` | Run linting |
-| `pnpm clean` | Remove all build artifacts and node_modules |
+| `bun run dev` | Start all dev servers |
+| `bun run build` | Build all packages |
+| `bun run start` | Start production server |
+| `bun run typecheck` | Run TypeScript checks |
+| `bun run lint` | Run linting |
+| `bun run clean` | Remove all build artifacts and node_modules |
 
 ## Database Commands
 
 ```bash
 # Run migrations
-pnpm --filter @annex/server prisma migrate dev
+bun run --filter @annex/server db:migrate
 
 # Open Prisma Studio (database GUI)
-pnpm --filter @annex/server prisma studio
+bunx prisma studio --schema=packages/server/prisma/schema.prisma
 
 # Reset database
-pnpm --filter @annex/server prisma migrate reset
+bunx prisma migrate reset --schema=packages/server/prisma/schema.prisma
 
 # Generate Prisma client after schema changes
-pnpm --filter @annex/server prisma generate
+bun run --filter @annex/server db:generate
 ```
 
 ## Troubleshooting
@@ -137,5 +136,5 @@ psql -U annex -d annex -h localhost
 Regenerate after schema changes:
 
 ```bash
-pnpm --filter @annex/server prisma generate
+bun run --filter @annex/server db:generate
 ```
