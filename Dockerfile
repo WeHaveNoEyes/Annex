@@ -49,7 +49,7 @@ RUN useradd --system --create-home --shell /bin/bash annex
 WORKDIR /app
 
 # Copy built artifacts from builder
-COPY --from=builder /app/packages/server/dist ./server/
+COPY --from=builder /app/packages/server/src ./server/src/
 COPY --from=builder /app/packages/server/prisma ./server/prisma/
 COPY --from=builder /app/packages/server/node_modules ./server/node_modules/
 COPY --from=builder /app/packages/client/dist ./client/

@@ -114,4 +114,4 @@ trap cleanup SIGTERM SIGINT
 # Start server
 echo "[Annex] Starting server on port ${PORT:-3001}..."
 cd /app/server
-exec bun index.js
+exec bun src/index.ts

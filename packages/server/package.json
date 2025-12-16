@@ -3,20 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "./dist/index.js",
+  "main": "./src/index.ts",
   "exports": {
-    ".": "./dist/index.js",
-    "./routers": {
-      "types": "./src/routers/index.ts",
-      "default": "./src/routers/index.ts"
-    }
+    ".": "./src/index.ts",
+    "./routers": "./src/routers/index.ts"
   },
   "scripts": {
     "dev": "bun --watch --env-file=.env src/index.ts",
-    "build": "bunx prisma generate && tsc",
-    "start": "bun dist/index.js",
-    "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit",
+    "build": "bunx prisma generate",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc",
     "test": "bun test",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
