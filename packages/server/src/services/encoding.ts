@@ -8,13 +8,12 @@
 
 import { spawn } from "child_process";
 import { promises as fs } from "fs";
-import { dirname, basename, extname } from "path";
+import { basename, extname } from "path";
 import { prisma } from "../db/client.js";
 import { getConfig } from "../config/index.js";
 import {
   videoEncoders,
   audioEncoders,
-  validateEncoderFlags,
   type VideoEncoderInfo,
   type AudioEncoderInfo,
 } from "./encoderRegistry.js";

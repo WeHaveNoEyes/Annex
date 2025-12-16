@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { router, publicProcedure } from "../trpc.js";
 import { prisma } from "../db/client.js";
-import { getTraktService, type TraktSeasonDetails, type TraktEpisodeDetails } from "../services/trakt.js";
+import { getTraktService, type TraktEpisodeDetails } from "../services/trakt.js";
 import { getJobQueueService } from "../services/jobQueue.js";
 import type { TrendingResult } from "@annex/shared";
 

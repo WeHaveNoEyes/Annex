@@ -5,7 +5,7 @@
  * Also triggers library scans on Plex/Emby after delivery.
  */
 
-import { spawn, ChildProcess } from "child_process";
+import { spawn } from "child_process";
 import { promises as fs } from "fs";
 import { createHash } from "crypto";
 import { createReadStream } from "fs";
@@ -98,7 +98,7 @@ class DeliveryService {
     try {
       const stats = await fs.stat(localPath);
       fileSize = stats.size;
-    } catch (error) {
+    } catch {
       return {
         success: false,
         serverId,
@@ -473,7 +473,6 @@ class DeliveryService {
       }
 
       let bytesTransferred = 0;
-      const lastProgressTime = Date.now();
 
       // Parse rsync progress output
       process.stdout?.on("data", (data) => {
@@ -579,10 +578,6 @@ class DeliveryService {
     const startTime = Date.now();
 
     return new Promise((resolve) => {
-      // SMB path format: //server/share/path
-      const remoteDir = dirname(remotePath);
-      const remoteFile = remotePath.split("/").pop();
-
       // Build smbclient command
       // Format: smbclient //server/share -U username%password -c "mkdir path; put localfile remotefile"
       const sharePath = `//${server.host}/${remotePath.split("/")[1]}`;

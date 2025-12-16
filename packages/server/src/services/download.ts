@@ -66,29 +66,7 @@ export type DownloadState =
   | "error"
   | "unknown";
 
-interface QBTorrentState {
-  allocating: DownloadState;
-  checkingDL: DownloadState;
-  checkingResumeData: DownloadState;
-  checkingUP: DownloadState;
-  downloading: DownloadState;
-  error: DownloadState;
-  forcedDL: DownloadState;
-  forcedMetaDL: DownloadState;
-  forcedUP: DownloadState;
-  metaDL: DownloadState;
-  missingFiles: DownloadState;
-  moving: DownloadState;
-  pausedDL: DownloadState;
-  pausedUP: DownloadState;
-  queuedDL: DownloadState;
-  queuedUP: DownloadState;
-  stalledDL: DownloadState;
-  stalledUP: DownloadState;
-  uploading: DownloadState;
-  unknown: DownloadState;
-}
-
+// Map qBittorrent state strings to our internal DownloadState
 const STATE_MAP: Record<string, DownloadState> = {
   allocating: "queued",
   checkingDL: "checking",

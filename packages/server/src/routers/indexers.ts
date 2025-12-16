@@ -5,7 +5,6 @@ import { IndexerType } from "@prisma/client";
 import { getIndexerService } from "../services/indexer.js";
 import {
   getTorrentLeechProvider,
-  clearTorrentLeechProvider,
   TORRENTLEECH_CATEGORIES,
   TORRENTLEECH_CATEGORY_GROUPS,
 } from "../services/torrentleech.js";

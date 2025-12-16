@@ -144,7 +144,7 @@ class SchedulerService {
         task.lastRun = new Date();
         console.log(`[Scheduler] New task ${task.name}: first run in ${Math.round(task.intervalMs / 1000)}s`);
       }
-    } catch (error) {
+    } catch {
       // If database is not ready yet, set lastRun to now to be safe
       task.lastRun = new Date();
       console.warn(`[Scheduler] DB not ready for ${task.name}, deferring first run`);

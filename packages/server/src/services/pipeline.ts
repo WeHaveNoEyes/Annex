@@ -25,7 +25,6 @@ import { getTraktService } from "./trakt.js";
 import { getEncoderDispatchService } from "./encoderDispatch.js";
 import {
   downloadManager,
-  rankReleases,
 } from "./downloadManager.js";
 import {
   deriveRequiredResolution,
@@ -42,7 +41,7 @@ import {
   extractRar,
   isSampleFile,
 } from "./archive.js";
-import { RequestStatus, MediaType, ActivityType, DownloadStatus, TvEpisodeStatus, Prisma, type MediaRequest, type StorageServer, type EncodingProfile, type Download } from "@prisma/client";
+import { RequestStatus, MediaType, ActivityType, DownloadStatus, TvEpisodeStatus, Prisma, type MediaRequest, type StorageServer, type EncodingProfile } from "@prisma/client";
 
 // =============================================================================
 // Types
@@ -689,7 +688,7 @@ async function handleDownload(payload: DownloadPayload, jobId: string): Promise<
  * Handle encoding stage: Encode video with per-server profile settings
  */
 async function handleEncode(payload: EncodePayload, jobId: string): Promise<void> {
-  const { requestId, downloadId, sourceFilePath } = payload;
+  const { requestId, sourceFilePath } = payload;
   const jobQueue = getJobQueueService();
 
   // Check if cancelled
@@ -1013,7 +1012,7 @@ async function handleEncode(payload: EncodePayload, jobId: string): Promise<void
  * Handle delivery stage: Transfer to storage servers
  */
 async function handleDeliver(payload: DeliverPayload, jobId: string): Promise<void> {
-  const { requestId, encodedFilePath, profileId, resolution, codec, targetServerIds } = payload;
+  const { requestId, encodedFilePath, resolution, codec, targetServerIds } = payload;
   const jobQueue = getJobQueueService();
 
   // Check if cancelled

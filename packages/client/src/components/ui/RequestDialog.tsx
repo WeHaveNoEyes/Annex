@@ -62,7 +62,8 @@ function RequestDialog({
       createMovieMutation.reset();
       createTvMutation.reset();
     }
-  }, [isOpen]);
+    // Mutations are stable references from tRPC, safe to include
+  }, [isOpen, createMovieMutation, createTvMutation]);
 
   const toggleServer = (serverId: string) => {
     setServerSelections((prev) => {

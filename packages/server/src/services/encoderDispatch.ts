@@ -78,8 +78,9 @@ function translateToRemotePath(serverPath: string): string {
 
 /**
  * Translate a remote encoder path back to the server path
+ * Currently unused but kept for potential future use (e.g., verifying output paths)
  */
-function translateToServerPath(remotePath: string): string {
+function _translateToServerPath(remotePath: string): string {
   for (const mapping of PATH_MAPPINGS) {
     if (remotePath.startsWith(mapping.remote)) {
       return remotePath.replace(mapping.remote, mapping.server);
@@ -468,7 +469,7 @@ class EncoderDispatchService {
       await this.tryAssignPendingJobs();
     } else {
       // No more retries - mark as failed
-      const updatedAssignment = await prisma.encoderAssignment.update({
+      await prisma.encoderAssignment.update({
         where: { jobId: msg.jobId },
         data: {
           status: "FAILED",

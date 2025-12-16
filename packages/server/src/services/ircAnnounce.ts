@@ -308,7 +308,7 @@ class IrcAnnounceMonitor {
   private async handleAnnounce(message: string): Promise<void> {
     // Parse TorrentLeech announce format:
     // New Torrent Announcement: <Category> Name:'Torrent Name' uploaded by 'Uploader' - http://torrentleech.org/torrent/123456
-    const pattern = /^New Torrent Announcement:\s*<([^>]*)>\s*Name:'(.*)' uploaded by '([^']*)'\s*-\s*https?:\/\/([^\/]+\/)torrent\/(\d+)/;
+    const pattern = /^New Torrent Announcement:\s*<([^>]*)>\s*Name:'(.*)' uploaded by '([^']*)'\s*-\s*https?:\/\/([^/]+\/)torrent\/(\d+)/;
     const match = message.match(pattern);
 
     if (!match) {

@@ -65,14 +65,6 @@ const releaseSchema = z.object({
 // Helpers
 // =============================================================================
 
-function toMediaType(value: string): MediaType {
-  const map: Record<string, MediaType> = {
-    movie: MediaType.MOVIE,
-    tv: MediaType.TV,
-  };
-  return map[value] ?? MediaType.MOVIE;
-}
-
 function toRequestStatus(value: string): RequestStatus {
   const map: Record<string, RequestStatus> = {
     pending: RequestStatus.PENDING,

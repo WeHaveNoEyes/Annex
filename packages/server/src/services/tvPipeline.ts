@@ -11,7 +11,7 @@
 
 import { prisma } from "../db/client.js";
 import { getJobQueueService, type JobType } from "./jobQueue.js";
-import { getIndexerService, type Release } from "./indexer.js";
+import { getIndexerService } from "./indexer.js";
 import { getDownloadService } from "./download.js";
 import { getEncodingService } from "./encoding.js";
 import { getDeliveryService } from "./delivery.js";
@@ -22,7 +22,6 @@ import {
   downloadManager,
   normalizeTitle,
   parseTorrentName,
-  rankReleases,
 } from "./downloadManager.js";
 import {
   deriveRequiredResolution,
@@ -48,7 +47,6 @@ import {
   Prisma,
   type MediaRequest,
   type TvEpisode,
-  type Download,
   type StorageServer,
   type EncodingProfile,
 } from "@prisma/client";
@@ -128,7 +126,8 @@ function formatBytes(bytes: number): string {
   return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }
 
-function formatDuration(seconds: number): string {
+// Utility for formatting durations - kept for future logging use
+function _formatDuration(seconds: number): string {
   if (seconds < 60) return `${Math.round(seconds)}s`;
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
   const hours = Math.floor(seconds / 3600);

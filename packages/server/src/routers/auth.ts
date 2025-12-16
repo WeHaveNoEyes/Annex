@@ -83,7 +83,7 @@ export const authRouter = router({
         pinId: z.string(),
       })
     )
-    .mutation(async ({ input, ctx }) => {
+    .mutation(async ({ input }) => {
       // Check if PIN has been authorized
       const authToken = await checkPlexPin(input.pinId);
 

@@ -16,7 +16,6 @@ import {
   DownloadStatus,
   TvEpisodeStatus,
   type Download,
-  type TvEpisode,
 } from "@prisma/client";
 import type {
   ParsedTorrent,

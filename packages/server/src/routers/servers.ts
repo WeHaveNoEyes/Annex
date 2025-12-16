@@ -348,8 +348,8 @@ export const serversRouter = router({
   /**
    * Test connection to a storage server
    */
-  test: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
-    // TODO: Implement actual connection test
+  test: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input: _input }) => {
+    // TODO: Implement actual connection test using _input.id
     return {
       success: true,
       message: "Connection successful",
@@ -578,8 +578,8 @@ export const serversRouter = router({
       });
 
       // For TV shows, also get episode counts per server
-      let episodeCounts: Map<string, number> = new Map();
-      let totalEpisodeCounts: Map<number, number> = new Map();
+      const episodeCounts: Map<string, number> = new Map();
+      const totalEpisodeCounts: Map<number, number> = new Map();
 
       if (tvIds.length > 0) {
         // Get episode counts from EpisodeLibraryItem grouped by tmdbId and serverId

@@ -77,9 +77,12 @@ export function PopcornParticles({ trigger, originX, originY, spread = 60 }: Pop
     };
   }, [trigger, originX, originY, spread]);
 
+  // Track whether we have active particles (for animation loop dependency)
+  const hasParticles = particles.length > 0;
+
   // Physics animation loop
   useEffect(() => {
-    if (particles.length === 0) {
+    if (!hasParticles) {
       lastTimeRef.current = 0;
       return;
     }
@@ -137,7 +140,7 @@ export function PopcornParticles({ trigger, originX, originY, spread = 60 }: Pop
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [particles.length > 0]);
+  }, [hasParticles]);
 
   if (particles.length === 0) return null;
 
