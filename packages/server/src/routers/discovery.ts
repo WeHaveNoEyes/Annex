@@ -2,6 +2,7 @@ import { z } from "zod";
 import { router, publicProcedure } from "../trpc.js";
 import { prisma } from "../db/client.js";
 import { getTraktService, type TraktSeasonDetails, type TraktEpisodeDetails } from "../services/trakt.js";
+import { getJobQueueService } from "../services/jobQueue.js";
 import type { TrendingResult } from "@annex/shared";
 
 const ITEMS_PER_PAGE = 20;
@@ -397,6 +398,33 @@ export const discoveryRouter = router({
 
         // Trakt doesn't give us total count, estimate based on whether we got a full page
         const hasMore = traktItems.length === ITEMS_PER_PAGE;
+
+        // Queue background job to hydrate items without ratings
+        // This runs asynchronously and doesn't block the response
+        const itemsToHydrate = traktItems
+          .filter((item) => {
+            const localId = `tmdb-${item.type}-${item.tmdbId}`;
+            const local = localMap.get(localId);
+            // Hydrate if no local data or no ratings
+            return !local || !local.ratings;
+          })
+          .map((item) => ({
+            tmdbId: item.tmdbId,
+            type: item.type as "movie" | "tv",
+          }));
+
+        if (itemsToHydrate.length > 0) {
+          // Fire and forget - queue job in background
+          const jobQueue = getJobQueueService();
+          jobQueue.addJobIfNotExists(
+            "mdblist:hydrate-discover",
+            { items: itemsToHydrate },
+            `mdblist:hydrate-discover:${input.type}:${input.listType}:${input.page}`,
+            { priority: 1, maxAttempts: 2 }
+          ).catch((err) => {
+            console.error("[Discover] Failed to queue hydration job:", err);
+          });
+        }
 
         return {
           configured: true,

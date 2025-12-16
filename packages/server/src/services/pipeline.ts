@@ -1260,10 +1260,10 @@ export function registerPipelineHandlers(): void {
 export async function startPipeline(requestId: string): Promise<void> {
   const jobQueue = getJobQueueService();
 
-  // Check if this is a TV request - route to TV pipeline
+  // Check request type and if there's a pre-selected release
   const request = await prisma.mediaRequest.findUnique({
     where: { id: requestId },
-    select: { type: true },
+    select: { type: true, selectedRelease: true },
   });
 
   if (request?.type === MediaType.TV) {
@@ -1282,7 +1282,45 @@ export async function startPipeline(requestId: string): Promise<void> {
     return;
   }
 
-  // Movies use the standard pipeline
+  // If there's a pre-selected release (e.g., user accepted lower quality), skip to download
+  if (request?.selectedRelease) {
+    const release = request.selectedRelease as unknown as Release;
+    console.log(`[Pipeline] Using pre-selected release for ${requestId}: ${release.title}`);
+
+    await prisma.mediaRequest.update({
+      where: { id: requestId },
+      data: {
+        status: RequestStatus.SEARCHING,
+        progress: 15,
+        currentStep: `Using selected release: ${release.title}`,
+      },
+    });
+
+    // Create Download using the download manager
+    const download = await downloadManager.createDownload({
+      requestId,
+      mediaType: MediaType.MOVIE,
+      release,
+    });
+
+    if (download) {
+      await jobQueue.addJob("pipeline:movie-download" as JobType, {
+        requestId,
+        downloadId: download.id,
+      } as MovieDownloadPayload, { priority: 5, maxAttempts: 3 });
+    } else {
+      // Fallback to legacy handler if createDownload fails
+      await jobQueue.addJob("pipeline:download" as JobType, {
+        requestId,
+        release,
+      } as DownloadPayload, { priority: 5, maxAttempts: 3 });
+    }
+
+    console.log(`[Pipeline] Started pipeline from download step for request ${requestId}`);
+    return;
+  }
+
+  // Movies use the standard pipeline - start from search
   await jobQueue.addJob("pipeline:search" as JobType, {
     requestId,
   } as SearchPayload, { priority: 10, maxAttempts: 3 });

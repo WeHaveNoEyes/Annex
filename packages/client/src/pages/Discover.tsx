@@ -226,6 +226,15 @@ export default function DiscoverPage() {
     }
   );
 
+  // Check request status for displayed items
+  const requestStatusQuery = trpc.servers.checkRequested.useQuery(
+    { items: itemsToCheck },
+    {
+      enabled: itemsToCheck.length > 0,
+      staleTime: 30000, // Cache for 30 seconds (requests change more frequently)
+    }
+  );
+
   // Get library info for a specific item
   const getLibraryInfo = useCallback(
     (type: "movie" | "tv", tmdbId: number): LibraryInfo | null => {
@@ -234,6 +243,16 @@ export default function DiscoverPage() {
       return info || null;
     },
     [libraryStatusQuery.data]
+  );
+
+  // Get request status for a specific item
+  const getRequestStatus = useCallback(
+    (type: "movie" | "tv", tmdbId: number): string | null => {
+      const key = `${type}-${tmdbId}`;
+      const info = requestStatusQuery.data?.requested[key];
+      return info?.status || null;
+    },
+    [requestStatusQuery.data]
   );
 
   // Accumulate results when new data arrives
@@ -594,6 +613,7 @@ export default function DiscoverPage() {
                     ratings={item.ratings}
                     trailerKey={item.trailerKey}
                     inLibrary={getLibraryInfo(item.type, item.tmdbId)}
+                    requestStatus={getRequestStatus(item.type, item.tmdbId)}
                   />
                 ))}
               </div>

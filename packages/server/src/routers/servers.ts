@@ -680,6 +680,67 @@ export const serversRouter = router({
     }),
 
   /**
+   * Check if media items have been requested (not yet in library)
+   * Used by Discover page to show "Requested" badges
+   */
+  checkRequested: publicProcedure
+    .input(
+      z.object({
+        items: z.array(
+          z.object({
+            tmdbId: z.number(),
+            type: z.enum(["movie", "tv"]),
+          })
+        ),
+      })
+    )
+    .query(async ({ input }) => {
+      if (input.items.length === 0) {
+        return { requested: {} };
+      }
+
+      // Group items by type for efficient querying
+      const movieIds = input.items
+        .filter((i) => i.type === "movie")
+        .map((i) => i.tmdbId);
+      const tvIds = input.items
+        .filter((i) => i.type === "tv")
+        .map((i) => i.tmdbId);
+
+      // Query active requests (not completed/failed)
+      const requests = await prisma.mediaRequest.findMany({
+        where: {
+          OR: [
+            movieIds.length > 0
+              ? { tmdbId: { in: movieIds }, type: MediaType.MOVIE }
+              : { tmdbId: -1 },
+            tvIds.length > 0
+              ? { tmdbId: { in: tvIds }, type: MediaType.TV }
+              : { tmdbId: -1 },
+          ],
+          status: {
+            notIn: ["COMPLETED", "FAILED"],
+          },
+        },
+        select: {
+          tmdbId: true,
+          type: true,
+          status: true,
+        },
+      });
+
+      // Build a map of tmdbId-type -> request status
+      const requested: Record<string, { status: string }> = {};
+
+      for (const req of requests) {
+        const key = `${req.type.toLowerCase()}-${req.tmdbId}`;
+        requested[key] = { status: req.status };
+      }
+
+      return { requested };
+    }),
+
+  /**
    * Get list of servers with media server configured (for library browser)
    */
   listWithMediaServer: publicProcedure.query(async () => {

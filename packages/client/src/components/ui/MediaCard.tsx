@@ -38,6 +38,8 @@ interface MediaCardProps extends HTMLAttributes<HTMLDivElement> {
   trailerKey?: string | null;
   /** Info about which library servers have this item */
   inLibrary?: LibraryInfo | null;
+  /** Request status if item has been requested but not yet available */
+  requestStatus?: string | null;
 }
 
 // Rating badge component
@@ -61,6 +63,20 @@ function RatingBadge({
   );
 }
 
+// Format request status for display
+function formatRequestStatus(status: string): string {
+  const statusMap: Record<string, string> = {
+    PENDING: "Pending",
+    SEARCHING: "Searching",
+    AWAITING: "Awaiting",
+    QUALITY_UNAVAILABLE: "No Quality Match",
+    DOWNLOADING: "Downloading",
+    ENCODING: "Encoding",
+    DELIVERING: "Delivering",
+  };
+  return statusMap[status] || status;
+}
+
 const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
   (
     {
@@ -73,6 +89,7 @@ const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
       ratings,
       trailerKey,
       inLibrary,
+      requestStatus,
       className = "",
       ...props
     },
@@ -245,6 +262,24 @@ const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
               </div>
             )}
 
+            {/* Request status badge - top left corner (only if not in library) */}
+            {!isInLibrary && requestStatus && (
+              <div className="absolute top-2 left-2 z-10">
+                <div className="bg-annex-500/90 text-white text-xs px-1.5 py-0.5 rounded flex items-center gap-1 shadow-lg">
+                  <svg className="w-3 h-3 flex-shrink-0 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <span className="font-medium">
+                    {formatRequestStatus(requestStatus)}
+                  </span>
+                </div>
+              </div>
+            )}
+
             {/* MDBList score badge - top right corner */}
             {ratings?.mdblistScore && ratings.mdblistScore > 0 && (
               <Tooltip content="MDBList Score">
@@ -265,7 +300,7 @@ const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
             )}
 
             {/* Hover overlay with quick actions */}
-            <div className="absolute inset-0 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col p-4">
+            <div className="absolute inset-0 z-20 bg-black/80 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col p-4">
               {/* Ratings section - top */}
               {availableRatings.length > 0 && (
                 <div className="flex flex-col gap-1.5">

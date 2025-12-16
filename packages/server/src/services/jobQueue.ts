@@ -17,6 +17,7 @@ import type { Job } from "@prisma/client";
 export type JobType =
   | "library:sync"
   | "library:sync-server"
+  | "mdblist:hydrate-discover"
   | "pipeline:search"
   | "pipeline:download"
   | "pipeline:encode"
@@ -30,6 +31,10 @@ export type JobType =
 interface LibrarySyncServerPayload {
   serverId: string;
   sinceDate?: string; // ISO date string for incremental sync
+}
+
+interface MDBListHydratePayload {
+  items: Array<{ tmdbId: number; type: "movie" | "tv" }>;
 }
 
 // Generic payload type - specific types are defined in their respective services
@@ -83,6 +88,19 @@ class JobQueueService {
       const result = await syncServerLibrary(serverId, {
         sinceDate: sinceDate ? new Date(sinceDate) : undefined,
       });
+      return result;
+    });
+
+    this.registerHandler("mdblist:hydrate-discover", async (payload) => {
+      const { items } = payload as MDBListHydratePayload;
+      if (!items || items.length === 0) {
+        return { success: 0, failed: 0, skipped: 0 };
+      }
+
+      const { getMDBListService } = await import("./mdblist.js");
+      const mdblist = getMDBListService();
+      const result = await mdblist.batchHydrateMediaItems(items);
+      console.log(`[MDBList] Hydrated discover items: ${result.success} success, ${result.failed} failed, ${result.skipped} skipped`);
       return result;
     });
   }

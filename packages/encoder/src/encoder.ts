@@ -26,13 +26,35 @@ export interface EncodeResult {
   duration: number;
 }
 
+interface SubtitleStream {
+  index: number;
+  codec: string;
+  language?: string;
+}
+
 interface MediaInfo {
   duration: number;
   width: number;
   height: number;
   fps: number;
   fileSize: number;
+  subtitleStreams: SubtitleStream[];
 }
+
+// Subtitle codecs that can be directly copied into MKV
+// Note: mov_text (MP4 text subs) and ttml CANNOT be copied to MKV - they require conversion
+const MKV_COMPATIBLE_SUBTITLE_CODECS = new Set([
+  "ass",
+  "ssa",
+  "subrip",
+  "srt",
+  "webvtt",
+  "dvd_subtitle",
+  "dvdsub",
+  "hdmv_pgs_subtitle",
+  "pgssub",
+  "dvb_subtitle",
+]);
 
 /**
  * Probe a media file to get its properties
@@ -80,12 +102,22 @@ export async function probeMedia(filePath: string): Promise<MediaInfo> {
           if (den > 0) fps = num / den;
         }
 
+        // Parse subtitle streams
+        const subtitleStreams: SubtitleStream[] = (data.streams || [])
+          .filter((s: { codec_type: string }) => s.codec_type === "subtitle")
+          .map((s: { index: number; codec_name: string; tags?: { language?: string } }) => ({
+            index: s.index,
+            codec: s.codec_name || "unknown",
+            language: s.tags?.language,
+          }));
+
         resolve({
           duration: parseFloat(data.format?.duration || "0"),
           width: videoStream.width || 1920,
           height: videoStream.height || 1080,
           fps: fps,
           fileSize: parseInt(data.format?.size || "0", 10),
+          subtitleStreams,
         });
       } catch (e) {
         reject(new Error(`Failed to parse ffprobe output: ${e}`));
@@ -129,6 +161,16 @@ function buildFfmpegArgs(
   // Input
   args.push("-i", inputPath);
 
+  // Explicit stream mapping - video and audio
+  args.push("-map", "0:v:0"); // First video stream
+  args.push("-map", "0:a?");  // All audio streams (optional)
+
+  // Map compatible subtitle streams (or skip entirely)
+  const { subArgs, hasCompatibleSubs } = buildSubtitleMapping(mediaInfo);
+  if (hasCompatibleSubs) {
+    args.push(...subArgs);
+  }
+
   // Video encoding
   const videoArgs = buildVideoArgs(profile, mediaInfo, gpuDevice);
   args.push(...videoArgs);
@@ -137,13 +179,54 @@ function buildFfmpegArgs(
   const audioArgs = buildAudioArgs(profile);
   args.push(...audioArgs);
 
-  // Subtitles
-  args.push("-c:s", "copy");
+  // Subtitle codec settings
+  if (hasCompatibleSubs) {
+    args.push("-c:s", "copy");
+  }
 
   // Output
   args.push(outputPath);
 
   return args;
+}
+
+/**
+ * Build subtitle stream mapping - only include MKV-compatible subtitle streams
+ */
+function buildSubtitleMapping(mediaInfo: MediaInfo): { subArgs: string[]; hasCompatibleSubs: boolean } {
+  const subArgs: string[] = [];
+
+  if (mediaInfo.subtitleStreams.length === 0) {
+    return { subArgs: [], hasCompatibleSubs: false };
+  }
+
+  // Filter to only compatible subtitle codecs
+  const compatibleSubs = mediaInfo.subtitleStreams.filter((sub) =>
+    MKV_COMPATIBLE_SUBTITLE_CODECS.has(sub.codec.toLowerCase())
+  );
+
+  if (compatibleSubs.length === 0) {
+    // No compatible subtitles
+    console.log(`[Encoder] Skipping ${mediaInfo.subtitleStreams.length} incompatible subtitle stream(s): ${mediaInfo.subtitleStreams.map(s => s.codec).join(", ")}`);
+    return { subArgs: [], hasCompatibleSubs: false };
+  }
+
+  // Log what we're doing
+  const skipped = mediaInfo.subtitleStreams.length - compatibleSubs.length;
+  if (skipped > 0) {
+    const skippedCodecs = mediaInfo.subtitleStreams
+      .filter((sub) => !MKV_COMPATIBLE_SUBTITLE_CODECS.has(sub.codec.toLowerCase()))
+      .map((s) => s.codec);
+    console.log(`[Encoder] Skipping ${skipped} incompatible subtitle stream(s): ${skippedCodecs.join(", ")}`);
+  }
+  console.log(`[Encoder] Including ${compatibleSubs.length} compatible subtitle stream(s): ${compatibleSubs.map(s => s.codec).join(", ")}`);
+
+  // Map only compatible subtitle streams
+  for (const sub of compatibleSubs) {
+    subArgs.push("-map", `0:${sub.index}`);
+  }
+
+  return { subArgs, hasCompatibleSubs: true };
 }
 
 /**
@@ -204,7 +287,20 @@ function buildVideoArgs(
       // Skip rc_mode since it's already set above for VAAPI
       if (key === "rc_mode") continue;
       if (value !== null && value !== undefined && value !== "") {
-        args.push(`-${key}`, String(value));
+        let flagValue = String(value);
+
+        // For av1_vaapi, compression_level must be 0-7
+        if (hwAccel === "VAAPI" && key === "compression_level") {
+          const level = parseInt(flagValue, 10);
+          if (!isNaN(level)) {
+            flagValue = String(Math.min(7, Math.max(0, level)));
+            if (flagValue !== String(value)) {
+              console.log(`[Encoder] Clamped compression_level ${value} -> ${flagValue} for av1_vaapi`);
+            }
+          }
+        }
+
+        args.push(`-${key}`, flagValue);
       }
     }
   }
