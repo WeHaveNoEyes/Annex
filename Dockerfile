@@ -22,7 +22,7 @@ RUN bun install --frozen-lockfile --omit=optional
 # Copy source code
 COPY . .
 
-# Build all packages
+# Build all packages (server builds first to generate Prisma types)
 RUN bun run build
 
 # Prune dev dependencies for smaller image
