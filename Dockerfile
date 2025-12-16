@@ -16,8 +16,8 @@ COPY packages/server/package.json packages/server/
 COPY packages/client/package.json packages/client/
 COPY packages/encoder/package.json packages/encoder/
 
-# Install dependencies (skip optional native deps that may fail to build)
-RUN bun install --frozen-lockfile --omit=optional
+# Install dependencies
+RUN bun install --frozen-lockfile
 
 # Copy source code
 COPY . .
