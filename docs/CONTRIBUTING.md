@@ -6,8 +6,7 @@ Thank you for your interest in contributing to Annex! This guide will help you g
 
 ### Prerequisites
 
-- Node.js 20+
-- pnpm 9.14+
+- Bun 1.0+
 - PostgreSQL database
 - Git
 
@@ -23,7 +22,7 @@ Thank you for your interest in contributing to Annex! This guide will help you g
 2. Install dependencies:
 
    ```bash
-   pnpm install
+   bun install
    ```
 
 3. Set up your environment:
@@ -36,26 +35,24 @@ Thank you for your interest in contributing to Annex! This guide will help you g
 4. Run database migrations:
 
    ```bash
-   pnpm prisma migrate dev
+   bunx prisma migrate dev
    ```
 
 5. Start the development servers:
 
    ```bash
-   pnpm dev
+   bun run dev
    ```
 
    This starts both the backend (port 3000) and frontend (port 5173).
 
 ## Code Style
 
-We use ESLint and Prettier to maintain consistent code style. Before submitting a PR:
+We use ESLint to maintain consistent code style. Before submitting a PR:
 
 ```bash
-pnpm lint        # Check for linting errors
-pnpm lint:fix    # Auto-fix linting errors
-pnpm format      # Format code with Prettier
-pnpm typecheck   # Verify TypeScript types
+bun run lint       # Check for linting errors
+bun run typecheck  # Verify TypeScript types
 ```
 
 ### Guidelines
@@ -94,9 +91,9 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`
 3. Ensure all checks pass:
 
    ```bash
-   pnpm lint
-   pnpm typecheck
-   pnpm build
+   bun run lint
+   bun run typecheck
+   bun run build
    ```
 
 4. Push your branch and open a PR against `main`
@@ -110,7 +107,7 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`
 ```
 packages/
   client/     # React frontend (Vite, Tailwind)
-  server/     # Node.js backend (tRPC, Prisma)
+  server/     # Bun backend (tRPC, Prisma)
   encoder/    # Remote encoder package
   shared/     # Shared TypeScript types
 ```

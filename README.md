@@ -1,6 +1,6 @@
 # Annex
 
-Unified media acquisition platform replacing Jellyseerr, Radarr, Sonarr & Prowlarr. Handles discovery, requests, downloading, AV1 encoding via remote hardware encoders, and delivery to storage servers. Tight Plex/Emby integration for library awareness. Built with React, Node.js, tRPC & PostgreSQL.
+Unified media acquisition platform replacing Jellyseerr, Radarr, Sonarr & Prowlarr. Handles discovery, requests, downloading, AV1 encoding via remote hardware encoders, and delivery to storage servers. Tight Plex/Emby integration for library awareness. Built with React, Bun, tRPC & PostgreSQL.
 
 ## What Annex Replaces
 
@@ -58,7 +58,7 @@ Annex Server ←──WebSocket──→ Encoder 1 (Intel Arc)
 ## Tech Stack
 
 - **Frontend**: React, TypeScript, Vite, Tailwind CSS
-- **Backend**: Node.js, TypeScript, tRPC, PostgreSQL, Prisma
+- **Backend**: Bun, TypeScript, tRPC, PostgreSQL, Prisma
 - **Encoding**: FFmpeg with VAAPI (Intel Arc AV1)
 - **Communication**: tRPC (HTTP + WebSocket subscriptions)
 
@@ -82,15 +82,15 @@ See [Docker Deployment](docs/deployment.md) for more options including external 
 
 ### Manual Installation
 
-Prerequisites: Node.js 20+, pnpm 9+, PostgreSQL, qBittorrent
+Prerequisites: Bun 1.0+, PostgreSQL, qBittorrent
 
 ```bash
 git clone https://github.com/WeHaveNoEyes/Annex.git
 cd Annex
-pnpm install
+bun install
 cp .env.example .env  # Edit with your configuration
-pnpm prisma migrate deploy
-pnpm build && pnpm start
+bunx prisma migrate deploy
+bun run build && bun run start
 ```
 
 Access the web UI at `http://localhost:3000`
@@ -99,7 +99,7 @@ Access the web UI at `http://localhost:3000`
 
 ```bash
 # Start development servers
-pnpm dev
+bun run dev
 ```
 
 This starts:
@@ -140,7 +140,7 @@ See [docs/](docs/) for more details.
 annex/
 ├── packages/
 │   ├── client/          # React frontend (Vite)
-│   ├── server/          # Node.js backend (tRPC)
+│   ├── server/          # Bun backend (tRPC)
 │   ├── encoder/         # Remote encoder package
 │   └── shared/          # Shared TypeScript types
 ├── scripts/             # Deployment scripts
@@ -167,7 +167,7 @@ After=network.target postgresql.service
 Type=simple
 User=annex
 WorkingDirectory=/opt/annex
-ExecStart=/usr/bin/node packages/server/dist/index.js
+ExecStart=/usr/local/bin/bun packages/server/src/index.ts
 Restart=on-failure
 Environment=NODE_ENV=production
 

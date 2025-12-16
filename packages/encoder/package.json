@@ -3,15 +3,12 @@
   "version": "0.1.0",
   "description": "Remote encoder client for Annex media platform",
   "type": "module",
-  "main": "dist/index.js",
-  "bin": {
-    "annex-encoder": "./dist/index.js"
-  },
+  "main": "./src/index.ts",
   "scripts": {
-    "build": "tsc",
-    "build:dist": "bun scripts/build-dist.js",
-    "start": "bun dist/index.js",
-    "dev": "bun --watch src/index.ts"
+    "build": "bun scripts/build-dist.js",
+    "start": "bun src/index.ts",
+    "dev": "bun --watch src/index.ts",
+    "typecheck": "tsc"
   },
   "dependencies": {
     "@annex/shared": "workspace:*",
