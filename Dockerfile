@@ -7,6 +7,12 @@
 # =============================================================================
 FROM oven/bun:1 AS builder
 
+# Install build tools for native dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 # Copy package files for dependency installation
