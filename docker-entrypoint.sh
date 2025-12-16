@@ -83,7 +83,7 @@ if [ "$USE_INTERNAL_ENCODER" = "true" ]; then
   fi
 
   # Start encoder in background
-  bun /app/encoder/index.js &
+  bun /app/encoder/encoder.js &
   ENCODER_PID=$!
   echo "[Annex] Internal encoder started (PID: $ENCODER_PID)"
 fi

@@ -7,11 +7,15 @@
 # =============================================================================
 FROM oven/bun:1 AS builder
 
-# Install build tools for native dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Install build tools for native dependencies (including Node.js for node-gyp headers)
+RUN apt-get update && apt-get install -y \
+    build-essential \
     python3 \
     make \
     g++ \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -60,7 +64,7 @@ COPY --from=builder /app/packages/server/src ./server/src/
 COPY --from=builder /app/packages/server/prisma ./server/prisma/
 COPY --from=builder /app/packages/server/node_modules ./server/node_modules/
 COPY --from=builder /app/packages/client/dist ./client/
-COPY --from=builder /app/packages/encoder/dist ./encoder/
+COPY --from=builder /app/packages/encoder/dist-package ./encoder/
 COPY --from=builder /app/node_modules ./node_modules/
 
 # Copy entrypoint

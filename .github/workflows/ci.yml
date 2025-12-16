@@ -86,5 +86,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Generate Prisma client
+        run: bunx prisma generate
+        working-directory: packages/server
+
       - name: Build all packages
         run: bun run build
