@@ -16,6 +16,8 @@ Unified media acquisition platform replacing Jellyseerr, Radarr, Sonarr & Prowla
 
 - [Docker Deployment](docs/deployment.md) - Deploy with Docker (recommended)
 - [Development Setup](docs/development.md) - Local development environment
+- [Contributing](docs/contributing.md) - Contribution guidelines
+- [Code of Conduct](docs/code-of-conduct.md) - Community guidelines
 
 ## Features
 
