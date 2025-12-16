@@ -7,12 +7,6 @@
 # =============================================================================
 FROM oven/bun:1 AS builder
 
-# Install build tools for native dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    python3 \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /app
 
 # Copy package files for dependency installation
@@ -22,8 +16,8 @@ COPY packages/server/package.json packages/server/
 COPY packages/client/package.json packages/client/
 COPY packages/encoder/package.json packages/encoder/
 
-# Install dependencies
-RUN bun install --frozen-lockfile
+# Install dependencies (skip optional native deps that may fail to build)
+RUN bun install --frozen-lockfile --omit=optional
 
 # Copy source code
 COPY . .
@@ -32,7 +26,7 @@ COPY . .
 RUN bun run build
 
 # Prune dev dependencies for smaller image
-RUN rm -rf node_modules && bun install --production
+RUN rm -rf node_modules && bun install --production --omit=optional
 
 # =============================================================================
 # Stage 2: Runtime
