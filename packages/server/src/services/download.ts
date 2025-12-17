@@ -419,6 +419,111 @@ class DownloadService {
   }
 
   /**
+   * Add a torrent from raw .torrent file data
+   * This is used when we need to fetch the torrent file ourselves
+   * (e.g., from UNIT3D trackers that require authentication)
+   */
+  async addTorrentFile(
+    torrentData: ArrayBuffer,
+    filename: string,
+    options: {
+      savePath?: string;
+      category?: string;
+      paused?: boolean;
+      tags?: string[];
+    } = {}
+  ): Promise<{ success: boolean; hash?: string; error?: string }> {
+    try {
+      // Use FormData for multipart upload
+      const formData = new FormData();
+
+      // Create a Blob from the torrent data
+      const blob = new Blob([torrentData], { type: "application/x-bittorrent" });
+      formData.append("torrents", blob, filename);
+
+      if (options.savePath) {
+        formData.append("savepath", options.savePath);
+      }
+      if (options.category) {
+        formData.append("category", options.category);
+      }
+      if (options.paused) {
+        formData.append("paused", "true");
+      }
+      if (options.tags && options.tags.length > 0) {
+        formData.append("tags", options.tags.join(","));
+      }
+
+      const response = await this.request("/torrents/add", {
+        method: "POST",
+        body: formData,
+        // Don't set Content-Type header - fetch will set it with boundary for multipart
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        return { success: false, error: text || `HTTP ${response.status}` };
+      }
+
+      // qBittorrent doesn't return the hash when adding files
+      // Caller can use findTorrentByTag to locate it
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Fetch a torrent file from a URL
+   * Used for trackers that require authenticated downloads (e.g., UNIT3D)
+   */
+  async fetchTorrentFile(
+    url: string,
+    headers?: Record<string, string>
+  ): Promise<{ success: boolean; data?: ArrayBuffer; error?: string }> {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "Annex/1.0",
+          ...headers,
+        },
+      });
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `HTTP ${response.status}: ${response.statusText}`
+        };
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      // Check if we got a torrent file (not an error page)
+      if (!contentType.includes("application/x-bittorrent") &&
+          !contentType.includes("application/octet-stream")) {
+        const text = await response.text();
+        return {
+          success: false,
+          error: `Unexpected content type: ${contentType}. Response: ${text.slice(0, 200)}`
+        };
+      }
+
+      const data = await response.arrayBuffer();
+      if (data.byteLength === 0) {
+        return { success: false, error: "Received empty torrent file" };
+      }
+      return { success: true, data };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
    * Get torrent progress by hash
    */
   async getProgress(hash: string): Promise<DownloadProgress | null> {
