@@ -22,6 +22,7 @@ import type {
 } from "@annex/shared";
 import { getConfig, type EncoderConfig } from "./config.js";
 import { encode } from "./encoder.js";
+import { validateEnvironment } from "./validation.js";
 
 interface ActiveJob {
   jobId: string;
@@ -73,6 +74,17 @@ GPU Device: ${this.config.gpuDevice}
 Max Concurrent: ${this.config.maxConcurrent}
 Server: ${this.config.serverUrl}
 `);
+
+    // Validate environment before connecting
+    const validation = await validateEnvironment();
+    if (!validation.valid) {
+      console.error("\n❌ Encoder validation failed. Please fix the errors above before starting.\n");
+      process.exit(1);
+    }
+
+    if (validation.warnings.length > 0) {
+      console.warn("\n⚠️  Starting with warnings - some features may not work correctly.\n");
+    }
 
     this.connect();
   }
