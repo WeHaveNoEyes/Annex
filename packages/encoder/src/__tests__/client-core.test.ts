@@ -30,11 +30,6 @@ describe("client - core functionality", () => {
     });
   });
 
-  afterEach(() => {
-    mockWs = null;
-    wsHandlers = {};
-  });
-
   describe("message handling", () => {
     test("handles registered message and starts heartbeat", async () => {
       mock.module("../config.js", () => ({
