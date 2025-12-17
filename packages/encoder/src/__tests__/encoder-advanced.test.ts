@@ -2,6 +2,8 @@
  * Advanced tests for FFmpeg encoder service
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
 describe("encoder - advanced functionality", () => {
@@ -45,7 +47,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/4k-video.mp4");
 
       expect(result.width).toBe(3840);
@@ -82,7 +84,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/720p-video.mp4");
 
       expect(result.width).toBe(1280);
@@ -119,7 +121,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/ntsc-video.mp4");
 
       expect(result.fps).toBeCloseTo(29.97, 2);
@@ -154,7 +156,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/video.mp4");
 
       expect(result.fps).toBe(24); // Default fps
@@ -189,7 +191,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/large-video.mp4");
 
       expect(result.duration).toBe(7200);
@@ -237,7 +239,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/multi-audio.mkv");
 
       expect(result).toBeDefined();
@@ -274,7 +276,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/no-subs.mp4");
 
       expect(result.subtitleStreams).toEqual([]);
@@ -315,7 +317,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/video.mkv");
 
       expect(result.subtitleStreams.length).toBe(1);
@@ -356,7 +358,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/video.mkv");
 
       expect(result.subtitleStreams.length).toBe(1);
@@ -378,7 +380,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(1),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
 
       await expect(probeMedia("/test/corrupted.mp4")).rejects.toThrow("ffprobe failed");
     });
@@ -409,7 +411,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/video.mp4");
 
       expect(result.duration).toBe(0);
@@ -437,7 +439,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
 
       await expect(probeMedia("/test/video.mp4")).rejects.toThrow("No video stream found");
     });
@@ -462,7 +464,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
 
       await expect(probeMedia("/test/video.mp4")).rejects.toThrow("No video stream found");
     });
@@ -496,7 +498,7 @@ describe("encoder - advanced functionality", () => {
         exited: Promise.resolve(0),
       })) as any;
 
-      const { probeMedia } = require("../encoder.js");
+      const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/video.mp4");
 
       expect(result.duration).toBeNaN();

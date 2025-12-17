@@ -2,6 +2,8 @@
  * Tests for run command
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { describe, test, expect, mock, spyOn, beforeEach, afterEach } from "bun:test";
 
 describe("commands/run", () => {
@@ -29,8 +31,8 @@ describe("commands/run", () => {
   });
 
   describe("happy path", () => {
-    test("run function exists and is callable", () => {
-      const { run } = require("../commands/run.js");
+    test("run function exists and is callable", async () => {
+      const { run } = await import("../commands/run.js");
       expect(typeof run).toBe("function");
     });
 
@@ -65,7 +67,7 @@ describe("commands/run", () => {
 
       const consoleSpy = spyOn(console, "log");
 
-      const { run } = require("../commands/run.js");
+      const { run } = await import("../commands/run.js");
 
       // Run should throw because we mocked process.exit
       // but we're catching that to verify behavior
@@ -73,7 +75,7 @@ describe("commands/run", () => {
         await run();
         // If we get here, process.stdin.resume was called
         expect(consoleSpy).toHaveBeenCalled();
-      } catch (e) {
+      } catch (_e) {
         // Expected if process.exit was called
       }
 
@@ -110,11 +112,11 @@ describe("commands/run", () => {
 
       const consoleSpy = spyOn(console, "log");
 
-      const { run } = require("../commands/run.js");
+      const { run } = await import("../commands/run.js");
 
       try {
         await run();
-      } catch (e) {
+      } catch (_e) {
         // Expected
       }
 
@@ -157,11 +159,11 @@ describe("commands/run", () => {
         })),
       }));
 
-      const { run } = require("../commands/run.js");
+      const { run } = await import("../commands/run.js");
 
       try {
         await run();
-      } catch (e) {
+      } catch (_e) {
         // Expected
       }
 
@@ -200,11 +202,11 @@ describe("commands/run", () => {
         EncoderClient: EncoderClientMock,
       }));
 
-      const { run } = require("../commands/run.js");
+      const { run } = await import("../commands/run.js");
 
       try {
         await run();
-      } catch (e) {
+      } catch (_e) {
         // Expected
       }
 
@@ -236,11 +238,11 @@ describe("commands/run", () => {
       }));
 
       const consoleErrorSpy = spyOn(console, "error");
-      const { run } = require("../commands/run.js");
+      const { run } = await import("../commands/run.js");
 
       try {
         await run();
-      } catch (e) {
+      } catch (_e) {
         // Expected to exit
       }
 
@@ -274,11 +276,11 @@ describe("commands/run", () => {
       }));
 
       const consoleErrorSpy = spyOn(console, "error");
-      const { run } = require("../commands/run.js");
+      const { run } = await import("../commands/run.js");
 
       try {
         await run();
-      } catch (e) {
+      } catch (_e) {
         // Expected to exit
       }
 
@@ -312,11 +314,11 @@ describe("commands/run", () => {
       }));
 
       const consoleErrorSpy = spyOn(console, "error");
-      const { run } = require("../commands/run.js");
+      const { run } = await import("../commands/run.js");
 
       try {
         await run();
-      } catch (e) {
+      } catch (_e) {
         // Expected
       }
 
@@ -350,11 +352,11 @@ describe("commands/run", () => {
       }));
 
       const consoleErrorSpy = spyOn(console, "error");
-      const { run } = require("../commands/run.js");
+      const { run } = await import("../commands/run.js");
 
       try {
         await run();
-      } catch (e) {
+      } catch (_e) {
         // Expected
       }
 
@@ -396,11 +398,11 @@ describe("commands/run", () => {
       }));
 
       const consoleSpy = spyOn(console, "log");
-      const { run } = require("../commands/run.js");
+      const { run } = await import("../commands/run.js");
 
       try {
         await run();
-      } catch (e) {
+      } catch (_e) {
         // Expected
       }
 
@@ -440,11 +442,11 @@ describe("commands/run", () => {
       }));
 
       const consoleSpy = spyOn(console, "log");
-      const { run } = require("../commands/run.js");
+      const { run } = await import("../commands/run.js");
 
       try {
         await run();
-      } catch (e) {
+      } catch (_e) {
         // Expected
       }
 

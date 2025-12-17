@@ -2,13 +2,14 @@
  * Tests for setup command
  */
 
+
 import { describe, test, expect, mock } from "bun:test";
 import type { CliArgs } from "../cli.js";
 
 describe("commands/setup", () => {
   describe("happy path", () => {
-    test("setup function exists and is callable", () => {
-      const { setup } = require("../commands/setup.js");
+    test("setup function exists and is callable", async () => {
+      const { setup } = await import("../commands/setup.js");
       expect(typeof setup).toBe("function");
     });
 
@@ -21,7 +22,7 @@ describe("commands/setup", () => {
         getPlatformBinaryName: mock(() => "linux-x64"),
       }));
 
-      const { setup } = require("../commands/setup.js");
+      const { setup } = await import("../commands/setup.js");
 
       const args = {
         command: "setup" as const,
@@ -43,7 +44,7 @@ describe("commands/setup", () => {
         getPlatformBinaryName: mock(() => "linux-x64"),
       }));
 
-      const { setup } = require("../commands/setup.js");
+      const { setup } = await import("../commands/setup.js");
 
       const args = {
         command: "setup" as const,
@@ -74,7 +75,7 @@ describe("commands/setup", () => {
         getPlatformBinaryName: mock(() => "linux-x64"),
       }));
 
-      const { setup } = require("../commands/setup.js");
+      const { setup } = await import("../commands/setup.js");
 
       const args = {
         command: "setup" as const,
@@ -104,7 +105,7 @@ describe("commands/setup", () => {
         getPlatformBinaryName: mock(() => "linux-x64"),
       }));
 
-      const { setup } = require("../commands/setup.js");
+      const { setup } = await import("../commands/setup.js");
 
       const args = {
         command: "setup" as const,
@@ -126,7 +127,7 @@ describe("commands/setup", () => {
         getPlatformBinaryName: mock(() => "unknown"),
       }));
 
-      const { setup } = require("../commands/setup.js");
+      const { setup } = await import("../commands/setup.js");
 
       const args = {
         command: "setup" as const,
@@ -148,7 +149,7 @@ describe("commands/setup", () => {
         getPlatformBinaryName: mock(() => "linux-x64"),
       }));
 
-      const { setup } = require("../commands/setup.js");
+      const { setup } = await import("../commands/setup.js");
 
       const args = {
         command: "setup" as const,
@@ -167,7 +168,7 @@ describe("commands/setup", () => {
         getPlatformBinaryName: mock(() => "linux-x64"),
       }));
 
-      const { setup } = require("../commands/setup.js");
+      const { setup } = await import("../commands/setup.js");
 
       const args = {
         command: "setup" as const,

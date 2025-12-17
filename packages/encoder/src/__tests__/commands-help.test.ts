@@ -2,19 +2,20 @@
  * Tests for help command
  */
 
+
 import { describe, test, expect, mock, spyOn } from "bun:test";
 
 describe("commands/help", () => {
   describe("happy path", () => {
-    test("help function exists and is callable", () => {
-      const { help } = require("../commands/help.js");
+    test("help function exists and is callable", async () => {
+      const { help } = await import("../commands/help.js");
       expect(typeof help).toBe("function");
     });
 
-    test("outputs help text to console", () => {
+    test("outputs help text to console", async () => {
       const consoleSpy = spyOn(console, "log");
 
-      const { help } = require("../commands/help.js");
+      const { help } = await import("../commands/help.js");
       help();
 
       expect(consoleSpy).toHaveBeenCalled();
@@ -30,10 +31,10 @@ describe("commands/help", () => {
       consoleSpy.mockRestore();
     });
 
-    test("includes all command documentation", () => {
+    test("includes all command documentation", async () => {
       const consoleSpy = spyOn(console, "log");
 
-      const { help } = require("../commands/help.js");
+      const { help } = await import("../commands/help.js");
       help();
 
       const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
@@ -47,10 +48,10 @@ describe("commands/help", () => {
       consoleSpy.mockRestore();
     });
 
-    test("includes update command flags", () => {
+    test("includes update command flags", async () => {
       const consoleSpy = spyOn(console, "log");
 
-      const { help } = require("../commands/help.js");
+      const { help } = await import("../commands/help.js");
       help();
 
       const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
@@ -61,10 +62,10 @@ describe("commands/help", () => {
       consoleSpy.mockRestore();
     });
 
-    test("includes setup command flags", () => {
+    test("includes setup command flags", async () => {
       const consoleSpy = spyOn(console, "log");
 
-      const { help } = require("../commands/help.js");
+      const { help } = await import("../commands/help.js");
       help();
 
       const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
@@ -76,10 +77,10 @@ describe("commands/help", () => {
       consoleSpy.mockRestore();
     });
 
-    test("includes environment variable documentation", () => {
+    test("includes environment variable documentation", async () => {
       const consoleSpy = spyOn(console, "log");
 
-      const { help } = require("../commands/help.js");
+      const { help } = await import("../commands/help.js");
       help();
 
       const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
@@ -94,10 +95,10 @@ describe("commands/help", () => {
       consoleSpy.mockRestore();
     });
 
-    test("includes usage examples", () => {
+    test("includes usage examples", async () => {
       const consoleSpy = spyOn(console, "log");
 
-      const { help } = require("../commands/help.js");
+      const { help } = await import("../commands/help.js");
       help();
 
       const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
@@ -109,10 +110,10 @@ describe("commands/help", () => {
       consoleSpy.mockRestore();
     });
 
-    test("includes GitHub repository link", () => {
+    test("includes GitHub repository link", async () => {
       const consoleSpy = spyOn(console, "log");
 
-      const { help } = require("../commands/help.js");
+      const { help } = await import("../commands/help.js");
       help();
 
       const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
@@ -122,20 +123,20 @@ describe("commands/help", () => {
       consoleSpy.mockRestore();
     });
 
-    test("does not throw errors", () => {
-      const { help } = require("../commands/help.js");
+    test("does not throw errors", async () => {
+      const { help } = await import("../commands/help.js");
       expect(() => help()).not.toThrow();
     });
   });
 
   describe("non-happy path", () => {
-    test("handles console.log failure gracefully", () => {
+    test("handles console.log failure gracefully", async () => {
       const originalLog = console.log;
       console.log = mock(() => {
         throw new Error("Console write error");
       });
 
-      const { help } = require("../commands/help.js");
+      const { help } = await import("../commands/help.js");
       expect(() => help()).toThrow("Console write error");
 
       console.log = originalLog;
@@ -143,10 +144,10 @@ describe("commands/help", () => {
   });
 
   describe("output format", () => {
-    test("uses consistent formatting", () => {
+    test("uses consistent formatting", async () => {
       const consoleSpy = spyOn(console, "log");
 
-      const { help } = require("../commands/help.js");
+      const { help } = await import("../commands/help.js");
       help();
 
       const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
@@ -159,10 +160,10 @@ describe("commands/help", () => {
       consoleSpy.mockRestore();
     });
 
-    test("includes ASCII art banner", () => {
+    test("includes ASCII art banner", async () => {
       const consoleSpy = spyOn(console, "log");
 
-      const { help } = require("../commands/help.js");
+      const { help } = await import("../commands/help.js");
       help();
 
       const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");

@@ -2,11 +2,12 @@
  * Advanced tests for WebSocket encoder client
  */
 
+
 import { describe, test, expect, mock } from "bun:test";
 
 describe("client - advanced functionality", () => {
   describe("EncoderClient - configuration", () => {
-    test("uses custom encoderId from config", () => {
+    test("uses custom encoderId from config", async () => {
       const customId = "custom-encoder-12345";
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
@@ -20,13 +21,13 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       expect(client).toBeDefined();
     });
 
-    test("uses custom serverUrl from config", () => {
+    test("uses custom serverUrl from config", async () => {
       const customUrl = "wss://production-server:8080/encoder";
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
@@ -40,13 +41,13 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       expect(client).toBeDefined();
     });
 
-    test("uses custom maxConcurrent from config", () => {
+    test("uses custom maxConcurrent from config", async () => {
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
           encoderId: "test",
@@ -59,13 +60,13 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       expect(client).toBeDefined();
     });
 
-    test("uses custom GPU device from config", () => {
+    test("uses custom GPU device from config", async () => {
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
           encoderId: "test",
@@ -78,13 +79,13 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       expect(client).toBeDefined();
     });
 
-    test("handles config with all custom values", () => {
+    test("handles config with all custom values", async () => {
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
           encoderId: "prod-encoder-001",
@@ -97,7 +98,7 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       expect(client).toBeDefined();
@@ -107,7 +108,7 @@ describe("client - advanced functionality", () => {
   });
 
   describe("EncoderClient - state management", () => {
-    test("initializes in OFFLINE state", () => {
+    test("initializes in OFFLINE state", async () => {
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
           encoderId: "test",
@@ -120,14 +121,14 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       // Client should be created successfully
       expect(client).toBeDefined();
     });
 
-    test("client instance is unique per construction", () => {
+    test("client instance is unique per construction", async () => {
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
           encoderId: "test",
@@ -140,7 +141,7 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client1 = new EncoderClient();
       const client2 = new EncoderClient();
 
@@ -149,7 +150,7 @@ describe("client - advanced functionality", () => {
   });
 
   describe("EncoderClient - method signatures", () => {
-    test("start method returns Promise", () => {
+    test("start method returns Promise", async () => {
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
           encoderId: "test",
@@ -162,14 +163,14 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       const result = client.start();
       expect(result).toBeInstanceOf(Promise);
     });
 
-    test("stop method returns Promise", () => {
+    test("stop method returns Promise", async () => {
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
           encoderId: "test",
@@ -182,14 +183,14 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       const result = client.stop();
       expect(result).toBeInstanceOf(Promise);
     });
 
-    test("start can be called multiple times", () => {
+    test("start can be called multiple times", async () => {
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
           encoderId: "test",
@@ -202,7 +203,7 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       const result1 = client.start();
@@ -225,7 +226,7 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       // Should not throw
@@ -245,7 +246,7 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       await client.stop();
@@ -254,7 +255,7 @@ describe("client - advanced functionality", () => {
   });
 
   describe("EncoderClient - edge cases", () => {
-    test("handles very long encoder ID", () => {
+    test("handles very long encoder ID", async () => {
       const longId = "a".repeat(1000);
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
@@ -268,13 +269,13 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       expect(client).toBeDefined();
     });
 
-    test("handles special characters in encoder ID", () => {
+    test("handles special characters in encoder ID", async () => {
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
           encoderId: "encoder-@#$%^&*()",
@@ -287,13 +288,13 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       expect(client).toBeDefined();
     });
 
-    test("handles maximum maxConcurrent value", () => {
+    test("handles maximum maxConcurrent value", async () => {
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
           encoderId: "test",
@@ -306,13 +307,13 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       expect(client).toBeDefined();
     });
 
-    test("handles minimum heartbeatInterval", () => {
+    test("handles minimum heartbeatInterval", async () => {
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
           encoderId: "test",
@@ -325,13 +326,13 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       expect(client).toBeDefined();
     });
 
-    test("handles minimum reconnectInterval", () => {
+    test("handles minimum reconnectInterval", async () => {
       mock.module("../config.js", () => ({
         getConfig: mock(() => ({
           encoderId: "test",
@@ -344,7 +345,7 @@ describe("client - advanced functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       expect(client).toBeDefined();

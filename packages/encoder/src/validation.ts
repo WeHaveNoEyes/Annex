@@ -79,7 +79,7 @@ export async function validateEnvironment(): Promise<ValidationResult> {
     try {
       fs.accessSync(config.gpuDevice, fs.constants.R_OK | fs.constants.W_OK);
       console.log("  ✓ GPU device is accessible");
-    } catch (e) {
+    } catch (_e) {
       warnings.push(`Cannot access GPU device: ${config.gpuDevice} - hardware encoding will not be available`);
     }
   }

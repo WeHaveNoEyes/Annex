@@ -2,11 +2,12 @@
  * Core functionality tests for WebSocket encoder client
  */
 
-import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
+import { describe, test, expect, mock, beforeEach } from "bun:test";
 
 describe("client - core functionality", () => {
   let mockWs: any;
-  let wsHandlers: any = {};
 
   beforeEach(() => {
     // Mock WebSocket
@@ -21,7 +22,7 @@ describe("client - core functionality", () => {
     };
 
     // Intercept WebSocket constructor
-    (global as any).WebSocket = mock(function (url: string) {
+    (global as any).WebSocket = mock(function (_url: string) {
       setTimeout(() => {
         if (mockWs.onopen) mockWs.onopen({});
       }, 10);
@@ -48,7 +49,7 @@ describe("client - core functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       await client.start();
@@ -74,7 +75,7 @@ describe("client - core functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       await client.start();
@@ -103,7 +104,7 @@ describe("client - core functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       await client.start();
@@ -128,7 +129,7 @@ describe("client - core functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       await client.start();
@@ -157,7 +158,7 @@ describe("client - core functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       await client.start();
@@ -200,7 +201,7 @@ describe("client - core functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       await client.start();
@@ -276,7 +277,7 @@ describe("client - core functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       await client.start();
@@ -308,7 +309,7 @@ describe("client - core functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       await client.start();
@@ -334,7 +335,7 @@ describe("client - core functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       await client.start();
@@ -361,7 +362,7 @@ describe("client - core functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       await client.start();
@@ -388,7 +389,7 @@ describe("client - core functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       // Don't start, so WebSocket is not connected
@@ -412,7 +413,7 @@ describe("client - core functionality", () => {
         })),
       }));
 
-      const { EncoderClient } = require("../client.js");
+      const { EncoderClient } = await import("../client.js");
       const client = new EncoderClient();
 
       await client.start();

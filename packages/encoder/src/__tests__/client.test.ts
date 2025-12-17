@@ -2,12 +2,13 @@
  * Tests for WebSocket encoder client
  */
 
-import { describe, test, expect, mock, spyOn, beforeEach, afterEach } from "bun:test";
+
+import { describe, test, expect, mock } from "bun:test";
 
 describe("client", () => {
   describe("EncoderClient", () => {
     describe("initialization", () => {
-      test("class exists and is constructable", () => {
+      test("class exists and is constructable", async () => {
         mock.module("../config.js", () => ({
           getConfig: mock(() => ({
             encoderId: "test-encoder",
@@ -20,14 +21,14 @@ describe("client", () => {
           })),
         }));
 
-        const { EncoderClient } = require("../client.js");
+        const { EncoderClient } = await import("../client.js");
         expect(typeof EncoderClient).toBe("function");
 
         const client = new EncoderClient();
         expect(client).toBeDefined();
       });
 
-      test("initializes with config from getConfig", () => {
+      test("initializes with config from getConfig", async () => {
         const mockConfig = {
           encoderId: "test-encoder-123",
           serverUrl: "ws://test-server:3000/encoder",
@@ -42,7 +43,7 @@ describe("client", () => {
           getConfig: mock(() => mockConfig),
         }));
 
-        const { EncoderClient } = require("../client.js");
+        const { EncoderClient } = await import("../client.js");
         const client = new EncoderClient();
 
         expect(client).toBeDefined();
@@ -50,7 +51,7 @@ describe("client", () => {
     });
 
     describe("start", () => {
-      test("function exists and is callable", () => {
+      test("function exists and is callable", async () => {
         mock.module("../config.js", () => ({
           getConfig: mock(() => ({
             encoderId: "test",
@@ -63,13 +64,13 @@ describe("client", () => {
           })),
         }));
 
-        const { EncoderClient } = require("../client.js");
+        const { EncoderClient } = await import("../client.js");
         const client = new EncoderClient();
 
         expect(typeof client.start).toBe("function");
       });
 
-      test("start method exists", () => {
+      test("start method exists", async () => {
         mock.module("../config.js", () => ({
           getConfig: mock(() => ({
             encoderId: "test-encoder",
@@ -82,13 +83,13 @@ describe("client", () => {
           })),
         }));
 
-        const { EncoderClient } = require("../client.js");
+        const { EncoderClient } = await import("../client.js");
         const client = new EncoderClient();
 
         expect(typeof client.start).toBe("function");
       });
 
-      test("start returns promise", () => {
+      test("start returns promise", async () => {
         mock.module("../config.js", () => ({
           getConfig: mock(() => ({
             encoderId: "test",
@@ -101,7 +102,7 @@ describe("client", () => {
           })),
         }));
 
-        const { EncoderClient } = require("../client.js");
+        const { EncoderClient } = await import("../client.js");
         const client = new EncoderClient();
 
         const result = client.start();
@@ -110,7 +111,7 @@ describe("client", () => {
     });
 
     describe("stop", () => {
-      test("function exists and is callable", () => {
+      test("function exists and is callable", async () => {
         mock.module("../config.js", () => ({
           getConfig: mock(() => ({
             encoderId: "test",
@@ -123,13 +124,13 @@ describe("client", () => {
           })),
         }));
 
-        const { EncoderClient } = require("../client.js");
+        const { EncoderClient } = await import("../client.js");
         const client = new EncoderClient();
 
         expect(typeof client.stop).toBe("function");
       });
 
-      test("stop returns promise", () => {
+      test("stop returns promise", async () => {
         mock.module("../config.js", () => ({
           getConfig: mock(() => ({
             encoderId: "test",
@@ -142,14 +143,14 @@ describe("client", () => {
           })),
         }));
 
-        const { EncoderClient } = require("../client.js");
+        const { EncoderClient } = await import("../client.js");
         const client = new EncoderClient();
 
         const result = client.stop();
         expect(result instanceof Promise).toBe(true);
       });
 
-      test("stop method exists", () => {
+      test("stop method exists", async () => {
         mock.module("../config.js", () => ({
           getConfig: mock(() => ({
             encoderId: "test",
@@ -162,7 +163,7 @@ describe("client", () => {
           })),
         }));
 
-        const { EncoderClient } = require("../client.js");
+        const { EncoderClient } = await import("../client.js");
         const client = new EncoderClient();
 
         expect(typeof client.stop).toBe("function");
@@ -170,7 +171,7 @@ describe("client", () => {
     });
 
     describe("class structure", () => {
-      test("EncoderClient has expected methods", () => {
+      test("EncoderClient has expected methods", async () => {
         mock.module("../config.js", () => ({
           getConfig: mock(() => ({
             encoderId: "test",
@@ -183,7 +184,7 @@ describe("client", () => {
           })),
         }));
 
-        const { EncoderClient } = require("../client.js");
+        const { EncoderClient } = await import("../client.js");
         const client = new EncoderClient();
 
         // Verify key methods exist
