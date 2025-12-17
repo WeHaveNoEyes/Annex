@@ -106,7 +106,7 @@ export async function validateEnvironment(): Promise<ValidationResult> {
         warnings.push("FFmpeg does not have VAAPI support - hardware encoding will not be available");
       }
 
-      // Check for available encoders
+      // Check for available video encoders
       const ffmpegEncoders = Bun.spawn(["ffmpeg", "-encoders"], {
         stdout: "pipe",
         stderr: "pipe",
@@ -114,24 +114,48 @@ export async function validateEnvironment(): Promise<ValidationResult> {
       const encodersOutput = await new Response(ffmpegEncoders.stdout).text();
       await ffmpegEncoders.exited;
 
-      const hasVaapiEncoder = encodersOutput.includes("av1_vaapi");
-      const hasSoftwareEncoder = encodersOutput.includes("libsvtav1");
+      // Check for various encoder types
+      const encoders = {
+        // AV1 encoders
+        av1_vaapi: encodersOutput.includes("av1_vaapi"),
+        libsvtav1: encodersOutput.includes("libsvtav1"),
+        libaom: encodersOutput.includes("libaom-av1"),
 
-      if (hasVaapiEncoder) {
-        console.log("  ✓ AV1 VAAPI encoder (hardware) available");
-      }
+        // HEVC/H.265 encoders
+        hevc_vaapi: encodersOutput.includes("hevc_vaapi"),
+        libx265: encodersOutput.includes("libx265"),
 
-      if (hasSoftwareEncoder) {
-        console.log("  ✓ AV1 software encoder (libsvtav1) available");
-      }
+        // H.264 encoders
+        h264_vaapi: encodersOutput.includes("h264_vaapi"),
+        libx264: encodersOutput.includes("libx264"),
+      };
 
-      // Only error if NO AV1 encoder is available at all
-      if (!hasVaapiEncoder && !hasSoftwareEncoder) {
-        errors.push("No AV1 encoders available - encoder cannot function without either av1_vaapi or libsvtav1");
-      } else if (!hasVaapiEncoder) {
-        warnings.push("Hardware AV1 encoder not available - will use software encoding only (slower)");
-      } else if (!hasSoftwareEncoder) {
-        warnings.push("Software AV1 encoder not available - will use hardware encoding only (requires GPU)");
+      // Display available encoders
+      console.log("\n[Validation] Available Video Encoders:");
+
+      if (encoders.av1_vaapi) console.log("  ✓ AV1 (hardware): av1_vaapi");
+      if (encoders.libsvtav1) console.log("  ✓ AV1 (software): libsvtav1");
+      if (encoders.libaom) console.log("  ✓ AV1 (software): libaom-av1");
+
+      if (encoders.hevc_vaapi) console.log("  ✓ HEVC/H.265 (hardware): hevc_vaapi");
+      if (encoders.libx265) console.log("  ✓ HEVC/H.265 (software): libx265");
+
+      if (encoders.h264_vaapi) console.log("  ✓ H.264 (hardware): h264_vaapi");
+      if (encoders.libx264) console.log("  ✓ H.264 (software): libx264");
+
+      // Check if any video encoder is available
+      const hasAnyEncoder = Object.values(encoders).some(e => e);
+
+      if (!hasAnyEncoder) {
+        errors.push("No video encoders available - FFmpeg cannot encode video");
+      } else {
+        // Provide helpful recommendations
+        if (!encoders.av1_vaapi && !encoders.libsvtav1 && !encoders.libaom) {
+          warnings.push("No AV1 encoders available - profiles using AV1 will fail (HEVC/H.264 profiles will work)");
+        }
+        if (!encoders.av1_vaapi && !encoders.hevc_vaapi && !encoders.h264_vaapi) {
+          warnings.push("No hardware encoders available - encoding will use CPU (slower)");
+        }
       }
     } else {
       errors.push("FFmpeg check failed");
