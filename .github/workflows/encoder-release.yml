@@ -81,8 +81,8 @@ jobs:
       - name: Create and push tag
         run: |
           git tag "encoder-v${{ steps.version.outputs.new_version }}"
-          git push origin main
           git push origin "encoder-v${{ steps.version.outputs.new_version }}"
+          git push origin main
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

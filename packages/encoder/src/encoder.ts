@@ -56,9 +56,28 @@ const MKV_COMPATIBLE_SUBTITLE_CODECS = new Set([
 ]);
 
 /**
+ * Validate file path to prevent path traversal and command injection
+ */
+function validateFilePath(filePath: string): void {
+  if (!path.isAbsolute(filePath)) {
+    throw new Error("File path must be absolute");
+  }
+  if (filePath.includes("..")) {
+    throw new Error("Path traversal detected");
+  }
+  // Normalize path to resolve any symbolic links or relative components
+  const resolvedPath = path.resolve(filePath);
+  if (resolvedPath !== filePath) {
+    throw new Error("Path contains relative components");
+  }
+}
+
+/**
  * Probe a media file to get its properties
  */
 export async function probeMedia(filePath: string): Promise<MediaInfo> {
+  validateFilePath(filePath);
+
   const proc = Bun.spawn(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath], {
     stdout: "pipe",
     stderr: "pipe",
@@ -396,6 +415,10 @@ function parseProgress(line: string): Partial<{
 export async function encode(job: EncodeJob): Promise<EncodeResult> {
   const config = getConfig();
   const startTime = Date.now();
+
+  // Validate file paths for security
+  validateFilePath(job.inputPath);
+  validateFilePath(job.outputPath);
 
   // Verify input file exists
   if (!fs.existsSync(job.inputPath)) {

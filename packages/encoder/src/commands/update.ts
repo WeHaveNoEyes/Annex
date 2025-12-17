@@ -6,7 +6,8 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { createHash } from "crypto";
+import * as os from "os";
+import { createHash, randomUUID } from "crypto";
 import type { CliArgs } from "../cli.js";
 import { VERSION } from "../version.js";
 import { getPlatformBinaryName, detectPlatform } from "../platform/index.js";
@@ -240,7 +241,7 @@ Platform: ${getPlatformBinaryName()}
 
   // Step 3: Download new binary
   console.log("\n[2/7] Downloading new binary...");
-  const tempPath = path.join("/tmp", `annex-encoder-${Date.now()}`);
+  const tempPath = path.join(os.tmpdir(), `annex-encoder-${randomUUID()}`);
   try {
     await downloadBinary(serverUrl, platform, tempPath);
   } catch (error) {
@@ -292,8 +293,13 @@ Platform: ${getPlatformBinaryName()}
   // Step 7: Replace binary
   console.log("\n[6/7] Installing new binary...");
   try {
-    // Move temp file to current location
-    fs.renameSync(tempPath, currentPath);
+    // On Windows, renameSync fails if target exists or is locked
+    // Use copy+delete pattern for cross-platform compatibility
+    if (fs.existsSync(currentPath)) {
+      fs.unlinkSync(currentPath);
+    }
+    fs.copyFileSync(tempPath, currentPath);
+    fs.unlinkSync(tempPath);
     fs.chmodSync(currentPath, 0o755);
     console.log(`  ✓ Installed to ${currentPath}`);
   } catch (error) {

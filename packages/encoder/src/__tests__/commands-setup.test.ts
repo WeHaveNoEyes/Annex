@@ -3,6 +3,7 @@
  */
 
 import { describe, test, expect, mock } from "bun:test";
+import type { CliArgs } from "../cli.js";
 
 describe("commands/setup", () => {
   describe("happy path", () => {
@@ -57,9 +58,11 @@ describe("commands/setup", () => {
       await setup(args);
 
       expect(runSetupMock).toHaveBeenCalledWith(args);
-      expect(runSetupMock.mock.calls[0][0].flags.install).toBe(true);
-      expect(runSetupMock.mock.calls[0][0].flags.user).toBe("annex");
-      expect(runSetupMock.mock.calls[0][0].flags.workDir).toBe("/opt/encoder");
+      expect(runSetupMock.mock.calls.length).toBeGreaterThan(0);
+      const firstCall = runSetupMock.mock.calls[0] as unknown as [CliArgs];
+      expect(firstCall[0].flags.install).toBe(true);
+      expect(firstCall[0].flags.user).toBe("annex");
+      expect(firstCall[0].flags.workDir).toBe("/opt/encoder");
     });
 
     test("handles setup without install flag", async () => {
@@ -82,7 +85,9 @@ describe("commands/setup", () => {
       await setup(args);
 
       expect(runSetupMock).toHaveBeenCalledWith(args);
-      expect(runSetupMock.mock.calls[0][0].flags.install).toBeUndefined();
+      expect(runSetupMock.mock.calls.length).toBeGreaterThan(0);
+      const firstCall = runSetupMock.mock.calls[0] as unknown as [CliArgs];
+      expect(firstCall[0].flags.install).toBeUndefined();
     });
   });
 

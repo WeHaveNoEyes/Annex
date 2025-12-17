@@ -64,6 +64,9 @@ export function parseArgs(args: string[]): CliArgs {
     }
 
     if (arg === "--server") {
+      if (i + 1 >= args.length) {
+        throw new Error("--server requires a value");
+      }
       result.flags.server = args[++i];
       continue;
     }
@@ -75,11 +78,17 @@ export function parseArgs(args: string[]): CliArgs {
     }
 
     if (arg === "--user") {
+      if (i + 1 >= args.length) {
+        throw new Error("--user requires a value");
+      }
       result.flags.user = args[++i];
       continue;
     }
 
     if (arg === "--work-dir") {
+      if (i + 1 >= args.length) {
+        throw new Error("--work-dir requires a value");
+      }
       result.flags.workDir = args[++i];
       continue;
     }
