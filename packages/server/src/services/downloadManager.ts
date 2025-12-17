@@ -461,11 +461,30 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
       category: "annex",
       tags: [requestTag, uniqueTag],
     });
+  } else if (downloadUrl) {
+    // Fetch torrent file ourselves to avoid issues with authenticated URLs
+    // (e.g., UNIT3D trackers where qBittorrent can't access the authenticated endpoint)
+    console.log(`[DownloadManager] Fetching torrent file from: ${downloadUrl.replace(/api_token=[^&]+/, "api_token=***")}`);
+    const fetchResult = await qb.fetchTorrentFile(downloadUrl);
+
+    if (fetchResult.success && fetchResult.data) {
+      // Upload the torrent file data to qBittorrent
+      const filename = `${release.title.replace(/[^a-zA-Z0-9.-]/g, "_")}.torrent`;
+      addResult = await qb.addTorrentFile(fetchResult.data, filename, {
+        category: "annex",
+        tags: [requestTag, uniqueTag],
+      });
+    } else {
+      // Fallback: try adding URL directly (may work for some trackers)
+      console.warn(`[DownloadManager] Failed to fetch torrent file: ${fetchResult.error}, trying URL directly`);
+      addResult = await qb.addTorrentUrl(downloadUrl, {
+        category: "annex",
+        tags: [requestTag, uniqueTag],
+      });
+    }
   } else {
-    addResult = await qb.addTorrentUrl(downloadUrl!, {
-      category: "annex",
-      tags: [requestTag, uniqueTag],
-    });
+    console.error(`[DownloadManager] No magnet URI or download URL available`);
+    return null;
   }
 
   if (!addResult.success) {
