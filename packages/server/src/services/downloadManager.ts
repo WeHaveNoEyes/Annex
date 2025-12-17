@@ -464,7 +464,11 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
   } else if (downloadUrl) {
     // Fetch torrent file ourselves to avoid issues with authenticated URLs
     // (e.g., UNIT3D trackers where qBittorrent can't access the authenticated endpoint)
-    console.log(`[DownloadManager] Fetching torrent file from: ${downloadUrl.replace(/api_token=[^&]+/, "api_token=***")}`);
+    const redactedUrl = downloadUrl.replace(/(?:api_token|apikey|passkey|torrent_pass|key)=[^&]+/gi, (match) => {
+      const param = match.split("=")[0];
+      return `${param}=***`;
+    });
+    console.log(`[DownloadManager] Fetching torrent file from: ${redactedUrl}`);
     const fetchResult = await qb.fetchTorrentFile(downloadUrl);
 
     if (fetchResult.success && fetchResult.data) {
@@ -483,7 +487,7 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
       });
     }
   } else {
-    console.error(`[DownloadManager] No magnet URI or download URL available`);
+    console.error(`[DownloadManager] No magnet URI or download URL available for release: ${release.title}`);
     return null;
   }
 

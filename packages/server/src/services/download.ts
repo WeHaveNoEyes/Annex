@@ -511,6 +511,9 @@ class DownloadService {
       }
 
       const data = await response.arrayBuffer();
+      if (data.byteLength === 0) {
+        return { success: false, error: "Received empty torrent file" };
+      }
       return { success: true, data };
     } catch (error) {
       return {
