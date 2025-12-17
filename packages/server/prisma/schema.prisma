@@ -230,7 +230,6 @@ model EncodingProfile {
 
   // Relations
   servers              StorageServer[]
-  encodingJobs         EncodingJob[]
 
   @@index([isDefault])
 }
@@ -303,7 +302,6 @@ model MediaRequest {
   // Relations
   user             User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
   userId           String?
-  encodingJobs     EncodingJob[]
   activityLog      ActivityLog[]
   tvEpisodes       TvEpisode[]   // Track individual episode status for TV shows
   downloads        Download[]    // All downloads associated with this request
@@ -522,37 +520,6 @@ enum RequestStatus {
   DOWNLOADING
   ENCODING
   DELIVERING
-  COMPLETED
-  FAILED
-}
-
-// =============================================================================
-// Encoding Jobs
-// =============================================================================
-
-model EncodingJob {
-  id            String          @id @default(cuid())
-  sourceFile    String
-  outputFile    String?
-
-  status        EncodingStatus  @default(QUEUED)
-  progress      Float           @default(0)
-  error         String?
-
-  startedAt     DateTime?
-  completedAt   DateTime?
-  createdAt     DateTime        @default(now())
-
-  // Relations
-  request       MediaRequest    @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  requestId     String
-  profile       EncodingProfile @relation(fields: [profileId], references: [id])
-  profileId     String
-}
-
-enum EncodingStatus {
-  QUEUED
-  ENCODING
   COMPLETED
   FAILED
 }
@@ -956,6 +923,7 @@ model RemoteEncoder {
   status          EncoderStatus    @default(OFFLINE)
   currentJobs     Int              @default(0)
   lastHeartbeat   DateTime?
+  blockedUntil    DateTime?        // Temporary block after capacity error
 
   // Statistics
   totalJobsCompleted Int           @default(0)
@@ -1016,7 +984,9 @@ model EncoderAssignment {
   encodeDuration  Float?           // seconds to encode
 
   assignedAt      DateTime         @default(now())
-  startedAt       DateTime?
+  sentAt          DateTime?        // When job was sent to encoder (ASSIGNED state)
+  startedAt       DateTime?        // When encoder started processing (ENCODING state)
+  lastProgressAt  DateTime?        // Last progress update (for stall detection)
   completedAt     DateTime?
 
   @@index([status])
@@ -1025,6 +995,7 @@ model EncoderAssignment {
 
 enum AssignmentStatus {
   PENDING      // Waiting for encoder to pick up
+  ASSIGNED     // Sent to encoder, waiting for acceptance
   ENCODING     // Encoder is processing
   COMPLETED    // Successfully finished
   FAILED       // Failed (may retry)

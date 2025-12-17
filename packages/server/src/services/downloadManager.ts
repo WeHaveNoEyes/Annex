@@ -498,14 +498,27 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
 
   let torrentHash = addResult.hash;
 
-  // If hash wasn't returned, find by unique tag
+  // If hash wasn't returned, find by unique tag or by name
   if (!torrentHash) {
+    console.log(`[DownloadManager] No hash returned, searching by tag: ${uniqueTag}`);
     const torrent = await qb.findTorrentByTag(uniqueTag, 30000);
     if (torrent) {
       torrentHash = torrent.hash;
+      console.log(`[DownloadManager] Found torrent by tag: ${torrent.hash}`);
     } else {
-      console.error(`[DownloadManager] Failed to find torrent after adding`);
-      return null;
+      // Fallback: search by name (for duplicate detection or qBittorrent versions without tag support)
+      console.log(`[DownloadManager] Tag search failed, searching by name: ${release.title}`);
+      const allTorrents = await qb.getAllTorrents();
+      const normalizedRelease = normalizeTitle(release.title);
+      const existing = allTorrents.find((t) => normalizeTitle(t.name) === normalizedRelease);
+      if (existing) {
+        console.log(`[DownloadManager] Found existing torrent with matching name: ${existing.hash}`);
+        torrentHash = existing.hash;
+      } else {
+        console.error(`[DownloadManager] Failed to find torrent after adding. Tag: ${uniqueTag}, Release: ${release.title}`);
+        console.error(`[DownloadManager] Total torrents in qBittorrent: ${allTorrents.length}`);
+        return null;
+      }
     }
   }
 

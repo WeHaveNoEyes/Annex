@@ -849,15 +849,6 @@ async function handleEncode(payload: EncodePayload, jobId: string): Promise<void
       currentStep: `Encoding: ${profile.name}...`,
     });
 
-    // Create encoding job record
-    const encodingJob = await prisma.encodingJob.create({
-      data: {
-        sourceFile: sourceFilePath,
-        requestId,
-        profileId: profile.id,
-      },
-    });
-
     // Require remote encoding
     const encoderDispatch = getEncoderDispatchService();
     let result: { success: boolean; outputPath: string; outputSize: number; compressionRatio: number; error?: string };
@@ -873,47 +864,56 @@ async function handleEncode(payload: EncodePayload, jobId: string): Promise<void
     await logActivity(requestId, ActivityType.INFO, `Using remote encoder for ${profile.name}`);
 
     try {
-      // Use the actual job ID for the encoder assignment (foreign key to Job table)
-      const { waitForCompletion } = await encoderDispatch.queueEncodingJob(
+      // Queue the encoding job
+      const assignment = await encoderDispatch.queueEncodingJob(
         jobId,
         sourceFilePath,
         outputPath,
         profileId
       );
 
-      // Set up a progress polling interval since remote progress comes via WebSocket
-      const progressPollInterval = setInterval(async () => {
+      // Poll for completion (database-backed, survives restart)
+      let completedAssignment = assignment;
+      while (true) {
+        // Check for cancellation
         if (jobQueue.isCancelled(jobId)) {
-          clearInterval(progressPollInterval);
           await encoderDispatch.cancelJob(jobId, "Pipeline cancelled");
-          return;
+          throw new Error("Cancelled");
         }
 
-        // Get latest progress from database
-        const assignment = await prisma.encoderAssignment.findUnique({
-          where: { jobId: jobId },
+        // Get latest status from database
+        const current = await prisma.encoderAssignment.findUnique({
+          where: { id: assignment.id },
         });
 
-        if (assignment && assignment.status === "ENCODING") {
-          const stageProgress = 50 + ((profileIndex + (assignment.progress / 100)) / totalProfiles) * 25;
-          const speed = assignment.speed ? `${assignment.speed.toFixed(1)}x` : "";
-          const eta = assignment.eta ? `ETA: ${formatDuration(assignment.eta)}` : "";
+        if (!current) {
+          throw new Error("Assignment not found");
+        }
+
+        if (current.status === "COMPLETED") {
+          completedAssignment = current;
+          break;
+        }
+
+        if (current.status === "FAILED") {
+          throw new Error(current.error || "Encoding failed");
+        }
+
+        // Update progress
+        if (current.status === "ENCODING" || current.status === "ASSIGNED") {
+          const stageProgress = 50 + ((profileIndex + (current.progress / 100)) / totalProfiles) * 25;
+          const speed = current.speed ? `${current.speed.toFixed(1)}x` : "";
+          const eta = current.eta ? `ETA: ${formatDuration(current.eta)}` : "";
 
           await updateRequestStatus(requestId, RequestStatus.ENCODING, {
             progress: stageProgress,
-            currentStep: `Encoding ${profile.name}: ${assignment.progress.toFixed(1)}% ${speed} ${eta}`,
-          });
-
-          await prisma.encodingJob.update({
-            where: { id: encodingJob.id },
-            data: { progress: assignment.progress },
+            currentStep: `Encoding ${profile.name}: ${current.progress.toFixed(1)}% ${speed} ${eta}`,
           });
         }
-      }, 2000);
 
-      // Wait for remote encoding to complete
-      const completedAssignment = await waitForCompletion();
-      clearInterval(progressPollInterval);
+        // Wait before next poll
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
 
       result = {
         success: true,
@@ -932,25 +932,9 @@ async function handleEncode(payload: EncodePayload, jobId: string): Promise<void
     }
 
     if (!result.success) {
-      await prisma.encodingJob.update({
-        where: { id: encodingJob.id },
-        data: { status: "FAILED", error: result.error },
-      });
-
       await logActivity(requestId, ActivityType.ERROR, `Encoding failed for ${profile.name}: ${result.error}`);
       continue; // Try other profiles
     }
-
-    // Update encoding job as completed
-    await prisma.encodingJob.update({
-      where: { id: encodingJob.id },
-      data: {
-        status: "COMPLETED",
-        outputFile: result.outputPath,
-        progress: 100,
-        completedAt: new Date(),
-      },
-    });
 
     await logActivity(requestId, ActivityType.SUCCESS, `Encoded ${profile.name}: ${formatBytes(result.outputSize)} (${result.compressionRatio.toFixed(1)}x compression)`);
 
@@ -1366,18 +1350,24 @@ async function retryTvPipeline(requestId: string, request: MediaRequest): Promis
 
     // ENCODED or DELIVERING episodes need delivery - queue delivery job
     if (episode.status === TvEpisodeStatus.ENCODED || episode.status === TvEpisodeStatus.DELIVERING) {
-      // We need to find the encoded file path - check encoding jobs
-      const encodingJob = await prisma.encodingJob.findFirst({
+      // Find the completed encoder assignment for this episode
+      const encoderAssignment = await prisma.encoderAssignment.findFirst({
         where: {
-          requestId,
-          sourceFile: episode.sourceFilePath || undefined,
+          inputPath: episode.sourceFilePath || undefined,
           status: "COMPLETED",
         },
-        include: { profile: true },
+        include: {
+          job: { select: { requestId: true } },
+        },
         orderBy: { completedAt: "desc" },
       });
 
-      if (encodingJob?.outputFile) {
+      // Get the profile for the assignment
+      const profile = encoderAssignment
+        ? await prisma.encodingProfile.findUnique({ where: { id: encoderAssignment.profileId } })
+        : null;
+
+      if (encoderAssignment?.outputPath && profile) {
         const targets = (request.targets as unknown as Array<{ serverId: string; encodingProfileId?: string }>) || [];
         const targetServerIds = targets.map(t => t.serverId);
         const encoding = await import("./encoding.js").then(m => m.getEncodingService());
@@ -1385,10 +1375,10 @@ async function retryTvPipeline(requestId: string, request: MediaRequest): Promis
         await jobQueue.addJob("tv:deliver" as JobType, {
           requestId,
           episodeId: episode.id,
-          encodedFilePath: encodingJob.outputFile,
-          profileId: encodingJob.profileId,
-          resolution: encoding.resolutionToString(encodingJob.profile.videoMaxResolution),
-          codec: encoding.getCodecForEncoder(encodingJob.profile.videoEncoder).toUpperCase(),
+          encodedFilePath: encoderAssignment.outputPath,
+          profileId: encoderAssignment.profileId,
+          resolution: encoding.resolutionToString(profile.videoMaxResolution),
+          codec: encoding.getCodecForEncoder(profile.videoEncoder).toUpperCase(),
           targetServerIds,
         }, { priority: 5, maxAttempts: 3 });
 
@@ -1897,11 +1887,6 @@ export async function reprocessPipeline(requestId: string): Promise<{ step: stri
       }
     }
   }
-
-  // Delete any existing encoding jobs (they reference old encoded files)
-  await prisma.encodingJob.deleteMany({
-    where: { requestId },
-  });
 
   if (sourceExists && sourceFilePath) {
     // Source exists - queue encode job directly

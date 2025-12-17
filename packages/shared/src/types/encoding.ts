@@ -59,17 +59,3 @@ export interface EncoderConfig {
   progressPattern: string; // Regex pattern as string
   hwAccel: "none" | "nvenc" | "qsv" | "vaapi";
 }
-
-export interface EncodingJob {
-  id: string;
-  requestId: string;
-  sourceFile: string;
-  profileId: string;
-  status: "queued" | "encoding" | "completed" | "failed";
-  progress: number; // 0-100
-  outputFile: string | null;
-  error: string | null;
-  startedAt: Date | null;
-  completedAt: Date | null;
-  createdAt: Date;
-}

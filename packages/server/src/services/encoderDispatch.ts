@@ -1,8 +1,11 @@
 /**
- * Encoder Dispatch Service
+ * Encoder Dispatch Service (Refactored)
  *
  * Manages the pool of remote encoders and dispatches encoding jobs.
- * Handles encoder registration, health monitoring, job assignment, and retries.
+ * Key principles:
+ * - Database is the single source of truth (no in-memory state that matters)
+ * - Single unified tick loop for all encoder management
+ * - Crash-resilient: server restart seamlessly resumes encoding
  */
 
 import type { ServerWebSocket } from "bun";
@@ -27,51 +30,30 @@ import type { EncodingProfile, RemoteEncoder, EncoderAssignment } from "@prisma/
 // Types
 // =============================================================================
 
-// WebSocket data for encoder connections
 export interface EncoderWebSocketData {
   type: "encoder";
   encoderId: string | null;
 }
 
+// Minimal in-memory encoder connection (WebSocket only)
 interface ConnectedEncoder {
   ws: ServerWebSocket<EncoderWebSocketData>;
   encoderId: string;
   lastHeartbeat: Date;
-  currentJobs: Set<string>;
-  maxConcurrent: number;
-}
-
-// Progress update throttling - cache progress in memory, write to DB periodically
-interface CachedProgress {
-  jobId: string;
-  progress: number;
-  fps: number | null;
-  speed: number | null;
-  eta: number;
-  lastDbWrite: number;
-  lastProgressAt: number; // Timestamp of last progress update (for stall detection)
-  dirty: boolean;
 }
 
 // Path mapping: translate server paths to remote encoder paths
-// Multiple mappings can be configured for different mount points
-// Order matters: more specific paths should come first
 const PATH_MAPPINGS: Array<{ server: string; remote: string }> = [
-  // Encoding output: /media/encoding -> /mnt/downloads/encoding (most specific)
   {
     server: process.env.ENCODER_SERVER_ENCODING_PATH || "/media/encoding",
     remote: process.env.ENCODER_REMOTE_ENCODING_PATH || "/mnt/downloads/encoding",
   },
-  // General media directory: /media -> /mnt/downloads (catches /media/completed, /media/downloads, etc.)
   {
     server: process.env.ENCODER_SERVER_MEDIA_PATH || "/media",
     remote: process.env.ENCODER_REMOTE_MEDIA_PATH || "/mnt/downloads",
   },
 ];
 
-/**
- * Translate a server path to the remote encoder's mount path
- */
 function translateToRemotePath(serverPath: string): string {
   for (const mapping of PATH_MAPPINGS) {
     if (serverPath.startsWith(mapping.server)) {
@@ -81,82 +63,314 @@ function translateToRemotePath(serverPath: string): string {
   return serverPath;
 }
 
-/**
- * Translate a remote encoder path back to the server path
- * Currently unused but kept for potential future use (e.g., verifying output paths)
- */
-function _translateToServerPath(remotePath: string): string {
-  for (const mapping of PATH_MAPPINGS) {
-    if (remotePath.startsWith(mapping.remote)) {
-      return remotePath.replace(mapping.remote, mapping.server);
-    }
-  }
-  return remotePath;
-}
-
-export interface QueueEncodingJobResult {
-  assignment: EncoderAssignment;
-  waitForCompletion: () => Promise<EncoderAssignment>;
-}
-
 // =============================================================================
 // Encoder Dispatch Service
 // =============================================================================
 
 class EncoderDispatchService {
+  // Only track WebSocket connections in memory (unavoidable)
   private encoders: Map<string, ConnectedEncoder> = new Map();
-  private jobCompletionCallbacks: Map<string, {
-    resolve: (assignment: EncoderAssignment) => void;
-    reject: (error: Error) => void;
-  }> = new Map();
 
-  // Progress cache - buffer updates to reduce DB writes
-  private progressCache: Map<string, CachedProgress> = new Map();
-  // Cache requestId lookups to avoid repeated DB queries during progress updates
-  private jobRequestIdCache: Map<string, { requestId: string; startedAt: Date | null }> = new Map();
+  // Progress debouncing - tracks last DB write time per job to avoid connection pool exhaustion
+  // This is safe to lose on restart since progress is non-critical and will be updated on next progress message
+  private progressLastWritten: Map<string, number> = new Map();
 
   // Configuration
-  private readonly heartbeatTimeout = 90000; // 90 seconds
-  private readonly healthCheckIntervalMs = 30000; // 30 seconds
-  private readonly progressWriteIntervalMs = 5000; // Write progress to DB every 5 seconds
-  private readonly progressFlushIntervalMs = 2000; // Check for dirty progress every 2 seconds
-  private readonly jobStallTimeoutMs = 120000; // 2 minutes without progress = job stalled
+  private readonly tickIntervalMs = 5000; // Single unified tick every 5 seconds
+  private readonly heartbeatTimeoutMs = 90000; // 90 seconds without heartbeat = offline
+  private readonly assignedTimeoutMs = 30000; // 30 seconds in ASSIGNED state = stuck
+  private readonly stallTimeoutMs = 120000; // 2 minutes without progress = stalled
+  private readonly capacityBlockDurationMs = 10000; // 10 seconds block after capacity error
+  private readonly progressDebounceMs = 5000; // Only write progress to DB every 5 seconds
 
-  // Callbacks for pipeline integration
+  // Callbacks for pipeline integration (optional)
   onJobComplete?: (jobId: string, result: JobCompleteMessage) => void;
   onJobFailed?: (jobId: string, error: string) => void;
 
   // ==========================================================================
-  // Initialization
+  // Initialization & Shutdown
   // ==========================================================================
 
-  // Job assignment loop interval (1 second)
-  private readonly jobAssignmentIntervalMs = 1000;
+  async initialize(): Promise<void> {
+    // Recovery: Reset any ASSIGNED jobs to PENDING (server crashed mid-assignment)
+    const resetAssigned = await prisma.encoderAssignment.updateMany({
+      where: { status: "ASSIGNED" },
+      data: { status: "PENDING", sentAt: null },
+    });
+    if (resetAssigned.count > 0) {
+      console.log(`[EncoderDispatch] Recovery: Reset ${resetAssigned.count} ASSIGNED jobs to PENDING`);
+    }
 
-  /**
-   * Initialize the encoder dispatch service
-   */
-  initialize(): void {
-    this.startHealthCheck();
-    this.startProgressFlush();
-    this.startJobAssignmentLoop();
-    console.log(`[EncoderDispatch] Initialized`);
+    // Recovery: Mark all encoders offline (they'll re-register)
+    await prisma.remoteEncoder.updateMany({
+      where: { status: { not: "OFFLINE" } },
+      data: { status: "OFFLINE", currentJobs: 0 },
+    });
+
+    // Register single unified tick task
+    const scheduler = getSchedulerService();
+    scheduler.register("encoder-tick", "Encoder Tick", this.tickIntervalMs, () => this.tick());
+
+    console.log(`[EncoderDispatch] Initialized with ${this.tickIntervalMs}ms tick interval`);
+  }
+
+  shutdown(): void {
+    console.log("[EncoderDispatch] Shutting down...");
+
+    const scheduler = getSchedulerService();
+    scheduler.unregister("encoder-tick");
+
+    // Send shutdown message to all encoders
+    for (const encoder of this.encoders.values()) {
+      this.send(encoder.ws, { type: "server:shutdown", reconnectDelay: 5000 });
+      encoder.ws.close();
+    }
+
+    this.encoders.clear();
   }
 
   // ==========================================================================
-  // WebSocket Handlers (called from Bun.serve())
+  // Single Unified Tick Loop
   // ==========================================================================
 
-  /**
-   * Handle a new WebSocket connection
-   */
+  private async tick(): Promise<void> {
+    try {
+      // 1. Mark offline: Encoders with no heartbeat > 90s
+      await this.markOfflineEncoders();
+
+      // 2. Reset stuck: ASSIGNED jobs > 30s without acceptance
+      await this.resetStuckAssignments();
+
+      // 3. Detect stalls: ENCODING jobs > 2min without progress
+      await this.detectStalledJobs();
+
+      // 4. Assign jobs: Match PENDING jobs to available encoders
+      await this.assignPendingJobs();
+    } catch (error) {
+      console.error("[EncoderDispatch] Tick error:", error);
+    }
+  }
+
+  // ==========================================================================
+  // Tick Substeps (Testable Methods)
+  // ==========================================================================
+
+  async markOfflineEncoders(): Promise<void> {
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - this.heartbeatTimeoutMs);
+
+    for (const [encoderId, encoder] of this.encoders) {
+      if (encoder.lastHeartbeat < cutoff) {
+        console.warn(`[EncoderDispatch] Encoder ${encoderId} timed out (no heartbeat)`);
+        encoder.ws.terminate();
+        await this.handleDisconnect(encoderId);
+      }
+    }
+  }
+
+  async resetStuckAssignments(): Promise<void> {
+    const cutoff = new Date(Date.now() - this.assignedTimeoutMs);
+
+    // Find ASSIGNED jobs that were sent more than 30s ago
+    const stuckJobs = await prisma.encoderAssignment.findMany({
+      where: {
+        status: "ASSIGNED",
+        sentAt: { lt: cutoff },
+      },
+    });
+
+    for (const job of stuckJobs) {
+      console.warn(`[EncoderDispatch] Job ${job.jobId} stuck in ASSIGNED state, resetting to PENDING`);
+
+      await prisma.encoderAssignment.update({
+        where: { id: job.id },
+        data: {
+          status: "PENDING",
+          sentAt: null,
+          error: "Assignment timeout - encoder did not accept",
+        },
+      });
+    }
+  }
+
+  async detectStalledJobs(): Promise<void> {
+    const cutoff = new Date(Date.now() - this.stallTimeoutMs);
+
+    // Find ENCODING jobs with no progress update in 2 minutes
+    const stalledJobs = await prisma.encoderAssignment.findMany({
+      where: {
+        status: "ENCODING",
+        lastProgressAt: { lt: cutoff },
+      },
+    });
+
+    for (const job of stalledJobs) {
+      console.warn(`[EncoderDispatch] Job ${job.jobId} stalled at ${job.progress.toFixed(1)}%`);
+      await this.handleStalledJob(job);
+    }
+
+    // Also check for ENCODING jobs that never sent any progress
+    const neverStarted = await prisma.encoderAssignment.findMany({
+      where: {
+        status: "ENCODING",
+        lastProgressAt: null,
+        startedAt: { lt: cutoff },
+      },
+    });
+
+    for (const job of neverStarted) {
+      console.warn(`[EncoderDispatch] Job ${job.jobId} never sent progress`);
+      await this.handleStalledJob(job);
+    }
+  }
+
+  private async handleStalledJob(job: EncoderAssignment): Promise<void> {
+    // Send cancel to encoder
+    const encoder = this.encoders.get(job.encoderId);
+    if (encoder) {
+      this.send(encoder.ws, { type: "job:cancel", jobId: job.jobId, reason: "Stalled" });
+    }
+
+    // Decrement encoder job count
+    await prisma.remoteEncoder.update({
+      where: { encoderId: job.encoderId },
+      data: { currentJobs: { decrement: 1 } },
+    }).catch(() => {});
+
+    // Check retry eligibility
+    const shouldRetry = job.attempt < job.maxAttempts;
+    const shouldIncrementAttempt = job.progress > 0; // Only increment if actually started
+
+    if (shouldRetry) {
+      await prisma.encoderAssignment.update({
+        where: { id: job.id },
+        data: {
+          status: "PENDING",
+          sentAt: null,
+          startedAt: null,
+          lastProgressAt: null,
+          progress: 0,
+          attempt: shouldIncrementAttempt ? { increment: 1 } : undefined,
+          error: job.progress > 0
+            ? `Stalled at ${job.progress.toFixed(1)}%`
+            : "Never started - requeuing",
+        },
+      });
+      console.log(`[EncoderDispatch] Requeued stalled job ${job.jobId}`);
+    } else {
+      await prisma.encoderAssignment.update({
+        where: { id: job.id },
+        data: {
+          status: "FAILED",
+          completedAt: new Date(),
+          error: `Stalled at ${job.progress.toFixed(1)}% after ${job.maxAttempts} attempts`,
+        },
+      });
+
+      await prisma.remoteEncoder.update({
+        where: { encoderId: job.encoderId },
+        data: { totalJobsFailed: { increment: 1 } },
+      }).catch(() => {});
+
+      this.onJobFailed?.(job.jobId, "Job stalled");
+    }
+  }
+
+  async assignPendingJobs(): Promise<void> {
+    const now = new Date();
+
+    // Get pending assignments
+    const pendingJobs = await prisma.encoderAssignment.findMany({
+      where: { status: "PENDING" },
+      orderBy: { assignedAt: "asc" },
+    });
+
+    if (pendingJobs.length === 0) return;
+
+    // Get available encoders from database
+    const availableEncoders = await prisma.remoteEncoder.findMany({
+      where: {
+        status: { in: ["IDLE", "ENCODING"] },
+        OR: [
+          { blockedUntil: null },
+          { blockedUntil: { lt: now } },
+        ],
+      },
+      orderBy: [
+        { currentJobs: "asc" },
+        { totalJobsCompleted: "desc" },
+      ],
+    });
+
+    for (const job of pendingJobs) {
+      // Verify input file exists
+      if (!existsSync(job.inputPath)) {
+        continue; // File not ready yet
+      }
+
+      // Find encoder with capacity
+      const encoder = availableEncoders.find(
+        (e) => e.currentJobs < e.maxConcurrent && this.encoders.has(e.encoderId)
+      );
+
+      if (!encoder) {
+        continue; // No available encoder
+      }
+
+      // Get profile
+      const profile = await prisma.encodingProfile.findUnique({
+        where: { id: job.profileId },
+      });
+      if (!profile) continue;
+
+      // Get WebSocket connection
+      const connection = this.encoders.get(encoder.encoderId);
+      if (!connection) continue;
+
+      // Send job assignment
+      const assignMsg: JobAssignMessage = {
+        type: "job:assign",
+        jobId: job.jobId,
+        inputPath: translateToRemotePath(job.inputPath),
+        outputPath: translateToRemotePath(job.outputPath),
+        profileId: job.profileId,
+        profile: this.serializeProfile(profile),
+      };
+
+      this.send(connection.ws, assignMsg);
+
+      // Update to ASSIGNED status
+      await prisma.encoderAssignment.update({
+        where: { id: job.id },
+        data: {
+          status: "ASSIGNED",
+          sentAt: now,
+          encoderId: encoder.encoderId,
+        },
+      });
+
+      // Increment encoder job count
+      await prisma.remoteEncoder.update({
+        where: { encoderId: encoder.encoderId },
+        data: { currentJobs: { increment: 1 }, status: "ENCODING" },
+      });
+
+      // Update local capacity tracking for this tick
+      encoder.currentJobs++;
+
+      console.log(`[EncoderDispatch] Assigned job ${job.jobId} to ${encoder.encoderId}`);
+      this.emitEncoderStatusUpdate(encoder.encoderId);
+    }
+  }
+
+  // ==========================================================================
+  // WebSocket Handlers
+  // ==========================================================================
+
   handleConnection(): void {
     console.log(`[EncoderDispatch] New encoder connection`);
   }
 
-  /**
-   * Handle a WebSocket message
-   */
   async handleMessage(ws: ServerWebSocket<EncoderWebSocketData>, data: string | Buffer): Promise<void> {
     try {
       const dataStr = typeof data === "string" ? data : data.toString();
@@ -166,23 +380,18 @@ class EncoderDispatchService {
         case "register":
           await this.handleRegister(ws, msg);
           break;
-
         case "heartbeat":
           await this.handleHeartbeat(msg);
           break;
-
         case "job:accepted":
-          console.log(`[EncoderDispatch] Job ${msg.jobId} accepted by ${msg.encoderId}`);
+          await this.handleJobAccepted(msg.jobId, msg.encoderId);
           break;
-
         case "job:progress":
           await this.handleJobProgress(msg);
           break;
-
         case "job:complete":
           await this.handleJobComplete(msg);
           break;
-
         case "job:failed":
           await this.handleJobFailed(msg);
           break;
@@ -192,9 +401,6 @@ class EncoderDispatchService {
     }
   }
 
-  /**
-   * Handle a WebSocket close
-   */
   handleClose(ws: ServerWebSocket<EncoderWebSocketData>): void {
     const encoderId = ws.data.encoderId;
     if (encoderId) {
@@ -218,8 +424,9 @@ class EncoderDispatchService {
         currentJobs,
         hostname,
         version,
-        status: "IDLE",
+        status: currentJobs > 0 ? "ENCODING" : "IDLE",
         lastHeartbeat: new Date(),
+        blockedUntil: null,
       },
       create: {
         encoderId,
@@ -228,29 +435,24 @@ class EncoderDispatchService {
         currentJobs,
         hostname,
         version,
-        status: "IDLE",
+        status: currentJobs > 0 ? "ENCODING" : "IDLE",
         lastHeartbeat: new Date(),
       },
     });
 
-    // Store encoderId in WebSocket data for close handling
+    // Store encoderId in WebSocket data
     ws.data.encoderId = encoderId;
 
-    // Track connection
+    // Track connection (minimal in-memory state)
     this.encoders.set(encoderId, {
       ws,
       encoderId,
       lastHeartbeat: new Date(),
-      currentJobs: new Set(),
-      maxConcurrent,
     });
 
-    // Send acknowledgment
     this.send(ws, { type: "registered" });
 
     console.log(`[EncoderDispatch] Encoder registered: ${encoderId} (${maxConcurrent} slots, GPU: ${gpuDevice})`);
-
-    // Emit status update
     this.emitEncoderStatusUpdate(encoderId);
   }
 
@@ -260,12 +462,21 @@ class EncoderDispatchService {
       encoder.lastHeartbeat = new Date();
     }
 
+    // Get encoder to check capacity
+    const dbEncoder = await prisma.remoteEncoder.findUnique({
+      where: { encoderId: msg.encoderId },
+      select: { maxConcurrent: true },
+    });
+
+    // Update database
     await prisma.remoteEncoder.update({
       where: { encoderId: msg.encoderId },
       data: {
         currentJobs: msg.currentJobs,
         status: msg.state === "ENCODING" ? "ENCODING" : "IDLE",
         lastHeartbeat: new Date(),
+        // Clear block if encoder has capacity
+        blockedUntil: dbEncoder && msg.currentJobs < dbEncoder.maxConcurrent ? null : undefined,
       },
     });
 
@@ -275,61 +486,48 @@ class EncoderDispatchService {
     }
   }
 
+  private async handleJobAccepted(jobId: string, encoderId: string): Promise<void> {
+    // Transition from ASSIGNED to ENCODING
+    await prisma.encoderAssignment.update({
+      where: { jobId },
+      data: {
+        status: "ENCODING",
+        startedAt: new Date(),
+        lastProgressAt: new Date(),
+      },
+    });
+
+    console.log(`[EncoderDispatch] Job ${jobId} accepted by ${encoderId}`);
+  }
+
   private async handleJobProgress(msg: JobProgressMessage): Promise<void> {
     const now = Date.now();
-    const cached = this.progressCache.get(msg.jobId);
+    const lastWrite = this.progressLastWritten.get(msg.jobId) || 0;
+    const timeSinceLastWrite = now - lastWrite;
 
-    // Update in-memory cache (always)
-    const updatedCache: CachedProgress = {
-      jobId: msg.jobId,
-      progress: msg.progress,
-      fps: msg.fps,
-      speed: msg.speed,
-      eta: Math.round(msg.eta),
-      lastDbWrite: cached?.lastDbWrite || 0,
-      lastProgressAt: now, // Track when we last received progress for stall detection
-      dirty: true,
-    };
-    this.progressCache.set(msg.jobId, updatedCache);
-
-    // Only write to DB if enough time has passed since last write
-    const shouldWriteToDb = now - updatedCache.lastDbWrite >= this.progressWriteIntervalMs;
+    // Debounce database writes to prevent connection pool exhaustion
+    // Only write if: first write, 5+ seconds since last write, or job is nearly complete (>95%)
+    const shouldWriteToDb =
+      lastWrite === 0 || timeSinceLastWrite >= this.progressDebounceMs || msg.progress >= 95;
 
     if (shouldWriteToDb) {
-      updatedCache.lastDbWrite = now;
-      updatedCache.dirty = false;
-
-      // Non-blocking DB write - don't await
-      prisma.encoderAssignment.updateMany({
+      this.progressLastWritten.set(msg.jobId, now);
+      await prisma.encoderAssignment.update({
         where: { jobId: msg.jobId },
         data: {
           progress: msg.progress,
           fps: msg.fps,
           speed: msg.speed,
           eta: Math.round(msg.eta),
+          lastProgressAt: new Date(),
         },
-      }).catch((err) => {
-        console.error(`[EncoderDispatch] Progress update failed for ${msg.jobId}:`, err.message);
       });
     }
 
-    // Emit to UI immediately (no DB needed) - but only get requestId once
-    // Use cached requestId if available to avoid DB lookup
-    if (!this.jobRequestIdCache.has(msg.jobId)) {
-      const assignment = await prisma.encoderAssignment.findUnique({
-        where: { jobId: msg.jobId },
-        include: { job: { select: { requestId: true } } },
-      });
-      if (assignment?.job.requestId) {
-        this.jobRequestIdCache.set(msg.jobId, {
-          requestId: assignment.job.requestId,
-          startedAt: assignment.startedAt,
-        });
-      }
-    }
-
-    const cachedJobInfo = this.jobRequestIdCache.get(msg.jobId);
-    if (cachedJobInfo?.requestId) {
+    // Always emit UI events using message data directly (no extra DB query)
+    // We need requestId from DB, but we can cache this lookup
+    const assignment = await this.getAssignmentForUI(msg.jobId);
+    if (assignment?.requestId) {
       const events = getJobEventService();
       events.emitJobUpdate("progress", {
         id: msg.jobId,
@@ -338,14 +536,41 @@ class EncoderDispatchService {
         progress: msg.progress,
         progressCurrent: null,
         progressTotal: null,
-        requestId: cachedJobInfo.requestId,
+        requestId: assignment.requestId,
         parentJobId: null,
         dedupeKey: null,
         error: null,
-        startedAt: cachedJobInfo.startedAt,
+        startedAt: assignment.startedAt,
         completedAt: null,
       });
     }
+  }
+
+  // Cache for requestId lookups to avoid repeated DB queries during progress updates
+  private assignmentCache: Map<string, { requestId: string; startedAt: Date | null }> = new Map();
+
+  private async getAssignmentForUI(
+    jobId: string
+  ): Promise<{ requestId: string; startedAt: Date | null } | null> {
+    // Check cache first
+    const cached = this.assignmentCache.get(jobId);
+    if (cached) {
+      return cached;
+    }
+
+    // Fetch from DB and cache
+    const assignment = await prisma.encoderAssignment.findUnique({
+      where: { jobId },
+      include: { job: { select: { requestId: true } } },
+    });
+
+    if (assignment?.job.requestId) {
+      const data = { requestId: assignment.job.requestId, startedAt: assignment.startedAt };
+      this.assignmentCache.set(jobId, data);
+      return data;
+    }
+
+    return null;
   }
 
   private async handleJobComplete(msg: JobCompleteMessage): Promise<void> {
@@ -359,7 +584,7 @@ class EncoderDispatchService {
         encodeDuration: msg.duration,
         completedAt: new Date(),
       },
-      include: { encoder: true, job: true },
+      include: { encoder: true },
     });
 
     // Update encoder stats
@@ -369,89 +594,85 @@ class EncoderDispatchService {
         totalJobsCompleted: { increment: 1 },
         currentJobs: { decrement: 1 },
         status: "IDLE",
+        blockedUntil: null,
       },
     });
 
-    // Remove from in-memory tracking
-    const encoder = this.encoders.get(assignment.encoderId);
-    if (encoder) {
-      encoder.currentJobs.delete(msg.jobId);
-    }
+    console.log(`[EncoderDispatch] Job ${msg.jobId} completed (${msg.compressionRatio.toFixed(2)}x compression)`);
 
-    console.log(`[EncoderDispatch] Job ${msg.jobId} completed on ${assignment.encoderId} (${msg.compressionRatio.toFixed(2)}x compression)`);
+    // Clean up caches
+    this.cleanupJobCaches(msg.jobId);
 
-    // Clean up progress cache
-    this.cleanupJobCache(msg.jobId);
-
-    // Notify completion callback
-    const callback = this.jobCompletionCallbacks.get(msg.jobId);
-    if (callback) {
-      callback.resolve(assignment);
-      this.jobCompletionCallbacks.delete(msg.jobId);
-    }
-
-    // Call pipeline callback
     this.onJobComplete?.(msg.jobId, msg);
-
-    // Emit status updates
     this.emitEncoderStatusUpdate(assignment.encoderId);
+  }
+
+  private cleanupJobCaches(jobId: string): void {
+    this.progressLastWritten.delete(jobId);
+    this.assignmentCache.delete(jobId);
   }
 
   private async handleJobFailed(msg: JobFailedMessage): Promise<void> {
     const assignment = await prisma.encoderAssignment.findUnique({
       where: { jobId: msg.jobId },
-      include: { encoder: true },
     });
-
     if (!assignment) return;
 
-    // Update encoder stats
-    await prisma.remoteEncoder.update({
-      where: { encoderId: assignment.encoderId },
-      data: {
-        currentJobs: { decrement: 1 },
-        status: "IDLE",
-      },
-    });
+    // Check if capacity error (not a real encoding failure)
+    const isCapacityError =
+      msg.error.toLowerCase().includes("encoder at capacity") ||
+      msg.error.toLowerCase().includes("encoder disconnected") ||
+      msg.error.toLowerCase().includes("no available encoder");
 
-    // Remove from in-memory tracking
-    const encoder = this.encoders.get(assignment.encoderId);
-    if (encoder) {
-      encoder.currentJobs.delete(msg.jobId);
-    }
+    if (isCapacityError) {
+      // Block encoder temporarily
+      await prisma.remoteEncoder.update({
+        where: { encoderId: assignment.encoderId },
+        data: { blockedUntil: new Date(Date.now() + this.capacityBlockDurationMs) },
+      });
 
-    // For "Input file not found" errors, verify the file actually exists on the server
-    // If it doesn't exist here either, there's no point retrying
-    let shouldRetry = msg.retriable;
-    if (shouldRetry && msg.error.toLowerCase().includes("input file not found")) {
-      const inputFileExists = existsSync(assignment.inputPath);
-      if (!inputFileExists) {
-        console.log(`[EncoderDispatch] Job ${msg.jobId} - input file does not exist on server: ${assignment.inputPath}`);
-        shouldRetry = false;
-      }
-    }
-
-    // Check if should retry (same encoder is fine)
-    if (shouldRetry && assignment.attempt < assignment.maxAttempts) {
-      console.log(`[EncoderDispatch] Job ${msg.jobId} failed, retrying (attempt ${assignment.attempt + 1}/${assignment.maxAttempts})`);
-
-      // Find any available encoder (same encoder is fine)
-      const newEncoderId = await this.selectEncoder();
-
-      // Update assignment for retry
+      // Requeue without incrementing attempt
       await prisma.encoderAssignment.update({
         where: { jobId: msg.jobId },
         data: {
           status: "PENDING",
-          attempt: { increment: 1 },
+          sentAt: null,
           error: msg.error,
-          encoderId: newEncoderId || assignment.encoderId,
-          startedAt: null,
-          progress: 0,
         },
       });
+
+      console.log(`[EncoderDispatch] Job ${msg.jobId} requeued (encoder at capacity)`);
+      return;
+    }
+
+    // Real encoding failure
+    await prisma.remoteEncoder.update({
+      where: { encoderId: assignment.encoderId },
+      data: { currentJobs: { decrement: 1 }, status: "IDLE" },
+    });
+
+    // Check for input file errors
+    let shouldRetry = msg.retriable;
+    if (shouldRetry && msg.error.toLowerCase().includes("input file not found")) {
+      shouldRetry = existsSync(assignment.inputPath);
+    }
+
+    if (shouldRetry && assignment.attempt < assignment.maxAttempts) {
+      await prisma.encoderAssignment.update({
+        where: { jobId: msg.jobId },
+        data: {
+          status: "PENDING",
+          sentAt: null,
+          startedAt: null,
+          lastProgressAt: null,
+          progress: 0,
+          attempt: { increment: 1 },
+          error: msg.error,
+        },
+      });
+
+      console.log(`[EncoderDispatch] Job ${msg.jobId} failed, retrying (attempt ${assignment.attempt + 1}/${assignment.maxAttempts})`);
     } else {
-      // No more retries - mark as failed
       await prisma.encoderAssignment.update({
         where: { jobId: msg.jobId },
         data: {
@@ -461,49 +682,64 @@ class EncoderDispatchService {
         },
       });
 
-      // Update encoder failed count
       await prisma.remoteEncoder.update({
         where: { encoderId: assignment.encoderId },
-        data: {
-          totalJobsFailed: { increment: 1 },
-        },
+        data: { totalJobsFailed: { increment: 1 } },
       });
 
       console.error(`[EncoderDispatch] Job ${msg.jobId} failed permanently: ${msg.error}`);
-
-      // Clean up progress cache on permanent failure
-      this.cleanupJobCache(msg.jobId);
-
-      // Notify completion callback with failure
-      const callback = this.jobCompletionCallbacks.get(msg.jobId);
-      if (callback) {
-        callback.reject(new Error(msg.error));
-        this.jobCompletionCallbacks.delete(msg.jobId);
-      }
-
-      // Call pipeline callback
       this.onJobFailed?.(msg.jobId, msg.error);
+
+      // Clean up caches for permanently failed jobs
+      this.cleanupJobCaches(msg.jobId);
     }
 
-    // Emit status updates
     this.emitEncoderStatusUpdate(assignment.encoderId);
   }
 
-  private handleDisconnect(encoderId: string): void {
-    const encoder = this.encoders.get(encoderId);
-    if (!encoder) return;
-
+  private async handleDisconnect(encoderId: string): Promise<void> {
     console.log(`[EncoderDispatch] Encoder disconnected: ${encoderId}`);
 
-    // Mark encoder as offline
-    prisma.remoteEncoder.update({
+    // Mark encoder offline
+    await prisma.remoteEncoder.update({
       where: { encoderId },
       data: { status: "OFFLINE", currentJobs: 0 },
-    }).catch(console.error);
+    }).catch(() => {});
 
-    // Re-queue any jobs that were assigned to this encoder
-    for (const jobId of encoder.currentJobs) {
-      this.requeueJob(jobId, encoderId);
+    // Reset any ASSIGNED or ENCODING jobs for this encoder to PENDING
+    const jobs = await prisma.encoderAssignment.findMany({
+      where: {
+        encoderId,
+        status: { in: ["ASSIGNED", "ENCODING"] },
+      },
+    });
+
+    for (const job of jobs) {
+      if (job.attempt < job.maxAttempts) {
+        await prisma.encoderAssignment.update({
+          where: { id: job.id },
+          data: {
+            status: "PENDING",
+            sentAt: null,
+            startedAt: null,
+            lastProgressAt: null,
+            progress: 0,
+            attempt: { increment: 1 },
+            error: "Encoder disconnected",
+          },
+        });
+        console.log(`[EncoderDispatch] Requeued job ${job.jobId} (encoder disconnected)`);
+      } else {
+        await prisma.encoderAssignment.update({
+          where: { id: job.id },
+          data: {
+            status: "FAILED",
+            error: "Max retries exceeded after encoder disconnection",
+            completedAt: new Date(),
+          },
+        });
+        this.onJobFailed?.(job.jobId, "Encoder disconnected");
+      }
     }
 
     this.encoders.delete(encoderId);
@@ -511,85 +747,40 @@ class EncoderDispatchService {
   }
 
   // ==========================================================================
-  // Job Management
+  // Public API
   // ==========================================================================
 
-  private async requeueJob(jobId: string, failedEncoderId: string): Promise<void> {
-    const assignment = await prisma.encoderAssignment.findUnique({
-      where: { jobId },
+  /**
+   * Queue a new encoding job for remote execution.
+   * Returns the assignment immediately - use getAssignmentStatus() to poll for completion.
+   */
+  async queueEncodingJob(
+    jobId: string,
+    inputPath: string,
+    outputPath: string,
+    profileId: string
+  ): Promise<EncoderAssignment> {
+    // Check for existing active assignment for same input file (deduplication)
+    const existingAssignment = await prisma.encoderAssignment.findFirst({
+      where: {
+        inputPath,
+        status: { in: ["PENDING", "ASSIGNED", "ENCODING"] },
+      },
     });
 
-    if (!assignment || assignment.status === "COMPLETED") return;
-
-    if (assignment.attempt < assignment.maxAttempts) {
-      // Find new encoder (excluding failed one)
-      const newEncoderId = await this.selectEncoder(failedEncoderId);
-
-      if (newEncoderId) {
-        await prisma.encoderAssignment.update({
-          where: { jobId },
-          data: {
-            status: "PENDING",
-            attempt: { increment: 1 },
-            encoderId: newEncoderId,
-            error: "Encoder disconnected",
-            startedAt: null,
-            progress: 0,
-          },
-        });
-
-        console.log(`[EncoderDispatch] Requeued job ${jobId} from ${failedEncoderId} to ${newEncoderId}`);
-      } else {
-        // No available encoders - keep pending
-        await prisma.encoderAssignment.update({
-          where: { jobId },
-          data: {
-            status: "PENDING",
-            error: "Encoder disconnected, waiting for available encoder",
-            startedAt: null,
-            progress: 0,
-          },
-        });
-      }
-    } else {
-      // Max retries exceeded
-      await prisma.encoderAssignment.update({
-        where: { jobId },
-        data: {
-          status: "FAILED",
-          error: "Max retries exceeded after encoder disconnection",
-          completedAt: new Date(),
-        },
-      });
-
-      // Notify callback
-      const callback = this.jobCompletionCallbacks.get(jobId);
-      if (callback) {
-        callback.reject(new Error("Max retries exceeded"));
-        this.jobCompletionCallbacks.delete(jobId);
-      }
-
-      this.onJobFailed?.(jobId, "Max retries exceeded");
-    }
-  }
-
-  /**
-   * Select the best encoder for a new job (least busy with capacity)
-   */
-  private async selectEncoder(excludeId?: string): Promise<string | null> {
-    // First try connected encoders with capacity
-    for (const [encoderId, encoder] of this.encoders) {
-      if (excludeId && encoderId === excludeId) continue;
-      if (encoder.currentJobs.size < encoder.maxConcurrent) {
-        return encoderId;
-      }
+    if (existingAssignment) {
+      console.log(`[EncoderDispatch] Reusing existing assignment for ${inputPath}`);
+      return existingAssignment;
     }
 
-    // Fall back to database query for any available encoder
+    // Select initial encoder
     const encoder = await prisma.remoteEncoder.findFirst({
       where: {
         status: { in: ["IDLE", "ENCODING"] },
-        encoderId: excludeId ? { not: excludeId } : undefined,
+        OR: [
+          { blockedUntil: null },
+          { blockedUntil: { lt: new Date() } },
+        ],
       },
       orderBy: [
         { currentJobs: "asc" },
@@ -597,76 +788,15 @@ class EncoderDispatchService {
       ],
     });
 
-    if (encoder && encoder.currentJobs < encoder.maxConcurrent) {
-      return encoder.encoderId;
-    }
-
-    return null;
-  }
-
-  /**
-   * Queue a new encoding job for remote execution
-   * Returns the assignment and a promise that resolves when encoding completes
-   */
-  async queueEncodingJob(
-    jobId: string,
-    inputPath: string,
-    outputPath: string,
-    profileId: string,
-  ): Promise<QueueEncodingJobResult> {
-    // Check for existing active assignment for the same input file
-    // This prevents duplicate encodes when multiple jobs target the same file
-    const existingAssignment = await prisma.encoderAssignment.findFirst({
-      where: {
-        inputPath,
-        status: { in: ["PENDING", "ENCODING"] },
-      },
-    });
-
-    if (existingAssignment) {
-      console.log(`[EncoderDispatch] Reusing existing assignment ${existingAssignment.jobId} for ${inputPath}`);
-
-      // Return the existing assignment with a completion promise
-      const waitForCompletion = (): Promise<EncoderAssignment> => {
-        return new Promise((resolve, reject) => {
-          // Check if there's already a callback registered
-          const existingCallback = this.jobCompletionCallbacks.get(existingAssignment.jobId);
-          if (existingCallback) {
-            // Chain onto existing callback
-            const originalResolve = existingCallback.resolve;
-            const originalReject = existingCallback.reject;
-            this.jobCompletionCallbacks.set(existingAssignment.jobId, {
-              resolve: (result) => { originalResolve(result); resolve(result); },
-              reject: (err) => { originalReject(err); reject(err); },
-            });
-          } else {
-            this.jobCompletionCallbacks.set(existingAssignment.jobId, { resolve, reject });
-          }
-        });
-      };
-
-      return { assignment: existingAssignment, waitForCompletion };
-    }
-
-    // Select initial encoder (prefer one with capacity, but accept any connected encoder)
-    let encoderId = await this.selectEncoder();
-
-    // If no encoder has capacity, use any connected encoder - job will queue
-    if (!encoderId) {
-      const connectedEncoders = Array.from(this.encoders.keys());
-      if (connectedEncoders.length > 0) {
-        encoderId = connectedEncoders[0];
-        console.log(`[EncoderDispatch] No encoder with capacity, queuing job for ${encoderId}`);
-      } else {
-        throw new Error("No encoders connected");
-      }
+    if (!encoder) {
+      throw new Error("No encoders available");
     }
 
     // Create assignment
     const assignment = await prisma.encoderAssignment.create({
       data: {
         jobId,
-        encoderId,
+        encoderId: encoder.encoderId,
         inputPath,
         outputPath,
         profileId,
@@ -674,124 +804,17 @@ class EncoderDispatchService {
       },
     });
 
-    console.log(`[EncoderDispatch] Queued job ${jobId} for remote encoding (assigned to ${encoderId})`);
-
-    // Create completion promise
-    const waitForCompletion = (): Promise<EncoderAssignment> => {
-      return new Promise((resolve, reject) => {
-        this.jobCompletionCallbacks.set(jobId, { resolve, reject });
-      });
-    };
-
-    return { assignment, waitForCompletion };
+    console.log(`[EncoderDispatch] Queued job ${jobId} for remote encoding`);
+    return assignment;
   }
 
   /**
-   * Try to assign pending jobs to available encoders
+   * Get current status of an assignment (for polling)
    */
-  private async tryAssignPendingJobs(): Promise<void> {
-    // Get pending assignments
-    const pendingAssignments = await prisma.encoderAssignment.findMany({
-      where: { status: "PENDING" },
-      include: { encoder: true },
-      orderBy: { assignedAt: "asc" },
+  async getAssignmentStatus(assignmentId: string): Promise<EncoderAssignment | null> {
+    return prisma.encoderAssignment.findUnique({
+      where: { id: assignmentId },
     });
-
-    if (pendingAssignments.length === 0) {
-      return;
-    }
-
-    for (const assignment of pendingAssignments) {
-      const encoder = this.encoders.get(assignment.encoderId);
-
-      // Check if encoder is connected and has capacity
-      if (!encoder || encoder.currentJobs.size >= encoder.maxConcurrent) {
-        // Try to find ANY available encoder (don't exclude current - it might have reconnected)
-        const newEncoderId = await this.selectEncoder();
-        if (newEncoderId && this.encoders.has(newEncoderId)) {
-          console.log(`[EncoderDispatch] Reassigning job ${assignment.jobId} from ${assignment.encoderId} to ${newEncoderId}`);
-          await prisma.encoderAssignment.update({
-            where: { id: assignment.id },
-            data: { encoderId: newEncoderId },
-          });
-          assignment.encoderId = newEncoderId;
-        } else {
-          console.log(`[EncoderDispatch] No available encoder for job ${assignment.jobId} (assigned to ${assignment.encoderId})`);
-          continue; // Skip, no available encoder
-        }
-      }
-
-      // Verify input file exists before dispatching (prevents premature dispatch)
-      if (!existsSync(assignment.inputPath)) {
-        console.log(`[EncoderDispatch] Skipping job ${assignment.jobId} - input file not ready: ${assignment.inputPath}`);
-        continue; // File not ready yet, will be picked up on next try
-      }
-
-      // Get profile
-      const profile = await prisma.encodingProfile.findUnique({
-        where: { id: assignment.profileId },
-      });
-
-      if (!profile) {
-        console.error(`[EncoderDispatch] Profile not found: ${assignment.profileId}`);
-        continue;
-      }
-
-      // Get target encoder
-      const targetEncoder = this.encoders.get(assignment.encoderId);
-      if (!targetEncoder) continue;
-
-      // Send job assignment with translated paths for remote filesystem
-      const serializedProfile = this.serializeProfile(profile);
-      const assignMsg: JobAssignMessage = {
-        type: "job:assign",
-        jobId: assignment.jobId,
-        inputPath: translateToRemotePath(assignment.inputPath),
-        outputPath: translateToRemotePath(assignment.outputPath),
-        profileId: assignment.profileId,
-        profile: serializedProfile,
-      };
-
-      console.log(`[EncoderDispatch] Sending profile with hwAccel="${serializedProfile.hwAccel}" videoEncoder="${serializedProfile.videoEncoder}"`);
-      this.send(targetEncoder.ws, assignMsg);
-      targetEncoder.currentJobs.add(assignment.jobId);
-
-      console.log(`[EncoderDispatch] Paths translated: ${assignment.inputPath} -> ${assignMsg.inputPath}`);
-
-      // Initialize progress cache for stall detection
-      const now = Date.now();
-      this.progressCache.set(assignment.jobId, {
-        jobId: assignment.jobId,
-        progress: 0,
-        fps: null,
-        speed: null,
-        eta: 0,
-        lastDbWrite: now,
-        lastProgressAt: now, // Start tracking from assignment time
-        dirty: false,
-      });
-
-      // Update assignment status
-      await prisma.encoderAssignment.update({
-        where: { id: assignment.id },
-        data: {
-          status: "ENCODING",
-          startedAt: new Date(),
-        },
-      });
-
-      // Update encoder state
-      await prisma.remoteEncoder.update({
-        where: { encoderId: assignment.encoderId },
-        data: {
-          currentJobs: { increment: 1 },
-          status: "ENCODING",
-        },
-      });
-
-      console.log(`[EncoderDispatch] Assigned job ${assignment.jobId} to ${assignment.encoderId}`);
-      this.emitEncoderStatusUpdate(assignment.encoderId);
-    }
   }
 
   /**
@@ -801,16 +824,11 @@ class EncoderDispatchService {
     const assignment = await prisma.encoderAssignment.findUnique({
       where: { jobId },
     });
-
     if (!assignment) return false;
 
     const encoder = this.encoders.get(assignment.encoderId);
     if (encoder) {
-      this.send(encoder.ws, {
-        type: "job:cancel",
-        jobId,
-        reason,
-      });
+      this.send(encoder.ws, { type: "job:cancel", jobId, reason });
     }
 
     await prisma.encoderAssignment.update({
@@ -822,322 +840,25 @@ class EncoderDispatchService {
       },
     });
 
-    // Remove completion callback
-    const callback = this.jobCompletionCallbacks.get(jobId);
-    if (callback) {
-      callback.reject(new Error("Job cancelled"));
-      this.jobCompletionCallbacks.delete(jobId);
+    if (assignment.status === "ENCODING" || assignment.status === "ASSIGNED") {
+      await prisma.remoteEncoder.update({
+        where: { encoderId: assignment.encoderId },
+        data: { currentJobs: { decrement: 1 } },
+      }).catch(() => {});
     }
 
     return true;
   }
 
-  // ==========================================================================
-  // Profile Serialization
-  // ==========================================================================
-
-  private serializeProfile(profile: EncodingProfile): EncodingProfileData {
-    return {
-      id: profile.id,
-      name: profile.name,
-      videoEncoder: profile.videoEncoder,
-      videoQuality: profile.videoQuality,
-      videoMaxResolution: profile.videoMaxResolution,
-      videoMaxBitrate: profile.videoMaxBitrate,
-      hwAccel: profile.hwAccel,
-      hwDevice: profile.hwDevice,
-      videoFlags: profile.videoFlags as Record<string, unknown>,
-      audioEncoder: profile.audioEncoder,
-      audioFlags: profile.audioFlags as Record<string, unknown>,
-      subtitlesMode: profile.subtitlesMode,
-      container: profile.container,
-    };
-  }
-
-  // ==========================================================================
-  // Health Monitoring
-  // ==========================================================================
-
-  private startHealthCheck(): void {
-    const scheduler = getSchedulerService();
-    scheduler.register(
-      "encoder-health",
-      "Encoder Health Check",
-      this.healthCheckIntervalMs,
-      async () => {
-        const now = new Date();
-
-        // Check encoder heartbeats
-        for (const [encoderId, encoder] of this.encoders) {
-          const elapsed = now.getTime() - encoder.lastHeartbeat.getTime();
-
-          if (elapsed > this.heartbeatTimeout) {
-            console.warn(`[EncoderDispatch] Encoder ${encoderId} health check failed (${elapsed}ms since last heartbeat)`);
-            encoder.ws.terminate();
-            this.handleDisconnect(encoderId);
-          }
-        }
-
-        // Check for stalled jobs (no progress updates for too long)
-        await this.checkStalledJobs();
-      }
-    );
-  }
-
   /**
-   * Check for jobs that haven't received progress updates and are likely stalled
-   */
-  private async checkStalledJobs(): Promise<void> {
-    const now = Date.now();
-
-    // Get all ENCODING assignments from the database
-    const activeAssignments = await prisma.encoderAssignment.findMany({
-      where: { status: "ENCODING" },
-    });
-
-    for (const assignment of activeAssignments) {
-      const cached = this.progressCache.get(assignment.jobId);
-
-      // If we have cached progress, check the last progress time
-      if (cached) {
-        const timeSinceProgress = now - cached.lastProgressAt;
-        if (timeSinceProgress > this.jobStallTimeoutMs) {
-          console.warn(`[EncoderDispatch] Job ${assignment.jobId} appears stalled (${Math.round(timeSinceProgress / 1000)}s since last progress at ${cached.progress.toFixed(1)}%)`);
-          await this.handleStalledJob(assignment.jobId, assignment.encoderId, cached.progress);
-        }
-      } else {
-        // No cached progress but job is marked as ENCODING - check startedAt
-        if (assignment.startedAt) {
-          const timeSinceStart = now - assignment.startedAt.getTime();
-          // Give jobs 2x the stall timeout to send their first progress update
-          if (timeSinceStart > this.jobStallTimeoutMs * 2) {
-            console.warn(`[EncoderDispatch] Job ${assignment.jobId} never sent progress (${Math.round(timeSinceStart / 1000)}s since start)`);
-            await this.handleStalledJob(assignment.jobId, assignment.encoderId, 0);
-          }
-        }
-      }
-    }
-  }
-
-  /**
-   * Handle a job that appears to be stalled
-   */
-  private async handleStalledJob(jobId: string, encoderId: string, lastProgress: number): Promise<void> {
-    // Get current assignment
-    const assignment = await prisma.encoderAssignment.findUnique({
-      where: { jobId },
-    });
-
-    if (!assignment || assignment.status !== "ENCODING") {
-      return; // Already handled or not encoding
-    }
-
-    // Clean up encoder tracking
-    const encoder = this.encoders.get(encoderId);
-    if (encoder) {
-      encoder.currentJobs.delete(jobId);
-      // Send cancel message to encoder in case it's still alive
-      this.send(encoder.ws, {
-        type: "job:cancel",
-        jobId,
-        reason: "Job stalled - no progress updates received",
-      });
-    }
-
-    // Update encoder state
-    await prisma.remoteEncoder.update({
-      where: { encoderId },
-      data: {
-        currentJobs: { decrement: 1 },
-        status: encoder && encoder.currentJobs.size === 0 ? "IDLE" : "ENCODING",
-      },
-    }).catch(() => {}); // Ignore if encoder doesn't exist
-
-    // Check if we should retry
-    // Don't count against retry limit if job never started (0% progress)
-    // This happens when encoders are busy and can't accept new jobs
-    const shouldIncrementAttempt = lastProgress > 0;
-    const effectiveAttempt = shouldIncrementAttempt ? assignment.attempt + 1 : assignment.attempt;
-
-    if (effectiveAttempt <= assignment.maxAttempts) {
-      if (shouldIncrementAttempt) {
-        console.log(`[EncoderDispatch] Retrying stalled job ${jobId} (attempt ${effectiveAttempt}/${assignment.maxAttempts})`);
-      } else {
-        console.log(`[EncoderDispatch] Requeuing job ${jobId} - never started (encoders may be busy)`);
-      }
-
-      // Try to find any available encoder (same encoder is fine)
-      const newEncoderId = await this.selectEncoder();
-
-      await prisma.encoderAssignment.update({
-        where: { jobId },
-        data: {
-          status: "PENDING",
-          attempt: shouldIncrementAttempt ? { increment: 1 } : undefined,
-          error: lastProgress > 0
-            ? `Job stalled at ${lastProgress.toFixed(1)}% - retrying`
-            : "Job never started - requeuing",
-          encoderId: newEncoderId || encoderId,
-          startedAt: null,
-          progress: 0,
-          fps: null,
-          speed: null,
-          eta: null,
-        },
-      });
-
-      // Clean up cache
-      this.cleanupJobCache(jobId);
-    } else {
-      // Max retries exceeded - mark as failed
-      console.error(`[EncoderDispatch] Job ${jobId} failed - stalled after max retries`);
-
-      await prisma.encoderAssignment.update({
-        where: { jobId },
-        data: {
-          status: "FAILED",
-          error: `Job stalled at ${lastProgress.toFixed(1)}% after ${assignment.maxAttempts} attempts`,
-          completedAt: new Date(),
-        },
-      });
-
-      // Update encoder failed count
-      await prisma.remoteEncoder.update({
-        where: { encoderId },
-        data: {
-          totalJobsFailed: { increment: 1 },
-        },
-      }).catch(() => {});
-
-      // Clean up cache
-      this.cleanupJobCache(jobId);
-
-      // Notify callback
-      const callback = this.jobCompletionCallbacks.get(jobId);
-      if (callback) {
-        callback.reject(new Error(`Job stalled at ${lastProgress.toFixed(1)}%`));
-        this.jobCompletionCallbacks.delete(jobId);
-      }
-
-      this.onJobFailed?.(jobId, `Job stalled at ${lastProgress.toFixed(1)}%`);
-    }
-
-    this.emitEncoderStatusUpdate(encoderId);
-  }
-
-  /**
-   * Start the job assignment loop (runs every 1 second)
-   * This is the single point of truth for assigning pending jobs to encoders
-   */
-  private startJobAssignmentLoop(): void {
-    const scheduler = getSchedulerService();
-    scheduler.register(
-      "encoder-job-assignment",
-      "Encoder Job Assignment",
-      this.jobAssignmentIntervalMs,
-      async () => {
-        await this.tryAssignPendingJobs();
-      }
-    );
-  }
-
-  /**
-   * Start periodic progress flush to ensure dirty progress gets written to DB
-   */
-  private startProgressFlush(): void {
-    const scheduler = getSchedulerService();
-    scheduler.register(
-      "encoder-progress-flush",
-      "Encoder Progress Flush",
-      this.progressFlushIntervalMs,
-      async () => {
-        await this.flushProgressUpdates();
-      }
-    );
-  }
-
-  /**
-   * Flush any dirty progress updates to the database
-   */
-  private async flushProgressUpdates(): Promise<void> {
-    const now = Date.now();
-    const toFlush: CachedProgress[] = [];
-
-    for (const cached of this.progressCache.values()) {
-      // Flush if dirty and enough time has passed
-      if (cached.dirty && now - cached.lastDbWrite >= this.progressWriteIntervalMs) {
-        toFlush.push(cached);
-      }
-    }
-
-    // Batch update - one query per dirty job (could be optimized further with raw SQL)
-    for (const cached of toFlush) {
-      cached.lastDbWrite = now;
-      cached.dirty = false;
-
-      prisma.encoderAssignment.updateMany({
-        where: { jobId: cached.jobId },
-        data: {
-          progress: cached.progress,
-          fps: cached.fps,
-          speed: cached.speed,
-          eta: cached.eta,
-        },
-      }).catch((err) => {
-        console.error(`[EncoderDispatch] Flush progress update failed for ${cached.jobId}:`, err.message);
-      });
-    }
-  }
-
-  /**
-   * Clean up progress cache for a completed/failed job
-   */
-  private cleanupJobCache(jobId: string): void {
-    this.progressCache.delete(jobId);
-    this.jobRequestIdCache.delete(jobId);
-  }
-
-  // ==========================================================================
-  // Utility Methods
-  // ==========================================================================
-
-  private send(ws: ServerWebSocket<EncoderWebSocketData>, msg: ServerMessage): void {
-    // Bun WebSocket readyState: 0 = CONNECTING, 1 = OPEN, 2 = CLOSING, 3 = CLOSED
-    if (ws.readyState === 1) {
-      ws.send(JSON.stringify(msg));
-    }
-  }
-
-  private emitEncoderStatusUpdate(encoderId: string): void {
-    // Emit via job events for UI
-    const events = getJobEventService();
-    events.emitWorkerStatus({
-      workerId: encoderId,
-      hostname: this.encoders.get(encoderId)?.encoderId || encoderId,
-      status: this.encoders.has(encoderId) ? "ACTIVE" : "STOPPED",
-      lastHeartbeat: this.encoders.get(encoderId)?.lastHeartbeat || new Date(),
-      runningJobs: this.encoders.get(encoderId)?.currentJobs.size || 0,
-    });
-  }
-
-  // ==========================================================================
-  // Public API
-  // ==========================================================================
-
-  /**
-   * Check if remote encoding is available (at least one encoder online)
+   * Check if remote encoding is available
    */
   isAvailable(): boolean {
-    for (const encoder of this.encoders.values()) {
-      if (encoder.currentJobs.size < encoder.maxConcurrent) {
-        return true;
-      }
-    }
-    return false;
+    return this.encoders.size > 0;
   }
 
   /**
-   * Check if any encoders are connected (even if busy)
+   * Check if any encoders are connected
    */
   hasEncoders(): boolean {
     return this.encoders.size > 0;
@@ -1164,42 +885,49 @@ class EncoderDispatchService {
    */
   async getActiveAssignments(): Promise<EncoderAssignment[]> {
     return prisma.encoderAssignment.findMany({
-      where: {
-        status: { in: ["PENDING", "ENCODING"] },
-      },
+      where: { status: { in: ["PENDING", "ASSIGNED", "ENCODING"] } },
       orderBy: { assignedAt: "desc" },
     });
   }
 
-  /**
-   * Shutdown the service
-   */
-  shutdown(): void {
-    console.log("[EncoderDispatch] Shutting down...");
+  // ==========================================================================
+  // Utility Methods
+  // ==========================================================================
 
-    // Unregister scheduler tasks
-    const scheduler = getSchedulerService();
-    scheduler.unregister("encoder-health");
-    scheduler.unregister("encoder-progress-flush");
-    scheduler.unregister("encoder-job-assignment");
-
-    // Final flush of progress updates
-    this.flushProgressUpdates().catch(console.error);
-
-    // Clear caches
-    this.progressCache.clear();
-    this.jobRequestIdCache.clear();
-
-    // Send shutdown message to all encoders
-    for (const encoder of this.encoders.values()) {
-      this.send(encoder.ws, {
-        type: "server:shutdown",
-        reconnectDelay: 5000,
-      });
-      encoder.ws.close();
+  private send(ws: ServerWebSocket<EncoderWebSocketData>, msg: ServerMessage): void {
+    if (ws.readyState === 1) {
+      ws.send(JSON.stringify(msg));
     }
+  }
 
-    this.encoders.clear();
+  private serializeProfile(profile: EncodingProfile): EncodingProfileData {
+    return {
+      id: profile.id,
+      name: profile.name,
+      videoEncoder: profile.videoEncoder,
+      videoQuality: profile.videoQuality,
+      videoMaxResolution: profile.videoMaxResolution,
+      videoMaxBitrate: profile.videoMaxBitrate,
+      hwAccel: profile.hwAccel,
+      hwDevice: profile.hwDevice,
+      videoFlags: profile.videoFlags as Record<string, unknown>,
+      audioEncoder: profile.audioEncoder,
+      audioFlags: profile.audioFlags as Record<string, unknown>,
+      subtitlesMode: profile.subtitlesMode,
+      container: profile.container,
+    };
+  }
+
+  private emitEncoderStatusUpdate(encoderId: string): void {
+    const events = getJobEventService();
+    const encoder = this.encoders.get(encoderId);
+    events.emitWorkerStatus({
+      workerId: encoderId,
+      hostname: encoderId,
+      status: encoder ? "ACTIVE" : "STOPPED",
+      lastHeartbeat: encoder?.lastHeartbeat || new Date(),
+      runningJobs: 0, // Will be updated from DB
+    });
   }
 }
 

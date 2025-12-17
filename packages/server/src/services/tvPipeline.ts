@@ -269,11 +269,14 @@ export async function initializeTvEpisodes(requestId: string): Promise<number> {
   const now = new Date();
   let episodeCount = 0;
   let skippedCount = 0;
+  let awaitingCount = 0;
 
   for (const season of seasons) {
     for (const episode of season.episodes) {
       const airDate = episode.airDate ? new Date(episode.airDate) : null;
-      const hasAired = airDate ? airDate <= now : false;
+      // If no air date data, assume the episode has aired (search for it)
+      // Only mark as not aired if we have a future air date
+      const hasAired = !airDate || airDate <= now;
 
       // Check if this episode is available on all target servers
       const key = `${season.seasonNumber}-${episode.episodeNumber}`;
@@ -289,6 +292,7 @@ export async function initializeTvEpisodes(requestId: string): Promise<number> {
         status = TvEpisodeStatus.PENDING;
       } else {
         status = TvEpisodeStatus.AWAITING;
+        awaitingCount++;
       }
 
       await prisma.tvEpisode.upsert({
@@ -319,9 +323,14 @@ export async function initializeTvEpisodes(requestId: string): Promise<number> {
     }
   }
 
-  const message = skippedCount > 0
-    ? `Initialized ${episodeCount} episodes across ${seasons.length} seasons (${skippedCount} already in library)`
-    : `Initialized ${episodeCount} episodes across ${seasons.length} seasons`;
+  const parts = [`Initialized ${episodeCount} episodes across ${seasons.length} seasons`];
+  if (skippedCount > 0) {
+    parts.push(`${skippedCount} already in library`);
+  }
+  if (awaitingCount > 0) {
+    parts.push(`${awaitingCount} not yet aired`);
+  }
+  const message = parts.length > 1 ? `${parts[0]} (${parts.slice(1).join(", ")})` : parts[0];
   await logActivity(requestId, ActivityType.INFO, message);
 
   return episodeCount;
@@ -881,20 +890,38 @@ export async function handleTvSearch(payload: TvSearchPayload, jobId: string): P
         console.log(`[TvPipeline]     parsed="${parsed.title}" res=${parsed.resolution || "?"} seeds=${r.seeders ?? "?"}`);
       }
 
-      // Filter releases to only those matching our show title
+      // Filter releases to only those matching our show title AND season/episode
       const titleMatchedReleases = episodeResult.releases.filter((r) => {
         const parsed = parseTorrentName(r.title);
+
+        // Must have matching title
         if (parsed.title) {
           const normalizedReleaseTitle = normalizeTitle(parsed.title);
           if (normalizedReleaseTitle !== normalizedRequestTitle) {
-            console.log(`[TvPipeline] ✗ REJECTED (title): "${parsed.title}" ≠ "${request.title}"`);
             return false;
           }
         }
+
+        // Must match season (reject releases from wrong seasons)
+        if (parsed.season !== undefined && parsed.season !== seasonNumber) {
+          console.log(`[TvPipeline] ✗ REJECTED (wrong season): S${parsed.season} ≠ S${seasonNumber} - ${r.title}`);
+          return false;
+        }
+
+        // If release has an episode number, it must match (or be a season pack with no episode)
+        if (parsed.episode !== undefined) {
+          const epMatch = Array.isArray(parsed.episode)
+            ? parsed.episode.includes(ep.episode)
+            : parsed.episode === ep.episode;
+          if (!epMatch) {
+            return false;
+          }
+        }
+
         return true;
       });
 
-      console.log(`[TvPipeline] After title filter: ${titleMatchedReleases.length} releases match "${request.title}"`);
+      console.log(`[TvPipeline] After title/season filter: ${titleMatchedReleases.length} releases match "${request.title}" S${seasonNumber}E${ep.episode}`);
 
       if (titleMatchedReleases.length === 0) {
         console.log(`[TvPipeline] ✗ No releases match show title for ${formatEpisode(seasonNumber, ep.episode)}`);
@@ -1525,47 +1552,59 @@ async function handleTvEncode(payload: TvEncodePayload, jobId: string): Promise<
     await logActivity(requestId, ActivityType.INFO, `${epLabel}: Using remote encoder for ${profile.name}`);
 
     try {
-      // Use the actual job ID for the encoder assignment (foreign key to Job table)
-      const { waitForCompletion } = await encoderDispatch.queueEncodingJob(
+      // Queue the encoding job
+      const assignment = await encoderDispatch.queueEncodingJob(
         jobId,
         episode.sourceFilePath,
         outputPath,
         profileId
       );
 
-      // Set up a progress polling interval since remote progress comes via WebSocket
-      const progressPollInterval = setInterval(async () => {
+      // Poll for completion (database-backed, survives restart)
+      let completedAssignment = assignment;
+      while (true) {
+        // Check for cancellation
         if (jobQueue.isCancelled(jobId)) {
-          clearInterval(progressPollInterval);
           await encoderDispatch.cancelJob(jobId, "Pipeline cancelled");
-          return;
+          throw new Error("Cancelled");
         }
 
-        // Get latest progress from database
-        const assignment = await prisma.encoderAssignment.findUnique({
-          where: { jobId: jobId },
+        // Get latest status from database
+        const current = await prisma.encoderAssignment.findUnique({
+          where: { id: assignment.id },
         });
 
-        if (assignment && assignment.status === "ENCODING") {
-          // Update episode progress directly
+        if (!current) {
+          throw new Error("Assignment not found");
+        }
+
+        if (current.status === "COMPLETED") {
+          completedAssignment = current;
+          break;
+        }
+
+        if (current.status === "FAILED") {
+          throw new Error(current.error || "Encoding failed");
+        }
+
+        // Update episode progress
+        if (current.status === "ENCODING" || current.status === "ASSIGNED") {
           await prisma.tvEpisode.update({
             where: { id: episodeId },
-            data: { progress: assignment.progress },
+            data: { progress: current.progress },
           });
 
-          // Also update request currentStep
           await prisma.mediaRequest.update({
             where: { id: requestId },
             data: {
-              currentStep: `${epLabel} ${profile.name}: ${assignment.progress.toFixed(1)}%`,
+              currentStep: `${epLabel} ${profile.name}: ${current.progress.toFixed(1)}%`,
             },
           });
         }
-      }, 2000);
 
-      // Wait for remote encoding to complete
-      const completedAssignment = await waitForCompletion();
-      clearInterval(progressPollInterval);
+        // Wait before next poll
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
 
       result = {
         success: true,
@@ -2067,9 +2106,6 @@ export async function reprocessTvEpisode(episodeId: string): Promise<{ step: str
       console.log(`[TvPipeline] Stored source is a sample file, ignoring: ${episode.sourceFilePath}`);
     }
   }
-
-  // Note: EncodingJob doesn't track individual episodes, so we don't delete them here.
-  // They will be re-created during the encode step.
 
   if (sourceExists && sourceFilePath) {
     // Source exists - queue encode job directly
