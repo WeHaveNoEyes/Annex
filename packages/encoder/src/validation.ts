@@ -71,16 +71,16 @@ export async function validateEnvironment(): Promise<ValidationResult> {
     warnings.push("ANNEX_NFS_BASE_PATH not configured - file access may fail");
   }
 
-  // 2. Validate GPU device
+  // 2. Validate GPU device (optional - for hardware encoding)
   console.log(`\n[Validation] GPU Device: ${config.gpuDevice}`);
   if (!fs.existsSync(config.gpuDevice)) {
-    errors.push(`GPU device not found: ${config.gpuDevice}`);
+    warnings.push(`GPU device not found: ${config.gpuDevice} - hardware encoding will not be available`);
   } else {
     try {
       fs.accessSync(config.gpuDevice, fs.constants.R_OK | fs.constants.W_OK);
       console.log("  ✓ GPU device is accessible");
     } catch (e) {
-      errors.push(`Cannot access GPU device: ${config.gpuDevice} - ${e}`);
+      warnings.push(`Cannot access GPU device: ${config.gpuDevice} - hardware encoding will not be available`);
     }
   }
 
@@ -99,13 +99,14 @@ export async function validateEnvironment(): Promise<ValidationResult> {
       console.log(`  ✓ ${version}`);
 
       // Check for VAAPI support
-      if (ffmpegOutput.includes("--enable-vaapi")) {
+      const hasVaapi = ffmpegOutput.includes("--enable-vaapi");
+      if (hasVaapi) {
         console.log("  ✓ VAAPI hardware acceleration available");
       } else {
-        warnings.push("FFmpeg does not have VAAPI support - hardware encoding will not work");
+        warnings.push("FFmpeg does not have VAAPI support - hardware encoding will not be available");
       }
 
-      // Check for required encoders
+      // Check for available encoders
       const ffmpegEncoders = Bun.spawn(["ffmpeg", "-encoders"], {
         stdout: "pipe",
         stderr: "pipe",
@@ -113,16 +114,24 @@ export async function validateEnvironment(): Promise<ValidationResult> {
       const encodersOutput = await new Response(ffmpegEncoders.stdout).text();
       await ffmpegEncoders.exited;
 
-      if (encodersOutput.includes("av1_vaapi")) {
-        console.log("  ✓ AV1 VAAPI encoder available");
-      } else {
-        warnings.push("AV1 VAAPI encoder not available - will fall back to software encoding");
+      const hasVaapiEncoder = encodersOutput.includes("av1_vaapi");
+      const hasSoftwareEncoder = encodersOutput.includes("libsvtav1");
+
+      if (hasVaapiEncoder) {
+        console.log("  ✓ AV1 VAAPI encoder (hardware) available");
       }
 
-      if (encodersOutput.includes("libsvtav1")) {
-        console.log("  ✓ Software AV1 encoder (libsvtav1) available");
-      } else {
-        warnings.push("Software AV1 encoder not available - encoding may fail");
+      if (hasSoftwareEncoder) {
+        console.log("  ✓ AV1 software encoder (libsvtav1) available");
+      }
+
+      // Only error if NO AV1 encoder is available at all
+      if (!hasVaapiEncoder && !hasSoftwareEncoder) {
+        errors.push("No AV1 encoders available - encoder cannot function without either av1_vaapi or libsvtav1");
+      } else if (!hasVaapiEncoder) {
+        warnings.push("Hardware AV1 encoder not available - will use software encoding only (slower)");
+      } else if (!hasSoftwareEncoder) {
+        warnings.push("Software AV1 encoder not available - will use hardware encoding only (requires GPU)");
       }
     } else {
       errors.push("FFmpeg check failed");
