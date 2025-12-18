@@ -30,6 +30,8 @@ model User {
   embyAccount  EmbyAccount?
   sessions     Session[]
   requests     MediaRequest[]
+  pipelineTemplates PipelineTemplate[]
+  notificationConfigs NotificationConfig[]
 }
 
 model PlexAccount {
@@ -322,6 +324,8 @@ model MediaRequest {
   tvEpisodes       TvEpisode[]   // Track individual episode status for TV shows
   downloads        Download[]    // All downloads associated with this request
   jobs             Job[]         // All jobs associated with this request
+  pipelineExecution PipelineExecution?
+  approvalQueue    ApprovalQueue[]
 
   @@index([userId])
   @@index([monitoring, type])  // For finding monitored TV shows
@@ -1027,4 +1031,163 @@ model Setting {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+// =============================================================================
+// Pipeline System (Customizable Request Pipelines)
+// =============================================================================
+
+model PipelineTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  mediaType   MediaType // MOVIE or TV
+  isDefault   Boolean  @default(false)
+  isPublic    Boolean  @default(true)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  steps       PipelineStep[]
+  executions  PipelineExecution[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([mediaType, isDefault])
+  @@index([isPublic])
+}
+
+model PipelineStep {
+  id         String   @id @default(cuid())
+  templateId String
+  template   PipelineTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  order      Int
+  type       StepType
+  name       String
+  config     Json     // Step-specific configuration
+  condition  Json?    // Conditional execution rules
+  required   Boolean  @default(true)
+  retryable  Boolean  @default(true)
+  timeout    Int?     // Timeout in seconds
+  continueOnError Boolean @default(false)
+
+  @@unique([templateId, order])
+  @@index([templateId])
+}
+
+model PipelineExecution {
+  id          String   @id @default(cuid())
+  requestId   String   @unique
+  request     MediaRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  templateId  String
+  template    PipelineTemplate @relation(fields: [templateId], references: [id])
+  status      ExecutionStatus
+  currentStep Int?
+  steps       Json     // Immutable snapshot of steps from template
+  context     Json     // Accumulated data shared between steps
+  error       String?
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+
+  stepExecutions StepExecution[]
+
+  @@index([requestId])
+  @@index([status])
+  @@index([templateId])
+}
+
+model StepExecution {
+  id          String   @id @default(cuid())
+  executionId String
+  execution   PipelineExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  stepOrder   Int
+  stepType    StepType
+  status      StepStatus
+  progress    Float?   @default(0)
+  input       Json?
+  output      Json?
+  error       String?
+  retryCount  Int      @default(0)
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  @@unique([executionId, stepOrder])
+  @@index([executionId])
+  @@index([status])
+}
+
+model NotificationConfig {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name      String
+  provider  NotificationProvider
+  config    Json     // Provider-specific config (url, token, etc.)
+  events    String[] // Event triggers (request.started, step.completed, etc.)
+  mediaType MediaType? // Filter by media type
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([enabled])
+}
+
+model ApprovalQueue {
+  id          String   @id @default(cuid())
+  requestId   String
+  request     MediaRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  executionId String
+  stepOrder   Int
+  reason      String?
+  context     Json     // Details for decision-making
+  status      ApprovalStatus
+  requiredRole String  // "admin", "moderator", "any"
+  timeoutHours Int?
+  autoAction  String?  // "approve", "reject", "cancel"
+  processedBy String?
+  processedAt DateTime?
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  @@index([requestId])
+  @@index([status])
+}
+
+enum StepType {
+  SEARCH
+  DOWNLOAD
+  ENCODE
+  DELIVER
+  APPROVAL
+  NOTIFICATION
+}
+
+enum ExecutionStatus {
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum StepStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+}
+
+enum NotificationProvider {
+  DISCORD
+  WEBHOOK
+  EMAIL
+  PUSH
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SKIPPED
+  TIMEOUT
 }

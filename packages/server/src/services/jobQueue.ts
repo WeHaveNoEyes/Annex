@@ -23,6 +23,7 @@ export type JobType =
   | "pipeline:encode"
   | "pipeline:deliver"
   | "pipeline:retry-awaiting"
+  | "pipeline:execute-step"
   | "tv:search"
   | "tv:download-season"
   | "tv:download-episode"
@@ -110,6 +111,14 @@ class JobQueueService {
       const rateLimiter = getRateLimiter();
       const count = await rateLimiter.cleanupOldRecords();
       return { cleaned: count };
+    });
+
+    this.registerHandler("pipeline:execute-step", async (payload) => {
+      const { executionId } = payload as { executionId: string };
+      const { PipelineExecutor } = await import("./pipeline/PipelineExecutor.js");
+      const executor = new PipelineExecutor();
+      await executor.executeNextStep(executionId);
+      return { success: true };
     });
   }
 
