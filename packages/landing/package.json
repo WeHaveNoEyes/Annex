@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "bun run dev-server.ts",
-    "deploy": "wrangler pages deploy . --project-name=annex --branch=main"
+    "dev": "bun run dev-server.ts"
   }
 }
