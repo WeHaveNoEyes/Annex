@@ -102,7 +102,7 @@ describe("encoder - core functionality", () => {
         }
       });
 
-      const { encode } = require("../encoder.js");
+      const { encode } = await import("../encoder.js");
 
       const result = await encode({
         jobId: "test-job",
@@ -204,7 +204,7 @@ describe("encoder - core functionality", () => {
         }
       });
 
-      const { encode } = require("../encoder.js");
+      const { encode } = await import("../encoder.js");
 
       const result = await encode({
         jobId: "test-job",
@@ -313,7 +313,7 @@ describe("encoder - core functionality", () => {
         }
       });
 
-      const { encode } = require("../encoder.js");
+      const { encode } = await import("../encoder.js");
 
       const result = await encode({
         jobId: "test-job",
@@ -409,7 +409,7 @@ describe("encoder - core functionality", () => {
         }
       });
 
-      const { encode } = require("../encoder.js");
+      const { encode } = await import("../encoder.js");
 
       const result = await encode({
         jobId: "test-job",
@@ -453,7 +453,7 @@ describe("encoder - core functionality", () => {
 
       spyOn(fs, "existsSync").mockReturnValue(false);
 
-      const { encode } = require("../encoder.js");
+      const { encode } = await import("../encoder.js");
 
       await expect(
         encode({
@@ -545,7 +545,7 @@ describe("encoder - core functionality", () => {
         }
       });
 
-      const { encode } = require("../encoder.js");
+      const { encode } = await import("../encoder.js");
 
       await expect(
         encode({
@@ -641,7 +641,7 @@ describe("encoder - core functionality", () => {
         }
       });
 
-      const { encode } = require("../encoder.js");
+      const { encode } = await import("../encoder.js");
 
       const abortController = new AbortController();
 
@@ -756,7 +756,7 @@ describe("encoder - core functionality", () => {
         }
       });
 
-      const { encode } = require("../encoder.js");
+      const { encode } = await import("../encoder.js");
 
       const result = await encode({
         jobId: "test-job",
@@ -859,7 +859,7 @@ describe("encoder - core functionality", () => {
         }
       });
 
-      const { encode } = require("../encoder.js");
+      const { encode } = await import("../encoder.js");
 
       const onProgressMock = mock(() => {});
 
@@ -959,7 +959,7 @@ describe("encoder - core functionality", () => {
         }
       });
 
-      const { encode } = require("../encoder.js");
+      const { encode } = await import("../encoder.js");
 
       await encode({
         jobId: "test-job",

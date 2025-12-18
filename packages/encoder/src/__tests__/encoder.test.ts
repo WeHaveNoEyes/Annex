@@ -19,7 +19,7 @@ describe("encoder", () => {
   describe("probeMedia", () => {
     describe("happy path", () => {
       test("function exists and is callable", () => {
-        const { probeMedia } = require("../encoder.js");
+        const { probeMedia } = await import("../encoder.js");
         expect(typeof probeMedia).toBe("function");
       });
 
@@ -59,7 +59,7 @@ describe("encoder", () => {
           exited: Promise.resolve(0),
         })) as any;
 
-        const { probeMedia } = require("../encoder.js");
+        const { probeMedia } = await import("../encoder.js");
         const result = await probeMedia("/test/video.mp4");
 
         expect(result.duration).toBeCloseTo(120.5);
@@ -110,7 +110,7 @@ describe("encoder", () => {
           exited: Promise.resolve(0),
         })) as any;
 
-        const { probeMedia } = require("../encoder.js");
+        const { probeMedia } = await import("../encoder.js");
         const result = await probeMedia("/test/video.mkv");
 
         expect(result.subtitleStreams.length).toBe(2);
@@ -149,7 +149,7 @@ describe("encoder", () => {
           exited: Promise.resolve(0),
         })) as any;
 
-        const { probeMedia } = require("../encoder.js");
+        const { probeMedia } = await import("../encoder.js");
         const result = await probeMedia("/test/video.mp4");
 
         expect(result.fps).toBe(24); // Default fps
@@ -170,7 +170,7 @@ describe("encoder", () => {
           exited: Promise.resolve(1),
         })) as any;
 
-        const { probeMedia } = require("../encoder.js");
+        const { probeMedia } = await import("../encoder.js");
 
         await expect(probeMedia("/nonexistent.mp4")).rejects.toThrow("ffprobe failed");
       });
@@ -201,7 +201,7 @@ describe("encoder", () => {
           exited: Promise.resolve(0),
         })) as any;
 
-        const { probeMedia } = require("../encoder.js");
+        const { probeMedia } = await import("../encoder.js");
 
         await expect(probeMedia("/audio-only.mp3")).rejects.toThrow("No video stream found");
       });
@@ -219,7 +219,7 @@ describe("encoder", () => {
           exited: Promise.resolve(0),
         })) as any;
 
-        const { probeMedia } = require("../encoder.js");
+        const { probeMedia } = await import("../encoder.js");
 
         await expect(probeMedia("/test.mp4")).rejects.toThrow("Failed to parse ffprobe output");
       });
@@ -229,12 +229,12 @@ describe("encoder", () => {
   describe("encode", () => {
     describe("happy path", () => {
       test("function exists and is callable", () => {
-        const { encode } = require("../encoder.js");
+        const { encode } = await import("../encoder.js");
         expect(typeof encode).toBe("function");
       });
 
       test("encode function exists", () => {
-        const { encode } = require("../encoder.js");
+        const { encode } = await import("../encoder.js");
         expect(typeof encode).toBe("function");
         expect(encode.length).toBeGreaterThan(0); // Takes parameters
       });
@@ -261,7 +261,7 @@ describe("encoder", () => {
           exited: Promise.resolve(1),
         })) as any;
 
-        const { encode } = require("../encoder.js");
+        const { encode } = await import("../encoder.js");
 
         const job = {
           jobId: "test-job",
@@ -337,7 +337,7 @@ describe("encoder", () => {
           };
         }) as any;
 
-        const { encode } = require("../encoder.js");
+        const { encode } = await import("../encoder.js");
 
         const job = {
           jobId: "test-job",
