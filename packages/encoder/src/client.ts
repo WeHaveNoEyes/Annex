@@ -22,7 +22,7 @@ import type {
 } from "@annex/shared";
 import { getConfig, type EncoderConfig } from "./config.js";
 import { encode } from "./encoder.js";
-import { validateEnvironment } from "./validation.js";
+import { validateEnvironment, detectCapabilities } from "./validation.js";
 
 interface ActiveJob {
   jobId: string;
@@ -153,11 +153,11 @@ Server: ${this.config.serverUrl}
 
     this.ws = new WebSocket(this.config.serverUrl);
 
-    this.ws.onopen = () => {
+    this.ws.onopen = async () => {
       console.log("[Client] Connected");
       this.state = "REGISTERING";
       this.reconnectAttempts = 0;
-      this.register();
+      await this.register();
     };
 
     this.ws.onmessage = (event) => {
@@ -212,7 +212,10 @@ Server: ${this.config.serverUrl}
   /**
    * Register with the server
    */
-  private register(): void {
+  private async register(): Promise<void> {
+    console.log("[Client] Detecting encoder capabilities...");
+    const capabilities = await detectCapabilities();
+
     const msg: RegisterMessage = {
       type: "register",
       encoderId: this.config.encoderId,
@@ -221,6 +224,7 @@ Server: ${this.config.serverUrl}
       currentJobs: this.activeJobs.size,
       hostname: os.hostname(),
       version: "1.0.0",
+      capabilities,
     };
 
     this.send(msg);

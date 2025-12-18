@@ -26,6 +26,43 @@ export type AssignmentStatus =
   | "CANCELLED";
 
 // =============================================================================
+// Encoder Capabilities
+// =============================================================================
+
+export interface EncoderCapabilities {
+  /** Available video encoders */
+  videoEncoders: {
+    av1?: {
+      hardware?: string[]; // e.g., ["av1_vaapi", "av1_nvenc"]
+      software?: string[]; // e.g., ["libsvtav1", "libaom-av1"]
+    };
+    hevc?: {
+      hardware?: string[];
+      software?: string[];
+    };
+    h264?: {
+      hardware?: string[];
+      software?: string[];
+    };
+  };
+  /** Available hardware acceleration methods */
+  hwaccel: string[]; // e.g., ["vaapi", "nvenc", "qsv", "cuda"]
+  /** Available audio encoders */
+  audioEncoders: string[]; // e.g., ["aac", "libopus", "libfdk_aac"]
+  /** GPU information */
+  gpu?: {
+    device: string;
+    driver?: string;
+    accessible: boolean;
+  };
+  /** System information */
+  system?: {
+    cpuCores?: number;
+    totalMemory?: number; // MB
+  };
+}
+
+// =============================================================================
 // Encoder -> Server Messages
 // =============================================================================
 
@@ -37,6 +74,7 @@ export interface RegisterMessage {
   currentJobs: number;
   hostname?: string;
   version?: string;
+  capabilities?: EncoderCapabilities;
 }
 
 export interface HeartbeatMessage {

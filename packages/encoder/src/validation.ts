@@ -10,7 +10,9 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
 import { getConfig } from "./config.js";
+import type { EncoderCapabilities } from "@annex/shared/types/encoder.js";
 
 export interface ValidationResult {
   valid: boolean;
@@ -244,4 +246,141 @@ export async function validateEnvironment(): Promise<ValidationResult> {
     errors,
     warnings,
   };
+}
+
+/**
+ * Detect encoder capabilities for registration
+ */
+export async function detectCapabilities(): Promise<EncoderCapabilities> {
+  const config = getConfig();
+  const capabilities: EncoderCapabilities = {
+    videoEncoders: {},
+    hwaccel: [],
+    audioEncoders: [],
+  };
+
+  try {
+    // Detect hardware acceleration support
+    const hwaccelCheck = Bun.spawn(["ffmpeg", "-hide_banner", "-hwaccels"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const hwaccelOutput = await new Response(hwaccelCheck.stdout).text();
+    await hwaccelCheck.exited;
+
+    // Parse hwaccel output (skip first line which is "Hardware acceleration methods:")
+    const hwaccels = hwaccelOutput
+      .split("\n")
+      .slice(1)
+      .map(line => line.trim())
+      .filter(line => line.length > 0);
+
+    capabilities.hwaccel = hwaccels;
+
+    // Detect video encoders
+    const encodersCheck = Bun.spawn(["ffmpeg", "-hide_banner", "-encoders"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const encodersOutput = await new Response(encodersCheck.stdout).text();
+    await encodersCheck.exited;
+
+    // AV1 encoders
+    capabilities.videoEncoders.av1 = {};
+    const av1Hardware: string[] = [];
+    const av1Software: string[] = [];
+
+    if (encodersOutput.includes("av1_vaapi")) av1Hardware.push("av1_vaapi");
+    if (encodersOutput.includes("av1_nvenc")) av1Hardware.push("av1_nvenc");
+    if (encodersOutput.includes("av1_qsv")) av1Hardware.push("av1_qsv");
+    if (encodersOutput.includes("av1_amf")) av1Hardware.push("av1_amf");
+
+    if (encodersOutput.includes("libsvtav1")) av1Software.push("libsvtav1");
+    if (encodersOutput.includes("libaom-av1")) av1Software.push("libaom-av1");
+
+    if (av1Hardware.length > 0) capabilities.videoEncoders.av1.hardware = av1Hardware;
+    if (av1Software.length > 0) capabilities.videoEncoders.av1.software = av1Software;
+
+    // HEVC/H.265 encoders
+    capabilities.videoEncoders.hevc = {};
+    const hevcHardware: string[] = [];
+    const hevcSoftware: string[] = [];
+
+    if (encodersOutput.includes("hevc_vaapi")) hevcHardware.push("hevc_vaapi");
+    if (encodersOutput.includes("hevc_nvenc")) hevcHardware.push("hevc_nvenc");
+    if (encodersOutput.includes("hevc_qsv")) hevcHardware.push("hevc_qsv");
+    if (encodersOutput.includes("hevc_amf")) hevcHardware.push("hevc_amf");
+
+    if (encodersOutput.includes("libx265")) hevcSoftware.push("libx265");
+
+    if (hevcHardware.length > 0) capabilities.videoEncoders.hevc.hardware = hevcHardware;
+    if (hevcSoftware.length > 0) capabilities.videoEncoders.hevc.software = hevcSoftware;
+
+    // H.264 encoders
+    capabilities.videoEncoders.h264 = {};
+    const h264Hardware: string[] = [];
+    const h264Software: string[] = [];
+
+    if (encodersOutput.includes("h264_vaapi")) h264Hardware.push("h264_vaapi");
+    if (encodersOutput.includes("h264_nvenc")) h264Hardware.push("h264_nvenc");
+    if (encodersOutput.includes("h264_qsv")) h264Hardware.push("h264_qsv");
+    if (encodersOutput.includes("h264_amf")) h264Hardware.push("h264_amf");
+
+    if (encodersOutput.includes("libx264")) h264Software.push("libx264");
+
+    if (h264Hardware.length > 0) capabilities.videoEncoders.h264.hardware = h264Hardware;
+    if (h264Software.length > 0) capabilities.videoEncoders.h264.software = h264Software;
+
+    // Detect audio encoders
+    const audioEncoders: string[] = [];
+    if (encodersOutput.includes(" aac ")) audioEncoders.push("aac");
+    if (encodersOutput.includes("libopus")) audioEncoders.push("libopus");
+    if (encodersOutput.includes("libfdk_aac")) audioEncoders.push("libfdk_aac");
+    if (encodersOutput.includes("libmp3lame")) audioEncoders.push("libmp3lame");
+    if (encodersOutput.includes(" ac3 ")) audioEncoders.push("ac3");
+    if (encodersOutput.includes("libvorbis")) audioEncoders.push("libvorbis");
+
+    capabilities.audioEncoders = audioEncoders;
+
+    // GPU information
+    if (config.gpuDevice) {
+      capabilities.gpu = {
+        device: config.gpuDevice,
+        accessible: fs.existsSync(config.gpuDevice),
+      };
+
+      // Try to get GPU driver info from vainfo if available
+      if (capabilities.hwaccel.includes("vaapi")) {
+        try {
+          const vainfoCheck = Bun.spawn(
+            ["vainfo", "--display", "drm", "--device", config.gpuDevice],
+            {
+              stdout: "pipe",
+              stderr: "pipe",
+            }
+          );
+          const vainfoOutput = await new Response(vainfoCheck.stdout).text();
+          await vainfoCheck.exited;
+
+          // Extract driver name from vainfo output
+          const driverMatch = vainfoOutput.match(/Driver version: (.+)/);
+          if (driverMatch) {
+            capabilities.gpu.driver = driverMatch[1].trim();
+          }
+        } catch {
+          // vainfo not available or failed
+        }
+      }
+    }
+
+    // System information
+    capabilities.system = {
+      cpuCores: os.cpus().length,
+      totalMemory: Math.round(os.totalmem() / 1024 / 1024), // Convert to MB
+    };
+  } catch (error) {
+    console.error("[Capabilities] Failed to detect capabilities:", error);
+  }
+
+  return capabilities;
 }
