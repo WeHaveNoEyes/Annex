@@ -251,6 +251,45 @@ export async function validateEnvironment(): Promise<ValidationResult> {
 /**
  * Detect encoder capabilities for registration
  */
+/**
+ * Test if a hardware encoder actually works by attempting a quick encode
+ */
+async function testHardwareEncoder(encoder: string, gpuDevice?: string): Promise<boolean> {
+  try {
+    const args = [
+      "-f", "lavfi",
+      "-i", "color=c=black:s=64x64:d=0.1",
+      "-frames:v", "1",
+    ];
+
+    // Add hardware acceleration setup based on encoder type
+    if (encoder.includes("vaapi") && gpuDevice) {
+      args.push("-vaapi_device", gpuDevice);
+      args.push("-vf", "format=nv12,hwupload");
+    } else if (encoder.includes("qsv")) {
+      args.push("-init_hw_device", "qsv=hw");
+      args.push("-filter_hw_device", "hw");
+    } else if (encoder.includes("nvenc")) {
+      // NVENC doesn't need special device setup
+    } else if (encoder.includes("amf")) {
+      // AMF doesn't need special device setup
+    }
+
+    args.push("-c:v", encoder);
+    args.push("-f", "null", "-");
+
+    const proc = Bun.spawn(["ffmpeg", ...args], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    await proc.exited;
+    return proc.exitCode === 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function detectCapabilities(): Promise<EncoderCapabilities> {
   const config = getConfig();
   const capabilities: EncoderCapabilities = {
@@ -285,49 +324,67 @@ export async function detectCapabilities(): Promise<EncoderCapabilities> {
     const encodersOutput = await new Response(encodersCheck.stdout).text();
     await encodersCheck.exited;
 
-    // AV1 encoders
-    capabilities.videoEncoders.av1 = {};
-    const av1Hardware: string[] = [];
-    const av1Software: string[] = [];
+    // Test each hardware encoder to see if it actually works
+    const hwEncodersToTest = [
+      // AV1
+      { codec: "av1", encoder: "av1_vaapi", compiled: encodersOutput.includes("av1_vaapi") },
+      { codec: "av1", encoder: "av1_nvenc", compiled: encodersOutput.includes("av1_nvenc") },
+      { codec: "av1", encoder: "av1_qsv", compiled: encodersOutput.includes("av1_qsv") },
+      { codec: "av1", encoder: "av1_amf", compiled: encodersOutput.includes("av1_amf") },
+      // HEVC
+      { codec: "hevc", encoder: "hevc_vaapi", compiled: encodersOutput.includes("hevc_vaapi") },
+      { codec: "hevc", encoder: "hevc_nvenc", compiled: encodersOutput.includes("hevc_nvenc") },
+      { codec: "hevc", encoder: "hevc_qsv", compiled: encodersOutput.includes("hevc_qsv") },
+      { codec: "hevc", encoder: "hevc_amf", compiled: encodersOutput.includes("hevc_amf") },
+      // H.264
+      { codec: "h264", encoder: "h264_vaapi", compiled: encodersOutput.includes("h264_vaapi") },
+      { codec: "h264", encoder: "h264_nvenc", compiled: encodersOutput.includes("h264_nvenc") },
+      { codec: "h264", encoder: "h264_qsv", compiled: encodersOutput.includes("h264_qsv") },
+      { codec: "h264", encoder: "h264_amf", compiled: encodersOutput.includes("h264_amf") },
+    ];
 
-    if (encodersOutput.includes("av1_vaapi")) av1Hardware.push("av1_vaapi");
-    if (encodersOutput.includes("av1_nvenc")) av1Hardware.push("av1_nvenc");
-    if (encodersOutput.includes("av1_qsv")) av1Hardware.push("av1_qsv");
-    if (encodersOutput.includes("av1_amf")) av1Hardware.push("av1_amf");
+    // Test hardware encoders in parallel
+    const testResults = await Promise.all(
+      hwEncodersToTest.map(async ({ codec, encoder, compiled }) => {
+        if (!compiled) return { codec, encoder, works: false };
+        const works = await testHardwareEncoder(encoder, config.gpuDevice);
+        return { codec, encoder, works };
+      })
+    );
+
+    // Build hardware encoder lists from test results
+    const av1Hardware: string[] = [];
+    const hevcHardware: string[] = [];
+    const h264Hardware: string[] = [];
+
+    for (const { codec, encoder, works } of testResults) {
+      if (works) {
+        if (codec === "av1") av1Hardware.push(encoder);
+        else if (codec === "hevc") hevcHardware.push(encoder);
+        else if (codec === "h264") h264Hardware.push(encoder);
+      }
+    }
+
+    // Software encoders (always available if compiled)
+    const av1Software: string[] = [];
+    const hevcSoftware: string[] = [];
+    const h264Software: string[] = [];
 
     if (encodersOutput.includes("libsvtav1")) av1Software.push("libsvtav1");
     if (encodersOutput.includes("libaom-av1")) av1Software.push("libaom-av1");
+    if (encodersOutput.includes("libx265")) hevcSoftware.push("libx265");
+    if (encodersOutput.includes("libx264")) h264Software.push("libx264");
 
+    // Populate capabilities
+    capabilities.videoEncoders.av1 = {};
     if (av1Hardware.length > 0) capabilities.videoEncoders.av1.hardware = av1Hardware;
     if (av1Software.length > 0) capabilities.videoEncoders.av1.software = av1Software;
 
-    // HEVC/H.265 encoders
     capabilities.videoEncoders.hevc = {};
-    const hevcHardware: string[] = [];
-    const hevcSoftware: string[] = [];
-
-    if (encodersOutput.includes("hevc_vaapi")) hevcHardware.push("hevc_vaapi");
-    if (encodersOutput.includes("hevc_nvenc")) hevcHardware.push("hevc_nvenc");
-    if (encodersOutput.includes("hevc_qsv")) hevcHardware.push("hevc_qsv");
-    if (encodersOutput.includes("hevc_amf")) hevcHardware.push("hevc_amf");
-
-    if (encodersOutput.includes("libx265")) hevcSoftware.push("libx265");
-
     if (hevcHardware.length > 0) capabilities.videoEncoders.hevc.hardware = hevcHardware;
     if (hevcSoftware.length > 0) capabilities.videoEncoders.hevc.software = hevcSoftware;
 
-    // H.264 encoders
     capabilities.videoEncoders.h264 = {};
-    const h264Hardware: string[] = [];
-    const h264Software: string[] = [];
-
-    if (encodersOutput.includes("h264_vaapi")) h264Hardware.push("h264_vaapi");
-    if (encodersOutput.includes("h264_nvenc")) h264Hardware.push("h264_nvenc");
-    if (encodersOutput.includes("h264_qsv")) h264Hardware.push("h264_qsv");
-    if (encodersOutput.includes("h264_amf")) h264Hardware.push("h264_amf");
-
-    if (encodersOutput.includes("libx264")) h264Software.push("libx264");
-
     if (h264Hardware.length > 0) capabilities.videoEncoders.h264.hardware = h264Hardware;
     if (h264Software.length > 0) capabilities.videoEncoders.h264.software = h264Software;
 
