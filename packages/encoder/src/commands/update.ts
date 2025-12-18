@@ -31,7 +31,25 @@ function getServerUrl(args: CliArgs): string {
       .replace(/\/encoder$/, "");
   }
 
-  // Get from config
+  // Try to load from env file if it exists (for Linux)
+  const envFilePath = "/etc/annex-encoder.env";
+  if (fs.existsSync(envFilePath)) {
+    try {
+      const envContent = fs.readFileSync(envFilePath, "utf-8");
+      const serverUrlMatch = envContent.match(/ANNEX_SERVER_URL=(.+)/);
+      if (serverUrlMatch) {
+        return serverUrlMatch[1]
+          .trim()
+          .replace(/^ws:\/\//, "http://")
+          .replace(/^wss:\/\//, "https://")
+          .replace(/\/encoder$/, "");
+      }
+    } catch {
+      // Ignore errors reading env file
+    }
+  }
+
+  // Get from config (which reads from environment variables or defaults)
   const config = getConfig();
   return config.serverUrl
     .replace(/^ws:\/\//, "http://")
