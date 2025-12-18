@@ -341,6 +341,18 @@ scheduler.start();
 // Register misc cleanup tasks with scheduler
 registerAuthTasks();
 
+// Register rate limit cleanup task (runs hourly)
+scheduler.register(
+  "ratelimit-cleanup",
+  "Rate Limit Cleanup",
+  60 * 60 * 1000, // 1 hour
+  async () => {
+    const { getRateLimiter } = await import("./services/rateLimiter.js");
+    const rateLimiter = getRateLimiter();
+    await rateLimiter.cleanupOldRecords();
+  }
+);
+
 // Start the job queue worker (recovers any stuck jobs from previous run)
 jobQueue.start().catch((error) => {
   console.error("[JobQueue] Failed to start:", error);

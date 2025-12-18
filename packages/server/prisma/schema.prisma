@@ -166,8 +166,13 @@ model Indexer {
   categoriesTv     Int[]       // Torznab category IDs
   priority         Int         @default(50)
   enabled          Boolean     @default(true)
+  rateLimitEnabled    Boolean  @default(false)
+  rateLimitMax        Int?     // Max requests in time window
+  rateLimitWindowSecs Int?     // Time window in seconds
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
+
+  rateLimitRequests   IndexerRateLimitRequest[]
 
   @@index([enabled, priority])
   @@index([type, enabled])
@@ -179,6 +184,17 @@ enum IndexerType {
   RSS
   TORRENTLEECH
   UNIT3D
+}
+
+// Rate limit request tracking (sliding window)
+model IndexerRateLimitRequest {
+  id          String   @id @default(cuid())
+  indexerId   String
+  indexer     Indexer  @relation(fields: [indexerId], references: [id], onDelete: Cascade)
+  requestedAt DateTime @default(now())
+
+  @@index([indexerId, requestedAt])
+  @@index([requestedAt])
 }
 
 // =============================================================================

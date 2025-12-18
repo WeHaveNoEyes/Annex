@@ -18,6 +18,7 @@ import {
   UNIT3D_CATEGORY_GROUPS,
   type Unit3dSearchOptions,
 } from "./unit3d.js";
+import { getRateLimiter } from "./rateLimiter.js";
 import { getCryptoService } from "./crypto.js";
 
 // Decrypt API key, falling back to the raw value for legacy unencrypted data
@@ -212,6 +213,14 @@ class IndexerService {
     options: SearchOptions
   ): Promise<Release[]> {
     console.log(`[Indexer] Searching ${indexer.name} (${indexer.type})...`);
+
+    // Rate limiting
+    const rateLimiter = getRateLimiter();
+    const allowed = await rateLimiter.waitForRateLimit(indexer.id);
+    if (!allowed) {
+      throw new Error(`Rate limit exceeded for ${indexer.name} after max retries`);
+    }
+    await rateLimiter.recordRequest(indexer.id);
 
     // Dispatch to appropriate provider
     switch (indexer.type) {

@@ -26,7 +26,8 @@ export type JobType =
   | "tv:search"
   | "tv:download-season"
   | "tv:download-episode"
-  | "tv:check-new-episodes";
+  | "tv:check-new-episodes"
+  | "ratelimit:cleanup";
 
 interface LibrarySyncServerPayload {
   serverId: string;
@@ -102,6 +103,13 @@ class JobQueueService {
       const result = await mdblist.batchHydrateMediaItems(items);
       console.log(`[MDBList] Hydrated discover items: ${result.success} success, ${result.failed} failed, ${result.skipped} skipped`);
       return result;
+    });
+
+    this.registerHandler("ratelimit:cleanup", async () => {
+      const { getRateLimiter } = await import("./rateLimiter.js");
+      const rateLimiter = getRateLimiter();
+      const count = await rateLimiter.cleanupOldRecords();
+      return { cleaned: count };
     });
   }
 

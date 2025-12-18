@@ -14,6 +14,7 @@ import {
   UNIT3D_CATEGORY_GROUPS,
 } from "../services/unit3d.js";
 import { getCryptoService } from "../services/crypto.js";
+import { getRateLimiter } from "../services/rateLimiter.js";
 
 const indexerInputSchema = z.object({
   name: z.string().min(1),
@@ -26,6 +27,9 @@ const indexerInputSchema = z.object({
   }),
   priority: z.number().min(1).max(100).default(50),
   enabled: z.boolean().default(true),
+  rateLimitEnabled: z.boolean().default(false),
+  rateLimitMax: z.number().int().positive().optional(),
+  rateLimitWindowSecs: z.number().int().positive().optional(),
 });
 
 // Map string values to Prisma enums
@@ -83,6 +87,9 @@ export const indexersRouter = router({
       },
       priority: i.priority,
       enabled: i.enabled,
+      rateLimitEnabled: i.rateLimitEnabled,
+      rateLimitMax: i.rateLimitMax,
+      rateLimitWindowSecs: i.rateLimitWindowSecs,
       createdAt: i.createdAt,
       updatedAt: i.updatedAt,
     }));
@@ -112,6 +119,9 @@ export const indexersRouter = router({
       },
       priority: i.priority,
       enabled: i.enabled,
+      rateLimitEnabled: i.rateLimitEnabled,
+      rateLimitMax: i.rateLimitMax,
+      rateLimitWindowSecs: i.rateLimitWindowSecs,
       createdAt: i.createdAt,
       updatedAt: i.updatedAt,
     };
@@ -131,6 +141,9 @@ export const indexersRouter = router({
         categoriesTv: input.categories.tv,
         priority: input.priority,
         enabled: input.enabled,
+        rateLimitEnabled: input.rateLimitEnabled,
+        rateLimitMax: input.rateLimitMax,
+        rateLimitWindowSecs: input.rateLimitWindowSecs,
       },
     });
 
@@ -156,6 +169,9 @@ export const indexersRouter = router({
       if (updates.categories?.tv !== undefined) data.categoriesTv = updates.categories.tv;
       if (updates.priority !== undefined) data.priority = updates.priority;
       if (updates.enabled !== undefined) data.enabled = updates.enabled;
+      if (updates.rateLimitEnabled !== undefined) data.rateLimitEnabled = updates.rateLimitEnabled;
+      if (updates.rateLimitMax !== undefined) data.rateLimitMax = updates.rateLimitMax;
+      if (updates.rateLimitWindowSecs !== undefined) data.rateLimitWindowSecs = updates.rateLimitWindowSecs;
 
       await prisma.indexer.update({
         where: { id },
@@ -378,4 +394,14 @@ export const indexersRouter = router({
       },
     };
   }),
+
+  /**
+   * Get rate limit status for an indexer
+   */
+  rateLimitStatus: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(async ({ input }) => {
+      const rateLimiter = getRateLimiter();
+      return await rateLimiter.getStatus(input.id);
+    }),
 });

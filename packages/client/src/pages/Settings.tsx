@@ -1105,6 +1105,9 @@ interface IndexerFormData {
   };
   priority: number;
   enabled: boolean;
+  rateLimitEnabled: boolean;
+  rateLimitMax?: number;
+  rateLimitWindowSecs?: number;
 }
 
 const defaultIndexerForm: IndexerFormData = {
@@ -1118,6 +1121,9 @@ const defaultIndexerForm: IndexerFormData = {
   },
   priority: 50,
   enabled: true,
+  rateLimitEnabled: false,
+  rateLimitMax: undefined,
+  rateLimitWindowSecs: undefined,
 };
 
 const indexerTypeOptions = [
@@ -1352,6 +1358,57 @@ function IndexerForm({
         )}
       </Card>
 
+      <Card className="p-5 space-y-4">
+        <h3 className="font-medium text-lg">Rate Limiting</h3>
+        <p className="text-sm text-white/50">
+          Limit API requests to this indexer to avoid hitting rate limits. Useful for indexers with strict API quotas.
+        </p>
+
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={form.rateLimitEnabled}
+              onChange={(e) => updateForm("rateLimitEnabled", e.target.checked)}
+              className="w-4 h-4 rounded border-white/20 bg-white/5 text-annex-500 focus:ring-annex-500/50"
+            />
+            <span className="text-sm">Enable Rate Limiting</span>
+          </label>
+        </div>
+
+        {form.rateLimitEnabled && (
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label hint="Maximum requests allowed">Max Requests</Label>
+              <Input
+                type="number"
+                min={1}
+                value={form.rateLimitMax || ""}
+                onChange={(e) => updateForm("rateLimitMax", parseInt(e.target.value) || undefined)}
+                placeholder="90"
+              />
+            </div>
+            <div>
+              <Label hint="Time window in seconds">Window (seconds)</Label>
+              <Input
+                type="number"
+                min={1}
+                value={form.rateLimitWindowSecs || ""}
+                onChange={(e) => updateForm("rateLimitWindowSecs", parseInt(e.target.value) || undefined)}
+                placeholder="60"
+              />
+            </div>
+          </div>
+        )}
+
+        {form.rateLimitEnabled && form.rateLimitMax && form.rateLimitWindowSecs && (
+          <div className="text-sm text-white/60 bg-white/5 rounded p-3">
+            Limit: {form.rateLimitMax} requests per {form.rateLimitWindowSecs} seconds
+            ({(form.rateLimitMax / (form.rateLimitWindowSecs / 60)).toFixed(1)} requests/minute)
+          </div>
+        )}
+      </Card>
+
       {/* Test Result */}
       {testResult && (
         <div
@@ -1424,6 +1481,9 @@ function IndexersSettings() {
       categories: data.categories,
       priority: data.priority,
       enabled: data.enabled,
+      rateLimitEnabled: data.rateLimitEnabled,
+      rateLimitMax: data.rateLimitMax,
+      rateLimitWindowSecs: data.rateLimitWindowSecs,
     });
   };
 
@@ -1438,6 +1498,9 @@ function IndexersSettings() {
       categories: data.categories,
       priority: data.priority,
       enabled: data.enabled,
+      rateLimitEnabled: data.rateLimitEnabled,
+      rateLimitMax: data.rateLimitMax,
+      rateLimitWindowSecs: data.rateLimitWindowSecs,
     });
   };
 
@@ -1479,6 +1542,9 @@ function IndexersSettings() {
         categories: indexer.categories,
         priority: indexer.priority,
         enabled: indexer.enabled,
+        rateLimitEnabled: indexer.rateLimitEnabled,
+        rateLimitMax: indexer.rateLimitMax ?? undefined,
+        rateLimitWindowSecs: indexer.rateLimitWindowSecs ?? undefined,
       };
 
       return (
