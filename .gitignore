@@ -52,4 +52,6 @@ backups/
 *.tar.gz
 packages/client/dist-node/
 packages/encoder/dist-package/
+packages/encoder/dist-binaries/
+packages/encoder/src/version.ts
 .annex-key

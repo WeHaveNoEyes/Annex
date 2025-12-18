@@ -1,0 +1,27 @@
+[Unit]
+Description=Annex Remote Encoder
+After=network-online.target nfs-client.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=annex
+Group=annex
+WorkingDirectory=/opt/annex-encoder
+EnvironmentFile=/etc/annex-encoder.env
+ExecStart=/opt/annex-encoder/annex-encoder
+Restart=always
+RestartSec=10
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/mnt/downloads
+PrivateTmp=true
+
+# GPU access
+SupplementaryGroups=video render
+
+[Install]
+WantedBy=multi-user.target
