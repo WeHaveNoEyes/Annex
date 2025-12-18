@@ -19,48 +19,70 @@ interface ManifestResponse {
   platforms: Record<string, { size: number; sha256: string }>;
 }
 
+// GitHub repository for releases
+const GITHUB_REPO = "WeHaveNoEyes/Annex";
+const GITHUB_API_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`;
+
 /**
- * Get server URL from CLI args or config
+ * Get update source URL
+ * Defaults to GitHub releases, can be overridden with --server flag
  */
-function getServerUrl(args: CliArgs): string {
+function getUpdateSource(args: CliArgs): { type: "github" | "server"; url: string } {
   if (args.flags.server) {
-    // Convert WebSocket URL to HTTP if needed
-    return args.flags.server
+    // Use custom server for updates
+    const serverUrl = args.flags.server
       .replace(/^ws:\/\//, "http://")
       .replace(/^wss:\/\//, "https://")
       .replace(/\/encoder$/, "");
+    return { type: "server", url: serverUrl };
   }
 
-  // Try to load from env file if it exists (for Linux)
-  const envFilePath = "/etc/annex-encoder.env";
-  if (fs.existsSync(envFilePath)) {
-    try {
-      const envContent = fs.readFileSync(envFilePath, "utf-8");
-      const serverUrlMatch = envContent.match(/ANNEX_SERVER_URL=(.+)/);
-      if (serverUrlMatch) {
-        return serverUrlMatch[1]
-          .trim()
-          .replace(/^ws:\/\//, "http://")
-          .replace(/^wss:\/\//, "https://")
-          .replace(/\/encoder$/, "");
-      }
-    } catch {
-      // Ignore errors reading env file
-    }
-  }
-
-  // Get from config (which reads from environment variables or defaults)
-  const config = getConfig();
-  return config.serverUrl
-    .replace(/^ws:\/\//, "http://")
-    .replace(/^wss:\/\//, "https://")
-    .replace(/\/encoder$/, "");
+  // Default to GitHub releases
+  return { type: "github", url: GITHUB_API_URL };
 }
 
 /**
- * Fetch manifest from server
+ * Fetch manifest from GitHub releases
  */
-async function fetchManifest(serverUrl: string): Promise<ManifestResponse> {
+async function fetchManifestFromGitHub(): Promise<ManifestResponse> {
+  console.log(`[Update] Checking GitHub for latest release...`);
+
+  try {
+    const response = await fetch(GITHUB_API_URL, {
+      headers: {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "annex-encoder",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const release = await response.json() as any;
+
+    // Find the manifest.json asset
+    const manifestAsset = release.assets.find((a: any) => a.name === "manifest.json");
+    if (!manifestAsset) {
+      throw new Error("No manifest.json found in latest release");
+    }
+
+    // Download the manifest
+    const manifestResponse = await fetch(manifestAsset.browser_download_url);
+    if (!manifestResponse.ok) {
+      throw new Error(`Failed to download manifest: ${manifestResponse.status}`);
+    }
+
+    return await manifestResponse.json() as ManifestResponse;
+  } catch (error) {
+    throw new Error(`Failed to fetch from GitHub: ${error}`);
+  }
+}
+
+/**
+ * Fetch manifest from Annex server
+ */
+async function fetchManifestFromServer(serverUrl: string): Promise<ManifestResponse> {
   const url = `${serverUrl}/api/encoder/package/info`;
   console.log(`[Update] Fetching manifest from ${url}...`);
 
@@ -78,9 +100,58 @@ async function fetchManifest(serverUrl: string): Promise<ManifestResponse> {
 }
 
 /**
- * Download binary for current platform
+ * Download binary from GitHub releases
  */
-async function downloadBinary(
+async function downloadBinaryFromGitHub(
+  platform: string,
+  outputPath: string
+): Promise<void> {
+  console.log(`[Update] Downloading ${platform} binary from GitHub...`);
+
+  try {
+    // Get latest release info
+    const response = await fetch(GITHUB_API_URL, {
+      headers: {
+        "Accept": "application/vnd.github.v3+json",
+        "User-Agent": "annex-encoder",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const release = await response.json() as any;
+
+    // Find the binary asset for this platform
+    const binaryName = `annex-encoder-${platform}${platform.startsWith("windows") ? ".exe" : ""}`;
+    const binaryAsset = release.assets.find((a: any) => a.name === binaryName);
+
+    if (!binaryAsset) {
+      throw new Error(`Binary for ${platform} not found in latest release`);
+    }
+
+    // Download the binary
+    const binaryResponse = await fetch(binaryAsset.browser_download_url);
+    if (!binaryResponse.ok) {
+      throw new Error(`HTTP ${binaryResponse.status}: ${binaryResponse.statusText}`);
+    }
+
+    const arrayBuffer = await binaryResponse.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    fs.writeFileSync(outputPath, buffer);
+    fs.chmodSync(outputPath, 0o755); // Make executable
+    console.log(`[Update] Downloaded ${(buffer.length / 1024 / 1024).toFixed(1)} MB`);
+  } catch (error) {
+    throw new Error(`Failed to download binary: ${error}`);
+  }
+}
+
+/**
+ * Download binary from Annex server
+ */
+async function downloadBinaryFromServer(
   serverUrl: string,
   platform: string,
   outputPath: string
@@ -219,15 +290,21 @@ Current Version: ${VERSION}
 Platform: ${getPlatformBinaryName()}
 `);
 
-  const serverUrl = getServerUrl(args);
+  const updateSource = getUpdateSource(args);
   const platform = getPlatformBinaryName();
   const force = args.flags.force ?? false;
+
+  console.log(`Update Source: ${updateSource.type === "github" ? "GitHub Releases" : updateSource.url}\n`);
 
   // Step 1: Fetch manifest
   console.log("[1/7] Checking for updates...");
   let manifest: ManifestResponse;
   try {
-    manifest = await fetchManifest(serverUrl);
+    if (updateSource.type === "github") {
+      manifest = await fetchManifestFromGitHub();
+    } else {
+      manifest = await fetchManifestFromServer(updateSource.url);
+    }
   } catch (error) {
     console.error(`Failed to fetch manifest: ${error}`);
     process.exit(1);
@@ -261,7 +338,11 @@ Platform: ${getPlatformBinaryName()}
   console.log("\n[2/7] Downloading new binary...");
   const tempPath = path.join(os.tmpdir(), `annex-encoder-${randomUUID()}`);
   try {
-    await downloadBinary(serverUrl, platform, tempPath);
+    if (updateSource.type === "github") {
+      await downloadBinaryFromGitHub(platform, tempPath);
+    } else {
+      await downloadBinaryFromServer(updateSource.url, platform, tempPath);
+    }
   } catch (error) {
     console.error(`Failed to download binary: ${error}`);
     process.exit(1);

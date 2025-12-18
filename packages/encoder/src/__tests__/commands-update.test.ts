@@ -65,7 +65,7 @@ describe("commands/update", () => {
 
       const args = {
         command: "update" as const,
-        flags: {},
+        flags: { server: "http://localhost:3000" },
         unknown: [],
       };
 
@@ -118,7 +118,7 @@ describe("commands/update", () => {
 
       const args = {
         command: "update" as const,
-        flags: {},
+        flags: { server: "http://localhost:3000" },
         unknown: [],
       };
 
@@ -183,7 +183,7 @@ describe("commands/update", () => {
 
       const args = {
         command: "update" as const,
-        flags: { force: true },
+        flags: { force: true, server: "http://localhost:3000" },
         unknown: [],
       };
 
@@ -278,7 +278,7 @@ describe("commands/update", () => {
 
       const args = {
         command: "update" as const,
-        flags: {},
+        flags: { server: "http://localhost:3000" },
         unknown: [],
       };
 
@@ -318,7 +318,7 @@ describe("commands/update", () => {
 
       const args = {
         command: "update" as const,
-        flags: {},
+        flags: { server: "http://localhost:3000" },
         unknown: [],
       };
 
@@ -363,7 +363,7 @@ describe("commands/update", () => {
 
       const args = {
         command: "update" as const,
-        flags: {},
+        flags: { server: "http://localhost:3000" },
         unknown: [],
       };
 
@@ -421,7 +421,7 @@ describe("commands/update", () => {
 
       const args = {
         command: "update" as const,
-        flags: {},
+        flags: { server: "http://localhost:3000" },
         unknown: [],
       };
 
@@ -483,7 +483,7 @@ describe("commands/update", () => {
 
       const args = {
         command: "update" as const,
-        flags: {},
+        flags: { server: "http://localhost:3000" },
         unknown: [],
       };
 
@@ -538,7 +538,7 @@ describe("commands/update", () => {
       try {
         await update({
           command: "update" as const,
-          flags: {},
+          flags: { server: "ws://example.com:3000/encoder" },
           unknown: [],
         });
       } catch (_e) {
@@ -581,7 +581,7 @@ describe("commands/update", () => {
       try {
         await update({
           command: "update" as const,
-          flags: {},
+          flags: { server: "wss://example.com:3000/encoder" },
           unknown: [],
         });
       } catch (_e) {
@@ -624,7 +624,7 @@ describe("commands/update", () => {
       try {
         await update({
           command: "update" as const,
-          flags: {},
+          flags: { server: "ws://example.com:3000/encoder" },
           unknown: [],
         });
       } catch (_e) {
@@ -684,7 +684,7 @@ describe("commands/update", () => {
       try {
         await update({
           command: "update" as const,
-          flags: {},
+          flags: { server: "http://localhost:3000" },
           unknown: [],
         });
       } catch (_e) {
