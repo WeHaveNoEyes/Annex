@@ -14,7 +14,6 @@
  * manual testing rather than unit tests with complex mocking.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, test, expect } from "bun:test";
 

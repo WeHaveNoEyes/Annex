@@ -2,11 +2,9 @@
  * Tests for update command
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, test, expect, mock, spyOn, beforeEach, afterEach } from "bun:test";
 import * as fs from "fs";
-import * as path from "path";
 import { createHash } from "crypto";
 
 describe("commands/update", () => {
@@ -57,7 +55,7 @@ describe("commands/update", () => {
           },
         }),
         arrayBuffer: async () => new ArrayBuffer(8),
-      })) as any;
+      })) as unknown as typeof fetch;
 
       const consoleSpy = spyOn(console, "log");
 
@@ -110,7 +108,7 @@ describe("commands/update", () => {
             "linux-x64": { size: 1024000, sha256: "abc123" },
           },
         }),
-      })) as any;
+      })) as unknown as typeof fetch;
 
       const consoleSpy = spyOn(console, "log");
 
@@ -170,7 +168,7 @@ describe("commands/update", () => {
             arrayBuffer: async () => testBinaryContent.buffer,
           };
         }
-      }) as any;
+      }) as unknown as typeof fetch;
 
       const writeFileSyncSpy = spyOn(fs, "writeFileSync");
       const chmodSyncSpy = spyOn(fs, "chmodSync");
@@ -228,7 +226,7 @@ describe("commands/update", () => {
             },
           }),
         };
-      }) as any;
+      }) as unknown as typeof fetch;
 
       const { update } = await import("../commands/update.js");
 
@@ -272,7 +270,7 @@ describe("commands/update", () => {
             },
           }),
         };
-      }) as any;
+      }) as unknown as typeof fetch;
 
       const { update } = await import("../commands/update.js");
 
@@ -310,7 +308,7 @@ describe("commands/update", () => {
         ok: false,
         status: 404,
         statusText: "Not Found",
-      })) as any;
+      })) as unknown as typeof fetch;
 
       const consoleErrorSpy = spyOn(console, "error");
 
@@ -355,7 +353,7 @@ describe("commands/update", () => {
             "linux-x64": { size: 1024000, sha256: "abc123" },
           },
         }),
-      })) as any;
+      })) as unknown as typeof fetch;
 
       const consoleErrorSpy = spyOn(console, "error");
 
@@ -413,7 +411,7 @@ describe("commands/update", () => {
             statusText: "Internal Server Error",
           };
         }
-      }) as any;
+      }) as unknown as typeof fetch;
 
       const consoleErrorSpy = spyOn(console, "error");
 
@@ -472,7 +470,7 @@ describe("commands/update", () => {
             arrayBuffer: async () => testBinaryContent.buffer,
           };
         }
-      }) as any;
+      }) as unknown as typeof fetch;
 
       const writeFileSyncSpy = spyOn(fs, "writeFileSync");
       const unlinkSyncSpy = spyOn(fs, "unlinkSync");
@@ -531,7 +529,7 @@ describe("commands/update", () => {
             },
           }),
         };
-      }) as any;
+      }) as unknown as typeof fetch;
 
       const { update } = await import("../commands/update.js");
 
@@ -574,7 +572,7 @@ describe("commands/update", () => {
             },
           }),
         };
-      }) as any;
+      }) as unknown as typeof fetch;
 
       const { update } = await import("../commands/update.js");
 
@@ -617,7 +615,7 @@ describe("commands/update", () => {
             },
           }),
         };
-      }) as any;
+      }) as unknown as typeof fetch;
 
       const { update } = await import("../commands/update.js");
 
@@ -670,7 +668,7 @@ describe("commands/update", () => {
             arrayBuffer: async () => testBinaryContent.buffer,
           };
         }
-      }) as any;
+      }) as unknown as typeof fetch;
 
       spyOn(fs, "writeFileSync");
       spyOn(fs, "chmodSync");

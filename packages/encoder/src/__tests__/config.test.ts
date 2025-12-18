@@ -6,7 +6,6 @@
  * multiple reloads with different env vars in a single process.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, test, expect } from "bun:test";
 import { z } from "zod";

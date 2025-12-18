@@ -2,7 +2,6 @@
  * Comprehensive tests for platform detection and setup
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, test, expect, mock } from "bun:test";
 

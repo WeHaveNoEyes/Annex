@@ -11,6 +11,7 @@
 import type { ServerWebSocket } from "bun";
 import { existsSync } from "fs";
 import { prisma } from "../db/client.js";
+import { Prisma } from "@prisma/client";
 import { getJobEventService } from "./jobEvents.js";
 import { getSchedulerService } from "./scheduler.js";
 import type {
@@ -424,7 +425,7 @@ class EncoderDispatchService {
         currentJobs,
         hostname,
         version,
-        capabilities: (capabilities || undefined) as any,
+        capabilities: capabilities ? (capabilities as unknown as Prisma.JsonObject) : Prisma.JsonNull,
         status: currentJobs > 0 ? "ENCODING" : "IDLE",
         lastHeartbeat: new Date(),
         blockedUntil: null,
@@ -436,7 +437,7 @@ class EncoderDispatchService {
         currentJobs,
         hostname,
         version,
-        capabilities: (capabilities || undefined) as any,
+        capabilities: capabilities ? (capabilities as unknown as Prisma.JsonObject) : Prisma.JsonNull,
         status: currentJobs > 0 ? "ENCODING" : "IDLE",
         lastHeartbeat: new Date(),
       },

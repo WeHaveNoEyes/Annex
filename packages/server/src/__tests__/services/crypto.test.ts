@@ -9,7 +9,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { CryptoService, resetCryptoService } from "../../services/crypto.js";
-import { writeFileSync, readFileSync, chmodSync, existsSync, statSync } from "fs";
+import { writeFileSync, chmodSync, existsSync, statSync } from "fs";
 import { access, stat, readFile } from "fs/promises";
 import { randomBytes } from "crypto";
 import { join } from "path";

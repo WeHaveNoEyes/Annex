@@ -2,7 +2,6 @@
  * Advanced tests for WebSocket encoder client
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, test, expect, mock, beforeEach } from "bun:test";
 

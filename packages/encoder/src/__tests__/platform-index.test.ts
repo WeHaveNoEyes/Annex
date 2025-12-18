@@ -10,7 +10,6 @@
  * Platform detection is simple enough to be verified through manual testing.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, test, expect } from "bun:test";
 

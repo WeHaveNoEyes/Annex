@@ -2,7 +2,7 @@
 // Manages pipeline execution state, step orchestration, and error handling
 
 import { prisma } from '../../db/client.js';
-import type { StepType, ExecutionStatus, StepStatus } from '@prisma/client';
+import { Prisma, type StepType, type ExecutionStatus, type StepStatus } from '@prisma/client';
 import type { PipelineContext, StepOutput } from './PipelineContext';
 import { StepRegistry } from './StepRegistry';
 import { logger } from '../../utils/logger';
@@ -56,15 +56,14 @@ export class PipelineExecutor {
       };
 
       // Create pipeline execution
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const execution = await prisma.pipelineExecution.create({
         data: {
           requestId,
           templateId,
           status: 'RUNNING' as ExecutionStatus,
           currentStep: 0,
-          steps: stepsSnapshot as any,
-          context: initialContext as any,
+          steps: stepsSnapshot as unknown as Prisma.JsonArray,
+          context: initialContext as unknown as Prisma.JsonObject,
         },
       });
 
@@ -232,12 +231,11 @@ export class PipelineExecutor {
       if (result.shouldPause) {
         // Pause execution (used by ApprovalStep)
         await this.pauseExecution(executionId, 'Awaiting approval');
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await prisma.stepExecution.update({
           where: { id: stepExecutionId },
           data: {
             status: 'RUNNING' as StepStatus,
-            output: result.data as any,
+            output: result.data ? (result.data as unknown as Prisma.JsonObject) : Prisma.JsonNull,
           },
         });
         return;
@@ -245,12 +243,11 @@ export class PipelineExecutor {
 
       if (result.shouldSkip) {
         // Skip step
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await prisma.stepExecution.update({
           where: { id: stepExecutionId },
           data: {
             status: 'SKIPPED' as StepStatus,
-            output: result.data as any,
+            output: result.data ? (result.data as unknown as Prisma.JsonObject) : Prisma.JsonNull,
             completedAt: new Date(),
           },
         });
@@ -283,19 +280,17 @@ export class PipelineExecutor {
         ...result.data,
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await prisma.pipelineExecution.update({
         where: { id: executionId },
-        data: { context: updatedContext as any },
+        data: { context: updatedContext as unknown as Prisma.JsonObject },
       });
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       await prisma.stepExecution.update({
         where: { id: stepExecutionId },
         data: {
           status: 'COMPLETED' as StepStatus,
           progress: 100,
-          output: result.data as any,
+          output: result.data ? (result.data as unknown as Prisma.JsonObject) : Prisma.JsonNull,
           completedAt: new Date(),
         },
       });

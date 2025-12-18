@@ -2,8 +2,7 @@
  * Tests for FFmpeg encoder service
  */
 
-import { describe, test, expect, mock, spyOn, beforeEach, afterEach } from "bun:test";
-import * as fs from "fs";
+import { describe, test, expect, mock, beforeEach, afterEach } from "bun:test";
 
 describe("encoder", () => {
   let originalSpawn: typeof Bun.spawn;
@@ -47,7 +46,7 @@ describe("encoder", () => {
           },
         });
 
-        Bun.spawn = mock((cmd: any) => ({
+        Bun.spawn = mock((_cmd: unknown) => ({
           stdout: {
             [Symbol.asyncIterator]: async function* () {
               yield new TextEncoder().encode(mockFfprobeOutput);
@@ -57,7 +56,7 @@ describe("encoder", () => {
             [Symbol.asyncIterator]: async function* () {},
           },
           exited: Promise.resolve(0),
-        })) as any;
+        })) as unknown as typeof Bun.spawn;
 
         const { probeMedia } = await import("../encoder.js");
         const result = await probeMedia("/test/video.mp4");
@@ -108,7 +107,7 @@ describe("encoder", () => {
             [Symbol.asyncIterator]: async function* () {},
           },
           exited: Promise.resolve(0),
-        })) as any;
+        })) as unknown as typeof Bun.spawn;
 
         const { probeMedia } = await import("../encoder.js");
         const result = await probeMedia("/test/video.mkv");
@@ -147,7 +146,7 @@ describe("encoder", () => {
             [Symbol.asyncIterator]: async function* () {},
           },
           exited: Promise.resolve(0),
-        })) as any;
+        })) as unknown as typeof Bun.spawn;
 
         const { probeMedia } = await import("../encoder.js");
         const result = await probeMedia("/test/video.mp4");
@@ -168,7 +167,7 @@ describe("encoder", () => {
             },
           },
           exited: Promise.resolve(1),
-        })) as any;
+        })) as unknown as typeof Bun.spawn;
 
         const { probeMedia } = await import("../encoder.js");
 
@@ -199,7 +198,7 @@ describe("encoder", () => {
             [Symbol.asyncIterator]: async function* () {},
           },
           exited: Promise.resolve(0),
-        })) as any;
+        })) as unknown as typeof Bun.spawn;
 
         const { probeMedia } = await import("../encoder.js");
 
@@ -217,7 +216,7 @@ describe("encoder", () => {
             [Symbol.asyncIterator]: async function* () {},
           },
           exited: Promise.resolve(0),
-        })) as any;
+        })) as unknown as typeof Bun.spawn;
 
         const { probeMedia } = await import("../encoder.js");
 
@@ -259,7 +258,7 @@ describe("encoder", () => {
             },
           },
           exited: Promise.resolve(1),
-        })) as any;
+        })) as unknown as typeof Bun.spawn;
 
         const { encode } = await import("../encoder.js");
 
@@ -311,11 +310,10 @@ describe("encoder", () => {
           },
         });
 
-        let callCount = 0;
-        Bun.spawn = mock((cmd: any) => {
-          callCount++;
+        Bun.spawn = mock((cmd: unknown) => {
+          const cmdArray = cmd as string[];
 
-          if (cmd[0] === "ffprobe") {
+          if (cmdArray[0] === "ffprobe") {
             return {
               stdout: {
                 [Symbol.asyncIterator]: async function* () {
@@ -342,7 +340,7 @@ describe("encoder", () => {
             exited: Promise.resolve(1),
             kill: mock(() => {}),
           };
-        }) as any;
+        }) as unknown as typeof Bun.spawn;
 
         const { encode } = await import("../encoder.js");
 

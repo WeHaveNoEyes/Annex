@@ -62,7 +62,7 @@ function RequestDialog({
       createMovieMutation.reset();
       createTvMutation.reset();
     }
-  }, [isOpen]);
+  }, [isOpen, createMovieMutation, createTvMutation]);
 
   const toggleServer = (serverId: string) => {
     setServerSelections((prev) => {

@@ -12,7 +12,6 @@
  * systems or E2E tests.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, test, expect } from "bun:test";
 

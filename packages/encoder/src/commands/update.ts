@@ -11,7 +11,6 @@ import { createHash, randomUUID } from "crypto";
 import type { CliArgs } from "../cli.js";
 import { VERSION } from "../version.js";
 import { getPlatformBinaryName, detectPlatform } from "../platform/index.js";
-import { getConfig } from "../config.js";
 
 interface ManifestResponse {
   version: string;
@@ -59,10 +58,10 @@ async function fetchManifestFromGitHub(): Promise<ManifestResponse> {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const release = await response.json() as any;
+    const release = await response.json() as { assets: Array<{ name: string; browser_download_url: string }> };
 
     // Find the manifest.json asset
-    const manifestAsset = release.assets.find((a: any) => a.name === "manifest.json");
+    const manifestAsset = release.assets.find((a) => a.name === "manifest.json");
     if (!manifestAsset) {
       throw new Error("No manifest.json found in latest release");
     }
@@ -121,11 +120,11 @@ async function downloadBinaryFromGitHub(
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const release = await response.json() as any;
+    const release = await response.json() as { assets: Array<{ name: string; browser_download_url: string }> };
 
     // Find the binary asset for this platform
     const binaryName = `annex-encoder-${platform}${platform.startsWith("windows") ? ".exe" : ""}`;
-    const binaryAsset = release.assets.find((a: any) => a.name === binaryName);
+    const binaryAsset = release.assets.find((a) => a.name === binaryName);
 
     if (!binaryAsset) {
       throw new Error(`Binary for ${platform} not found in latest release`);

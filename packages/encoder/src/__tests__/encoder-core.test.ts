@@ -2,6 +2,8 @@
  * Core functionality tests for FFmpeg encoder service
  */
 
+/* eslint-disable @typescript-eslint/no-explicit-any -- Test mocks require any for Bun.spawn and fs.Stats stubs */
+
 import { describe, test, expect, beforeEach, afterEach, spyOn, mock } from "bun:test";
 import * as fs from "fs";
 

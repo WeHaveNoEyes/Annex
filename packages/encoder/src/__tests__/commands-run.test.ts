@@ -2,7 +2,6 @@
  * Tests for run command
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, test, expect, mock, spyOn, beforeEach, afterEach } from "bun:test";
 
@@ -22,7 +21,7 @@ describe("commands/run", () => {
 
     // Mock process.stdin.resume
     originalStdinResume = process.stdin.resume;
-    process.stdin.resume = mock(() => {}) as any;
+    process.stdin.resume = mock(() => {}) as unknown as typeof process.stdin.resume;
   });
 
   afterEach(() => {

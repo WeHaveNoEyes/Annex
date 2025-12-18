@@ -2,7 +2,6 @@
  * Advanced tests for FFmpeg encoder service
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 
@@ -45,7 +44,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/4k-video.mp4");
@@ -82,7 +81,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/720p-video.mp4");
@@ -119,7 +118,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/ntsc-video.mp4");
@@ -154,7 +153,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/video.mp4");
@@ -189,7 +188,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/large-video.mp4");
@@ -237,7 +236,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/multi-audio.mkv");
@@ -274,7 +273,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/no-subs.mp4");
@@ -315,7 +314,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/video.mkv");
@@ -356,7 +355,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/video.mkv");
@@ -378,7 +377,7 @@ describe("encoder - advanced functionality", () => {
           },
         },
         exited: Promise.resolve(1),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
 
@@ -409,7 +408,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/video.mp4");
@@ -437,7 +436,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
 
@@ -462,7 +461,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
 
@@ -496,7 +495,7 @@ describe("encoder - advanced functionality", () => {
           [Symbol.asyncIterator]: async function* () {},
         },
         exited: Promise.resolve(0),
-      })) as any;
+      })) as unknown as typeof Bun.spawn;
 
       const { probeMedia } = await import("../encoder.js");
       const result = await probeMedia("/test/video.mp4");

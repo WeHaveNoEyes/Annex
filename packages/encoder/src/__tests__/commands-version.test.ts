@@ -2,7 +2,6 @@
  * Tests for version command
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, test, expect, spyOn } from "bun:test";
 import * as os from "os";
