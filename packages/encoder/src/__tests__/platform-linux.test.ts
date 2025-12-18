@@ -263,18 +263,17 @@ describe("platform/linux", () => {
       test("exits when install requested without systemctl", async () => {
         process.getuid = mock(() => 0); // Root
 
-        // Mock Bun.spawn to simulate systemctl not found
-        const originalSpawn = Bun.spawn;
-        Bun.spawn = mock((cmd: any) => {
-          if (cmd[0] === "which" && cmd[1] === "systemctl") {
-            return {
-              exitCode: 1, // Not found
-              stdout: null,
-              stderr: null,
-            } as any;
+        // Mock fs.existsSync to simulate systemctl not found
+        const fs = await import("fs");
+        const originalExistsSync = fs.existsSync.bind(fs);
+        const existsSyncSpy = spyOn(fs, "existsSync").mockImplementation((path: any) => {
+          // Return false for systemctl paths
+          if (typeof path === "string" && path.includes("systemctl")) {
+            return false;
           }
-          return originalSpawn(cmd);
-        }) as any;
+          // Use original implementation for other paths
+          return originalExistsSync(path);
+        });
 
         const consoleErrorSpy = spyOn(console, "error");
 
@@ -295,7 +294,7 @@ describe("platform/linux", () => {
         const errorOutput = consoleErrorSpy.mock.calls.map(call => call[0]).join("\n");
         expect(errorOutput).toContain("systemctl not found");
 
-        Bun.spawn = originalSpawn;
+        existsSyncSpy.mockRestore();
         consoleErrorSpy.mockRestore();
       });
     });
