@@ -59,11 +59,13 @@ export default function StepNode({ data, selected }: StepNodeProps) {
           : "0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2)",
       }}
     >
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="w-3 h-3 bg-white border-2 border-black/50 shadow-lg"
-      />
+      {data.type !== "START" && (
+        <Handle
+          type="target"
+          position={Position.Top}
+          className="w-3 h-3 bg-white border-2 border-black/50 shadow-lg"
+        />
+      )}
 
       <div className="flex items-center gap-3">
         <span className="text-2xl">{getIcon()}</span>
