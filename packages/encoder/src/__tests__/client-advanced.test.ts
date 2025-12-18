@@ -4,9 +4,20 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { describe, test, expect, mock } from "bun:test";
+import { describe, test, expect, mock, beforeEach } from "bun:test";
 
 describe("client - advanced functionality", () => {
+  beforeEach(() => {
+    // Mock validation to always succeed
+    mock.module("../validation.js", () => ({
+      validateEnvironment: mock(async () => ({
+        valid: true,
+        errors: [],
+        warnings: [],
+      })),
+    }));
+  });
+
   describe("EncoderClient - configuration", () => {
     test("uses custom encoderId from config", async () => {
       const customId = "custom-encoder-12345";

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.annex.encoder</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/home/annex/bin/annex-encoder</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ANNEX_SERVER_URL</key>
+        <string>ws://server:3000/encoder</string>
+        <key>ANNEX_ENCODER_ID</key>
+        <string>encoder-annex</string>
+        <key>ANNEX_GPU_DEVICE</key>
+        <string>0</string>
+        <key>ANNEX_NFS_BASE_PATH</key>
+        <string>/Volumes/downloads</string>
+        <key>ANNEX_LOG_LEVEL</key>
+        <string>info</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/home/annex/Library/Logs/annex-encoder.log</string>
+    <key>StandardErrorPath</key>
+    <string>/home/annex/Library/Logs/annex-encoder.error.log</string>
+</dict>
+</plist>

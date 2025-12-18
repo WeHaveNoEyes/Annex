@@ -11,6 +11,15 @@ describe("client - core functionality", () => {
   let wsHandlers: any = {};
 
   beforeEach(() => {
+    // Mock validation to always succeed
+    mock.module("../validation.js", () => ({
+      validateEnvironment: mock(async () => ({
+        valid: true,
+        errors: [],
+        warnings: [],
+      })),
+    }));
+
     // Mock WebSocket
     mockWs = {
       readyState: 1, // OPEN
