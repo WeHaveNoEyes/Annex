@@ -14,6 +14,5 @@ Annex Encoder ${VERSION}
 Build Date:   ${BUILD_DATE}
 Build Time:   ${new Date(BUILD_TIMESTAMP).toLocaleString()}
 Platform:     ${os.platform()}-${os.arch()}
-Node Version: ${process.version}
 `);
 }

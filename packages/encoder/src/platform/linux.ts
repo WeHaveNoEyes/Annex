@@ -98,12 +98,20 @@ function isRoot(): boolean {
  */
 function hasSystemctl(): boolean {
   try {
-    const proc = Bun.spawn(["which", "systemctl"], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const exitCode = proc.exitCode;
-    return exitCode === 0;
+    // Check common systemctl locations
+    const systemctlPaths = [
+      "/usr/bin/systemctl",
+      "/bin/systemctl",
+      "/usr/local/bin/systemctl",
+    ];
+
+    for (const path of systemctlPaths) {
+      if (fs.existsSync(path)) {
+        return true;
+      }
+    }
+
+    return false;
   } catch {
     return false;
   }
