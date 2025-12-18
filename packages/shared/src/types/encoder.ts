@@ -208,6 +208,7 @@ export interface RemoteEncoderInfo {
   lastHeartbeat: Date | null;
   totalJobsCompleted: number;
   totalJobsFailed: number;
+  capabilities?: EncoderCapabilities | null;
   createdAt: Date;
   updatedAt: Date;
 }

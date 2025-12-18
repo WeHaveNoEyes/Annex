@@ -413,7 +413,7 @@ class EncoderDispatchService {
   // ==========================================================================
 
   private async handleRegister(ws: ServerWebSocket<EncoderWebSocketData>, msg: RegisterMessage): Promise<void> {
-    const { encoderId, gpuDevice, maxConcurrent, currentJobs, hostname, version } = msg;
+    const { encoderId, gpuDevice, maxConcurrent, currentJobs, hostname, version, capabilities } = msg;
 
     // Upsert encoder in database
     await prisma.remoteEncoder.upsert({
@@ -424,6 +424,7 @@ class EncoderDispatchService {
         currentJobs,
         hostname,
         version,
+        capabilities: capabilities || undefined,
         status: currentJobs > 0 ? "ENCODING" : "IDLE",
         lastHeartbeat: new Date(),
         blockedUntil: null,
@@ -435,6 +436,7 @@ class EncoderDispatchService {
         currentJobs,
         hostname,
         version,
+        capabilities: capabilities || undefined,
         status: currentJobs > 0 ? "ENCODING" : "IDLE",
         lastHeartbeat: new Date(),
       },

@@ -32,6 +32,7 @@ export const encodersRouter = router({
       lastHeartbeat: e.lastHeartbeat,
       totalJobsCompleted: e.totalJobsCompleted,
       totalJobsFailed: e.totalJobsFailed,
+      capabilities: e.capabilities as RemoteEncoderInfo["capabilities"],
       createdAt: e.createdAt,
       updatedAt: e.updatedAt,
     }));
@@ -60,6 +61,7 @@ export const encodersRouter = router({
         lastHeartbeat: encoder.lastHeartbeat,
         totalJobsCompleted: encoder.totalJobsCompleted,
         totalJobsFailed: encoder.totalJobsFailed,
+        capabilities: encoder.capabilities as RemoteEncoderInfo["capabilities"],
         createdAt: encoder.createdAt,
         updatedAt: encoder.updatedAt,
       };

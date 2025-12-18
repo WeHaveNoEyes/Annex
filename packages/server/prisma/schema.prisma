@@ -918,6 +918,7 @@ model RemoteEncoder {
   // Capabilities
   gpuDevice       String                    // e.g., "/dev/dri/renderD128"
   maxConcurrent   Int              @default(1)
+  capabilities    Json?                     // Detected encoder capabilities (video/audio encoders, hwaccel, etc.)
 
   // State
   status          EncoderStatus    @default(OFFLINE)

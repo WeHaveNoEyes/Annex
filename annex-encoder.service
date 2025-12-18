@@ -9,7 +9,7 @@ User=annex
 Group=annex
 WorkingDirectory=/opt/annex-encoder
 EnvironmentFile=/etc/annex-encoder.env
-ExecStart=/opt/annex-encoder/annex-encoder
+ExecStart=/usr/local/bin/annex-encoder
 Restart=always
 RestartSec=10
 
