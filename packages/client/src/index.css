@@ -75,3 +75,41 @@ body {
   box-shadow: 0 0 40px rgba(185, 28, 28, 0.1);
 }
 
+/* React Flow Controls Styling */
+.react-flow__controls {
+  @apply bg-black/90 border border-white/10 rounded shadow-xl backdrop-blur-sm;
+}
+
+.react-flow__controls-button {
+  @apply bg-white/5 border-b border-white/10 transition-colors;
+  color: rgba(255, 255, 255, 0.7) !important;
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+.react-flow__controls-button:hover {
+  @apply bg-white/10;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  color: rgba(255, 255, 255, 0.9) !important;
+}
+
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+/* React Flow Edge Styling */
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: rgba(239, 68, 68, 0.8) !important;
+  stroke-width: 3 !important;
+}
+
+.react-flow__edge-path:hover {
+  stroke: rgba(239, 68, 68, 0.7) !important;
+  stroke-width: 3 !important;
+}
+
+/* React Flow MiniMap Styling */
+.react-flow__minimap {
+  @apply bg-black/90 border border-white/10 rounded shadow-xl backdrop-blur-sm;
+}
+

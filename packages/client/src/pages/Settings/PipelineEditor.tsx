@@ -169,7 +169,7 @@ export default function PipelineEditor() {
     [setEdges]
   );
 
-  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+  const onNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
     if (node.id !== "start") {
       setSelectedNode(node.id);
     }
@@ -380,9 +380,11 @@ export default function PipelineEditor() {
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
-              onNodeClick={onNodeClick}
+              onNodeDoubleClick={onNodeDoubleClick}
               nodeTypes={nodeTypes}
               fitView
+              deleteKeyCode={["Backspace", "Delete"]}
+              multiSelectionKeyCode={["Control", "Meta"]}
               className="bg-gradient-to-br from-black via-black to-annex-950/20"
               style={{
                 background: "linear-gradient(135deg, #000000 0%, #000000 50%, rgba(239, 68, 68, 0.05) 100%)",
@@ -402,9 +404,8 @@ export default function PipelineEditor() {
                 color="rgba(239, 68, 68, 0.15)"
                 style={{ opacity: 0.5 }}
               />
-              <Controls className="bg-black/90 border border-white/10 rounded shadow-xl backdrop-blur-sm" />
+              <Controls />
               <MiniMap
-                className="bg-black/90 border border-white/10 rounded shadow-xl backdrop-blur-sm"
                 nodeColor={(node) => {
                   const data = node.data as StepData;
                   const colors: Record<StepType, string> = {
@@ -419,11 +420,12 @@ export default function PipelineEditor() {
                   return colors[data.type] || "#ffffff";
                 }}
                 maskColor="rgba(0, 0, 0, 0.7)"
-                style={{
-                  backgroundColor: "rgba(0, 0, 0, 0.9)",
-                }}
               />
             </ReactFlow>
+          </div>
+          <div className="mt-2 text-xs text-white/50">
+            Double-click a node to configure it. Select nodes or connections and press Delete/Backspace to remove
+            them.
           </div>
         </Card>
 
