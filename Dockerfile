@@ -64,7 +64,6 @@ COPY --from=builder /app/packages/server/src ./server/src/
 COPY --from=builder /app/packages/server/prisma ./server/prisma/
 COPY --from=builder /app/packages/server/node_modules ./server/node_modules/
 COPY --from=builder /app/packages/client/dist ./client/
-COPY --from=builder /app/packages/encoder/dist-package ./encoder/
 COPY --from=builder /app/node_modules ./node_modules/
 
 # Copy entrypoint
