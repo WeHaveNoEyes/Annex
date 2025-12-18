@@ -1,11 +1,33 @@
-import { useState, useEffect } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { trpc } from "../../trpc";
 import { Button, Input, Card, Label } from "../../components/ui";
+import {
+  ReactFlow,
+  MiniMap,
+  Controls,
+  Background,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+  Node,
+  Edge,
+  Connection,
+  BackgroundVariant,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import StepNode from "../../components/pipeline/StepNode";
+import StepConfigModal from "../../components/pipeline/StepConfigModal";
 
-interface Step {
-  type: "SEARCH" | "DOWNLOAD" | "ENCODE" | "DELIVER" | "APPROVAL" | "NOTIFICATION";
-  name: string;
+const nodeTypes = {
+  step: StepNode,
+};
+
+type StepType = "START" | "SEARCH" | "DOWNLOAD" | "ENCODE" | "DELIVER" | "APPROVAL" | "NOTIFICATION";
+
+interface StepData extends Record<string, unknown> {
+  label: string;
+  type: StepType;
   config: Record<string, unknown>;
   required: boolean;
   retryable: boolean;
@@ -22,7 +44,10 @@ export default function PipelineEditor() {
   const [mediaType, setMediaType] = useState<"MOVIE" | "TV">("MOVIE");
   const [isDefault, setIsDefault] = useState(false);
   const [isPublic, setIsPublic] = useState(true);
-  const [steps, setSteps] = useState<Step[]>([]);
+  const [selectedNode, setSelectedNode] = useState<string | null>(null);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node<StepData>>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
   const { data: pipeline } = trpc.pipelines.get.useQuery({ id: id! }, { enabled: isEditing });
   const utils = trpc.useUtils();
@@ -41,28 +66,105 @@ export default function PipelineEditor() {
     },
   });
 
+  // Initialize with start node
   useEffect(() => {
-    if (pipeline) {
+    if (nodes.length === 0 && !isEditing) {
+      const startNode: Node<StepData> = {
+        id: "start",
+        type: "step",
+        position: { x: 250, y: 50 },
+        data: {
+          label: "Request Submitted",
+          type: "START",
+          config: {},
+          required: true,
+          retryable: false,
+          continueOnError: false,
+        },
+        deletable: false,
+      };
+      setNodes([startNode]);
+    }
+  }, [nodes.length, isEditing, setNodes]);
+
+  // Load existing pipeline
+  useEffect(() => {
+    if (pipeline && pipeline.steps) {
       setName(pipeline.name);
       setDescription(pipeline.description || "");
       setMediaType(pipeline.mediaType as "MOVIE" | "TV");
       setIsDefault(pipeline.isDefault);
       setIsPublic(pipeline.isPublic);
-      setSteps(
-        pipeline.steps.map((s) => ({
-          type: s.type as Step["type"],
-          name: s.name,
-          config: (s.config as Record<string, unknown>) || {},
-          required: s.required,
-          retryable: s.retryable,
-          continueOnError: s.continueOnError,
-        }))
-      );
-    }
-  }, [pipeline]);
 
-  const addStep = (type: Step["type"]) => {
-    const stepNames: Record<Step["type"], string> = {
+      // Convert steps to nodes and edges
+      const loadedNodes: Node<StepData>[] = [
+        {
+          id: "start",
+          type: "step",
+          position: { x: 250, y: 50 },
+          data: {
+            label: "Request Submitted",
+            type: "START",
+            config: {},
+            required: true,
+            retryable: false,
+            continueOnError: false,
+          },
+          deletable: false,
+        },
+      ];
+
+      const loadedEdges: Edge[] = [];
+      let yPosition = 200;
+
+      pipeline.steps.forEach((step, index) => {
+        const nodeId = `step-${index}`;
+        loadedNodes.push({
+          id: nodeId,
+          type: "step",
+          position: { x: 250, y: yPosition },
+          data: {
+            label: step.name,
+            type: step.type as StepType,
+            config: (step.config as Record<string, unknown>) || {},
+            required: step.required,
+            retryable: step.retryable,
+            continueOnError: step.continueOnError,
+          },
+        });
+
+        // Connect to previous node
+        const sourceId = index === 0 ? "start" : `step-${index - 1}`;
+        loadedEdges.push({
+          id: `e${sourceId}-${nodeId}`,
+          source: sourceId,
+          target: nodeId,
+          type: "smoothstep",
+          animated: true,
+        });
+
+        yPosition += 150;
+      });
+
+      setNodes(loadedNodes);
+      setEdges(loadedEdges);
+    }
+  }, [pipeline, setNodes, setEdges]);
+
+  const onConnect = useCallback(
+    (params: Connection) => setEdges((eds) => addEdge({ ...params, type: "smoothstep", animated: true }, eds)),
+    [setEdges]
+  );
+
+  const onNodeClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    if (node.id !== "start") {
+      setSelectedNode(node.id);
+    }
+  }, []);
+
+  const addNode = (type: StepType) => {
+    const stepLabels: Record<StepType, string> = {
+      START: "Request Submitted",
       SEARCH: "Search for Release",
       DOWNLOAD: "Download Content",
       ENCODE: "Encode Media",
@@ -71,41 +173,60 @@ export default function PipelineEditor() {
       NOTIFICATION: "Send Notification",
     };
 
-    setSteps([
-      ...steps,
-      {
+    const newNode: Node<StepData> = {
+      id: `step-${Date.now()}`,
+      type: "step",
+      position: { x: Math.random() * 400 + 50, y: Math.random() * 400 + 100 },
+      data: {
+        label: stepLabels[type],
         type,
-        name: stepNames[type],
         config: {},
         required: true,
         retryable: true,
         continueOnError: false,
       },
-    ]);
+    };
+
+    setNodes((nds) => [...nds, newNode]);
   };
 
-  const removeStep = (index: number) => {
-    setSteps(steps.filter((_, i) => i !== index));
-  };
-
-  const moveStep = (index: number, direction: "up" | "down") => {
-    const newSteps = [...steps];
-    if (direction === "up" && index > 0) {
-      [newSteps[index - 1], newSteps[index]] = [newSteps[index], newSteps[index - 1]];
-    } else if (direction === "down" && index < steps.length - 1) {
-      [newSteps[index], newSteps[index + 1]] = [newSteps[index + 1], newSteps[index]];
-    }
-    setSteps(newSteps);
-  };
-
-  const updateStep = (index: number, updates: Partial<Step>) => {
-    const newSteps = [...steps];
-    newSteps[index] = { ...newSteps[index], ...updates };
-    setSteps(newSteps);
+  const updateNodeData = (nodeId: string, updates: Partial<StepData>) => {
+    setNodes((nds) =>
+      nds.map((node) => {
+        if (node.id === nodeId) {
+          return {
+            ...node,
+            data: { ...node.data, ...updates },
+          };
+        }
+        return node;
+      })
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Convert nodes and edges to steps in order
+    const orderedSteps = getOrderedSteps();
+    if (orderedSteps.length === 0) {
+      alert("Please add at least one step to the pipeline");
+      return;
+    }
+
+    const steps = orderedSteps
+      .filter((node) => node.data.type !== "START")
+      .map((node) => {
+        const data = node.data;
+        return {
+          type: data.type as Exclude<StepType, "START">,
+          name: data.label,
+          config: data.config,
+          required: data.required,
+          retryable: data.retryable,
+          continueOnError: data.continueOnError,
+        };
+      });
 
     const data = {
       name,
@@ -127,16 +248,27 @@ export default function PipelineEditor() {
     }
   };
 
-  const getStepIcon = (type: Step["type"]) => {
-    const icons: Record<Step["type"], string> = {
-      SEARCH: "🔍",
-      DOWNLOAD: "⬇️",
-      ENCODE: "🎬",
-      DELIVER: "📦",
-      APPROVAL: "✋",
-      NOTIFICATION: "🔔",
-    };
-    return icons[type];
+  // Get steps in execution order by following edges from start node
+  const getOrderedSteps = (): Node<StepData>[] => {
+    const ordered: Node<StepData>[] = [];
+    const visited = new Set<string>();
+    let currentId: string | undefined = "start";
+
+    while (currentId) {
+      visited.add(currentId);
+      const outgoingEdge = edges.find((e) => e.source === currentId && !visited.has(e.target));
+      if (outgoingEdge) {
+        const nextNode = nodes.find((n) => n.id === outgoingEdge.target);
+        if (nextNode && nextNode.id !== "start") {
+          ordered.push(nextNode);
+        }
+        currentId = outgoingEdge.target;
+      } else {
+        currentId = undefined;
+      }
+    }
+
+    return ordered;
   };
 
   return (
@@ -153,20 +285,10 @@ export default function PipelineEditor() {
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card className="p-6">
           <h2 className="text-lg font-semibold text-white mb-4">Template Details</h2>
-          <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
             <div>
               <Label>Name</Label>
               <Input value={name} onChange={(e) => setName(e.target.value)} required />
-            </div>
-
-            <div>
-              <Label>Description</Label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white placeholder-white/25 resize-none"
-                rows={2}
-              />
             </div>
 
             <div>
@@ -181,7 +303,17 @@ export default function PipelineEditor() {
               </select>
             </div>
 
-            <div className="flex gap-4">
+            <div className="col-span-2">
+              <Label>Description</Label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white placeholder-white/25 resize-none"
+                rows={2}
+              />
+            </div>
+
+            <div className="col-span-2 flex gap-4">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -205,120 +337,67 @@ export default function PipelineEditor() {
 
         <Card className="p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white">Steps</h2>
+            <h2 className="text-lg font-semibold text-white">Pipeline Flow</h2>
             <div className="flex gap-2">
-              <Button type="button" size="sm" onClick={() => addStep("SEARCH")}>
+              <Button type="button" size="sm" onClick={() => addNode("SEARCH")}>
                 + Search
               </Button>
-              <Button type="button" size="sm" onClick={() => addStep("DOWNLOAD")}>
+              <Button type="button" size="sm" onClick={() => addNode("DOWNLOAD")}>
                 + Download
               </Button>
-              <Button type="button" size="sm" onClick={() => addStep("ENCODE")}>
+              <Button type="button" size="sm" onClick={() => addNode("ENCODE")}>
                 + Encode
               </Button>
-              <Button type="button" size="sm" onClick={() => addStep("DELIVER")}>
+              <Button type="button" size="sm" onClick={() => addNode("DELIVER")}>
                 + Deliver
               </Button>
-              <Button type="button" size="sm" onClick={() => addStep("APPROVAL")}>
+              <Button type="button" size="sm" onClick={() => addNode("APPROVAL")}>
                 + Approval
               </Button>
-              <Button type="button" size="sm" onClick={() => addStep("NOTIFICATION")}>
+              <Button type="button" size="sm" onClick={() => addNode("NOTIFICATION")}>
                 + Notification
               </Button>
             </div>
           </div>
 
-          <div className="space-y-3">
-            {steps.length === 0 ? (
-              <div className="text-center py-8 text-white/60">
-                No steps added. Click the buttons above to add steps.
-              </div>
-            ) : (
-              steps.map((step, index) => (
-                <div
-                  key={index}
-                  className="bg-white/5 border border-white/10 rounded p-4 flex items-start gap-4"
-                >
-                  <div className="text-2xl">{getStepIcon(step.type)}</div>
-
-                  <div className="flex-1 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-white/40 font-mono">{index + 1}.</span>
-                      <Input
-                        value={step.name}
-                        onChange={(e) => updateStep(index, { name: e.target.value })}
-                        className="flex-1"
-                      />
-                    </div>
-
-                    <div className="flex gap-3 text-sm">
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={step.required}
-                          onChange={(e) => updateStep(index, { required: e.target.checked })}
-                        />
-                        <span className="text-white/70">Required</span>
-                      </label>
-
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={step.retryable}
-                          onChange={(e) => updateStep(index, { retryable: e.target.checked })}
-                        />
-                        <span className="text-white/70">Retryable</span>
-                      </label>
-
-                      <label className="flex items-center gap-1 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={step.continueOnError}
-                          onChange={(e) => updateStep(index, { continueOnError: e.target.checked })}
-                        />
-                        <span className="text-white/70">Continue on Error</span>
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => moveStep(index, "up")}
-                      disabled={index === 0}
-                    >
-                      ↑
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => moveStep(index, "down")}
-                      disabled={index === steps.length - 1}
-                    >
-                      ↓
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => removeStep(index)}
-                    >
-                      ×
-                    </Button>
-                  </div>
-                </div>
-              ))
-            )}
+          <div style={{ height: "600px" }} className="bg-black/40 rounded border border-white/10">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              onConnect={onConnect}
+              onNodeClick={onNodeClick}
+              nodeTypes={nodeTypes}
+              fitView
+              className="bg-black"
+            >
+              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#ffffff20" />
+              <Controls className="bg-white/5 border border-white/10" />
+              <MiniMap
+                className="bg-white/5 border border-white/10"
+                nodeColor={(node) => {
+                  const data = node.data as StepData;
+                  const colors: Record<StepType, string> = {
+                    START: "#ef4444",
+                    SEARCH: "#3b82f6",
+                    DOWNLOAD: "#8b5cf6",
+                    ENCODE: "#f59e0b",
+                    DELIVER: "#10b981",
+                    APPROVAL: "#eab308",
+                    NOTIFICATION: "#06b6d4",
+                  };
+                  return colors[data.type] || "#ffffff";
+                }}
+              />
+            </ReactFlow>
           </div>
         </Card>
 
         <div className="flex gap-2">
           <Button
             type="submit"
-            disabled={createMutation.isPending || updateMutation.isPending || steps.length === 0}
+            disabled={createMutation.isPending || updateMutation.isPending}
           >
             {isEditing ? "Update Template" : "Create Template"}
           </Button>
@@ -327,6 +406,18 @@ export default function PipelineEditor() {
           </Button>
         </div>
       </form>
+
+      {selectedNode && nodes.find((n) => n.id === selectedNode) && (
+        <StepConfigModal
+          nodeId={selectedNode}
+          nodeData={nodes.find((n) => n.id === selectedNode)!.data}
+          onClose={() => setSelectedNode(null)}
+          onUpdate={(updates) => {
+            updateNodeData(selectedNode, updates);
+            setSelectedNode(null);
+          }}
+        />
+      )}
     </div>
   );
 }
