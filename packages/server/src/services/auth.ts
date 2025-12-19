@@ -7,13 +7,12 @@
  * - User creation and lookup
  */
 
-import { randomUUID } from "crypto";
-import { createHash } from "crypto";
-import { prisma } from "../db/client.js";
+import { createHash, randomUUID } from "node:crypto";
+import type { EmbyAccount, PlexAccount, Session, User } from "@prisma/client";
 import { getConfig } from "../config/index.js";
+import { prisma } from "../db/client.js";
 import { getSchedulerService } from "./scheduler.js";
 import { getSecretsService } from "./secrets.js";
-import type { User, PlexAccount, EmbyAccount, Session } from "@prisma/client";
 
 // Plex API endpoints
 const PLEX_AUTH_URL = "https://plex.tv/api/v2";
@@ -139,10 +138,7 @@ async function getClientIdentifier(): Promise<string> {
   }
   // Generate a deterministic ID based on session secret
   const sessionSecret = await getSessionSecret();
-  return createHash("sha256")
-    .update(`annex-${sessionSecret}`)
-    .digest("hex")
-    .substring(0, 32);
+  return createHash("sha256").update(`annex-${sessionSecret}`).digest("hex").substring(0, 32);
 }
 
 /**
@@ -391,10 +387,7 @@ export async function authenticateWithEmby(
 /**
  * Get Emby user avatar URL
  */
-export function getEmbyAvatarUrl(
-  userId: string,
-  imageTag?: string
-): string | null {
+export function getEmbyAvatarUrl(userId: string, imageTag?: string): string | null {
   if (!imageTag) return null;
   const baseUrl = getEmbyServerUrl();
   return `${baseUrl}/Users/${userId}/Images/Primary?tag=${imageTag}`;
@@ -584,9 +577,7 @@ export async function cleanupExpiredSessions(): Promise<number> {
 /**
  * Get all users (admin only)
  */
-export async function getAllUsers(): Promise<
-  Array<User & { plexAccount: PlexAccount | null }>
-> {
+export async function getAllUsers(): Promise<Array<User & { plexAccount: PlexAccount | null }>> {
   return prisma.user.findMany({
     include: { plexAccount: true },
     orderBy: { createdAt: "desc" },

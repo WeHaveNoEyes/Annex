@@ -4,11 +4,11 @@
  * Handles Plex OAuth and Emby authentication flows
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { trpc } from "../trpc";
-import { useAuthStore } from "../hooks/useAuth";
 import { Button, Card, Input, Label } from "../components/ui";
+import { useAuthStore } from "../hooks/useAuth";
+import { trpc } from "../trpc";
 
 // Plex logo SVG
 function PlexLogo({ className }: { className?: string }) {
@@ -188,9 +188,7 @@ export default function LoginPage() {
             {/* Auth Method Selection */}
             {authMethod === "select" && state.status === "idle" && (
               <>
-                <p className="text-white/60 text-sm">
-                  Choose your media server to sign in
-                </p>
+                <p className="text-white/60 text-sm">Choose your media server to sign in</p>
                 <div className="space-y-3">
                   <Button
                     onClick={() => {
@@ -241,12 +239,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="flex gap-3 pt-2">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={goBack}
-                    className="flex-1"
-                  >
+                  <Button type="button" variant="secondary" onClick={goBack} className="flex-1">
                     Back
                   </Button>
                   <Button type="submit" className="flex-1">
@@ -271,25 +264,16 @@ export default function LoginPage() {
               <>
                 <div className="py-4">
                   <div className="w-8 h-8 border-2 border-annex-500 border-t-transparent rounded-full animate-spin mx-auto" />
-                  <p className="text-white/60 text-sm mt-4">
-                    Waiting for Plex authorization...
-                  </p>
+                  <p className="text-white/60 text-sm mt-4">Waiting for Plex authorization...</p>
                   <p className="text-white/40 text-xs mt-2">
                     A new window should have opened. Complete the login there.
                   </p>
                 </div>
                 <div className="flex gap-3">
-                  <Button
-                    variant="secondary"
-                    onClick={goBack}
-                    className="flex-1"
-                  >
+                  <Button variant="secondary" onClick={goBack} className="flex-1">
                     Cancel
                   </Button>
-                  <Button
-                    onClick={() => window.open(state.authUrl, "_blank")}
-                    className="flex-1"
-                  >
+                  <Button onClick={() => window.open(state.authUrl, "_blank")} className="flex-1">
                     Reopen Plex
                   </Button>
                 </div>
@@ -318,17 +302,10 @@ export default function LoginPage() {
                   <p className="text-white/60 text-sm mt-4">{state.message}</p>
                 </div>
                 <div className="flex gap-3">
-                  <Button
-                    variant="secondary"
-                    onClick={goBack}
-                    className="flex-1"
-                  >
+                  <Button variant="secondary" onClick={goBack} className="flex-1">
                     Back
                   </Button>
-                  <Button
-                    onClick={() => setState({ status: "idle" })}
-                    className="flex-1"
-                  >
+                  <Button onClick={() => setState({ status: "idle" })} className="flex-1">
                     Try Again
                   </Button>
                 </div>

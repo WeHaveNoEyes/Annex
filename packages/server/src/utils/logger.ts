@@ -14,7 +14,7 @@ export const logger = {
   },
 
   debug(message: string, ...args: unknown[]): void {
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.log(`[Pipeline:DEBUG] ${message}`, ...args);
     }
   },

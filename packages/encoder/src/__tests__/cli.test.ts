@@ -2,8 +2,7 @@
  * Tests for CLI argument parsing
  */
 
-
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { parseArgs } from "../cli.js";
 
 describe("parseArgs", () => {
@@ -105,7 +104,14 @@ describe("parseArgs", () => {
     });
 
     test("parses --setup with all flags", () => {
-      const result = parseArgs(["--setup", "--install", "--user", "annex", "--work-dir", "/opt/encoder"]);
+      const result = parseArgs([
+        "--setup",
+        "--install",
+        "--user",
+        "annex",
+        "--work-dir",
+        "/opt/encoder",
+      ]);
       expect(result.command).toBe("setup");
       expect(result.flags.install).toBe(true);
       expect(result.flags.user).toBe("annex");

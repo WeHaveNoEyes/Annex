@@ -4,8 +4,8 @@
  * Displays version information.
  */
 
-import { VERSION, BUILD_DATE, BUILD_TIMESTAMP } from "../version.js";
-import * as os from "os";
+import * as os from "node:os";
+import { BUILD_DATE, BUILD_TIMESTAMP, VERSION } from "../version.js";
 
 export function version(): void {
   console.log(`

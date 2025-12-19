@@ -7,14 +7,14 @@
  * This is more efficient than polling - we get instant notifications of new releases.
  */
 
+import { MediaType, Prisma, RequestStatus, TvEpisodeStatus } from "@prisma/client";
 import { Client } from "irc-framework";
-import { prisma } from "../db/client.js";
 import { getConfig } from "../config/index.js";
-import { RequestStatus, MediaType, TvEpisodeStatus, Prisma } from "@prisma/client";
-import { getJobQueueService } from "./jobQueue.js";
-import type { Release } from "./indexer.js";
-import { resolutionMeetsRequirement } from "./qualityService.js";
+import { prisma } from "../db/client.js";
 import type { Resolution } from "../types/download.js";
+import type { Release } from "./indexer.js";
+import { getJobQueueService } from "./jobQueue.js";
+import { resolutionMeetsRequirement } from "./qualityService.js";
 
 // =============================================================================
 // Types
@@ -287,7 +287,10 @@ class IrcAnnounceMonitor {
       return;
     }
 
-    if (config.irc.reconnectMaxRetries > 0 && this.reconnectAttempts >= config.irc.reconnectMaxRetries) {
+    if (
+      config.irc.reconnectMaxRetries > 0 &&
+      this.reconnectAttempts >= config.irc.reconnectMaxRetries
+    ) {
       console.error(`[IRC] Max reconnection attempts (${config.irc.reconnectMaxRetries}) reached`);
       return;
     }
@@ -308,7 +311,8 @@ class IrcAnnounceMonitor {
   private async handleAnnounce(message: string): Promise<void> {
     // Parse TorrentLeech announce format:
     // New Torrent Announcement: <Category> Name:'Torrent Name' uploaded by 'Uploader' - http://torrentleech.org/torrent/123456
-    const pattern = /^New Torrent Announcement:\s*<([^>]*)>\s*Name:'(.*)' uploaded by '([^']*)'\s*-\s*https?:\/\/([^/]+\/)torrent\/(\d+)/;
+    const pattern =
+      /^New Torrent Announcement:\s*<([^>]*)>\s*Name:'(.*)' uploaded by '([^']*)'\s*-\s*https?:\/\/([^/]+\/)torrent\/(\d+)/;
     const match = message.match(pattern);
 
     if (!match) {
@@ -327,8 +331,12 @@ class IrcAnnounceMonitor {
     console.log(`[IRC] Announce: ${announce.name} [${announce.category}]`);
 
     // Determine if this is a movie or TV release
-    const isMovie = TL_CATEGORIES.movies.some((cat) => announce.category.includes(cat) || cat.includes(announce.category));
-    const isTv = TL_CATEGORIES.tv.some((cat) => announce.category.includes(cat) || cat.includes(announce.category));
+    const isMovie = TL_CATEGORIES.movies.some(
+      (cat) => announce.category.includes(cat) || cat.includes(announce.category)
+    );
+    const isTv = TL_CATEGORIES.tv.some(
+      (cat) => announce.category.includes(cat) || cat.includes(announce.category)
+    );
 
     if (!isMovie && !isTv) {
       // Not a media category we care about
@@ -363,15 +371,26 @@ class IrcAnnounceMonitor {
       if (this.releaseMatchesMovie(announce.name, request.title, request.year)) {
         // Check if release meets quality requirement (if set)
         if (request.requiredResolution) {
-          const meetsQuality = resolutionMeetsRequirement(releaseResolution, request.requiredResolution as Resolution);
+          const meetsQuality = resolutionMeetsRequirement(
+            releaseResolution,
+            request.requiredResolution as Resolution
+          );
           if (!meetsQuality) {
-            console.log(`[IRC] Movie match but quality too low: "${announce.name}" (${releaseResolution}) < ${request.requiredResolution}`);
+            console.log(
+              `[IRC] Movie match but quality too low: "${announce.name}" (${releaseResolution}) < ${request.requiredResolution}`
+            );
             continue;
           }
         }
 
-        console.log(`[IRC] Movie match: "${announce.name}" -> "${request.title}" (${request.year})`);
-        await this.triggerDownload(request.id, announce, request.status === RequestStatus.QUALITY_UNAVAILABLE);
+        console.log(
+          `[IRC] Movie match: "${announce.name}" -> "${request.title}" (${request.year})`
+        );
+        await this.triggerDownload(
+          request.id,
+          announce,
+          request.status === RequestStatus.QUALITY_UNAVAILABLE
+        );
         break; // Only trigger once per announce
       }
     }
@@ -409,9 +428,14 @@ class IrcAnnounceMonitor {
       if (this.releaseMatchesTvShow(announce.name, request.title)) {
         // Check if release meets quality requirement (if set)
         if (request.requiredResolution) {
-          const meetsQuality = resolutionMeetsRequirement(releaseResolution, request.requiredResolution as Resolution);
+          const meetsQuality = resolutionMeetsRequirement(
+            releaseResolution,
+            request.requiredResolution as Resolution
+          );
           if (!meetsQuality) {
-            console.log(`[IRC] TV match but quality too low: "${announce.name}" (${releaseResolution}) < ${request.requiredResolution}`);
+            console.log(
+              `[IRC] TV match but quality too low: "${announce.name}" (${releaseResolution}) < ${request.requiredResolution}`
+            );
             continue;
           }
         }
@@ -419,12 +443,21 @@ class IrcAnnounceMonitor {
         const wasQualityUnavailable = episode.status === TvEpisodeStatus.QUALITY_UNAVAILABLE;
 
         if (seInfo.episode !== null) {
-          console.log(`[IRC] TV match: "${announce.name}" -> "${request.title}" S${seInfo.season}E${seInfo.episode}`);
+          console.log(
+            `[IRC] TV match: "${announce.name}" -> "${request.title}" S${seInfo.season}E${seInfo.episode}`
+          );
           await this.triggerEpisodeDownload(episode.id, announce, wasQualityUnavailable);
         } else {
           // Season pack
-          console.log(`[IRC] TV season match: "${announce.name}" -> "${request.title}" S${seInfo.season}`);
-          await this.triggerSeasonDownload(request.id, seInfo.season, announce, wasQualityUnavailable);
+          console.log(
+            `[IRC] TV season match: "${announce.name}" -> "${request.title}" S${seInfo.season}`
+          );
+          await this.triggerSeasonDownload(
+            request.id,
+            seInfo.season,
+            announce,
+            wasQualityUnavailable
+          );
         }
         break; // Only trigger once per announce
       }
@@ -554,7 +587,8 @@ class IrcAnnounceMonitor {
   private extractSource(title: string): string {
     const upper = title.toUpperCase();
     if (upper.includes("REMUX")) return "REMUX";
-    if (upper.includes("BLURAY") || upper.includes("BLU-RAY") || upper.includes("BDRIP")) return "BLURAY";
+    if (upper.includes("BLURAY") || upper.includes("BLU-RAY") || upper.includes("BDRIP"))
+      return "BLURAY";
     if (upper.includes("WEB-DL") || upper.includes("WEBDL")) return "WEB-DL";
     if (upper.includes("WEBRIP") || upper.includes("WEB-RIP")) return "WEBRIP";
     if (upper.includes("HDTV")) return "HDTV";
@@ -569,15 +603,31 @@ class IrcAnnounceMonitor {
   private extractCodec(title: string): string {
     const upper = title.toUpperCase();
     if (upper.includes("AV1")) return "AV1";
-    if (upper.includes("HEVC") || upper.includes("H.265") || upper.includes("H265") || upper.includes("X265")) return "HEVC";
-    if (upper.includes("H.264") || upper.includes("H264") || upper.includes("X264") || upper.includes("AVC")) return "H264";
+    if (
+      upper.includes("HEVC") ||
+      upper.includes("H.265") ||
+      upper.includes("H265") ||
+      upper.includes("X265")
+    )
+      return "HEVC";
+    if (
+      upper.includes("H.264") ||
+      upper.includes("H264") ||
+      upper.includes("X264") ||
+      upper.includes("AVC")
+    )
+      return "H264";
     return "UNKNOWN";
   }
 
   /**
    * Trigger download for a movie request
    */
-  private async triggerDownload(requestId: string, announce: ParsedAnnounce, wasQualityUnavailable = false): Promise<void> {
+  private async triggerDownload(
+    requestId: string,
+    announce: ParsedAnnounce,
+    wasQualityUnavailable = false
+  ): Promise<void> {
     const release = this.buildRelease(announce);
 
     if (!release.downloadUrl) {
@@ -603,13 +653,19 @@ class IrcAnnounceMonitor {
     const jobQueue = getJobQueueService();
     await jobQueue.addJob("pipeline:download", { requestId }, { priority: 10 });
 
-    console.log(`[IRC] Queued download for request ${requestId}: ${release.title}${wasQualityUnavailable ? " (quality upgrade)" : ""}`);
+    console.log(
+      `[IRC] Queued download for request ${requestId}: ${release.title}${wasQualityUnavailable ? " (quality upgrade)" : ""}`
+    );
   }
 
   /**
    * Trigger download for a specific episode
    */
-  private async triggerEpisodeDownload(episodeId: string, announce: ParsedAnnounce, wasQualityUnavailable = false): Promise<void> {
+  private async triggerEpisodeDownload(
+    episodeId: string,
+    announce: ParsedAnnounce,
+    wasQualityUnavailable = false
+  ): Promise<void> {
     const release = this.buildRelease(announce);
 
     if (!release.downloadUrl) {
@@ -640,15 +696,26 @@ class IrcAnnounceMonitor {
 
     // Queue episode download job
     const jobQueue = getJobQueueService();
-    await jobQueue.addJob("tv:download-episode", { requestId: episode.requestId, episodeId }, { priority: 10 });
+    await jobQueue.addJob(
+      "tv:download-episode",
+      { requestId: episode.requestId, episodeId },
+      { priority: 10 }
+    );
 
-    console.log(`[IRC] Queued episode download: S${episode.season}E${episode.episode}${wasQualityUnavailable ? " (quality upgrade)" : ""}`);
+    console.log(
+      `[IRC] Queued episode download: S${episode.season}E${episode.episode}${wasQualityUnavailable ? " (quality upgrade)" : ""}`
+    );
   }
 
   /**
    * Trigger download for a season pack
    */
-  private async triggerSeasonDownload(requestId: string, season: number, announce: ParsedAnnounce, wasQualityUnavailable = false): Promise<void> {
+  private async triggerSeasonDownload(
+    requestId: string,
+    season: number,
+    announce: ParsedAnnounce,
+    wasQualityUnavailable = false
+  ): Promise<void> {
     const release = this.buildRelease(announce);
 
     if (!release.downloadUrl) {
@@ -703,9 +770,15 @@ class IrcAnnounceMonitor {
 
     // Queue season download job
     const jobQueue = getJobQueueService();
-    await jobQueue.addJob("tv:download-season", { requestId, season, episodeId: episodes[0].id }, { priority: 10 });
+    await jobQueue.addJob(
+      "tv:download-season",
+      { requestId, season, episodeId: episodes[0].id },
+      { priority: 10 }
+    );
 
-    console.log(`[IRC] Queued season ${season} download for request ${requestId}${wasQualityUnavailable ? " (quality upgrade)" : ""}`);
+    console.log(
+      `[IRC] Queued season ${season} download for request ${requestId}${wasQualityUnavailable ? " (quality upgrade)" : ""}`
+    );
   }
 }
 

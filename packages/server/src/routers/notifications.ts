@@ -1,8 +1,8 @@
+import { MediaType, NotificationProvider } from "@prisma/client";
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc.js";
 import { prisma } from "../db/client.js";
-import { NotificationProvider, MediaType } from "@prisma/client";
 import { getNotificationDispatcher } from "../services/notifications/NotificationDispatcher.js";
+import { publicProcedure, router } from "../trpc.js";
 
 const notificationConfigSchema = z.object({
   name: z.string().min(1),
@@ -190,14 +190,22 @@ export const notificationsRouter = router({
    */
   availableEvents: publicProcedure.query(async () => {
     return [
-      { value: "request.started", label: "Request Started", description: "When a new request is created" },
+      {
+        value: "request.started",
+        label: "Request Started",
+        description: "When a new request is created",
+      },
       {
         value: "request.completed",
         label: "Request Completed",
         description: "When a request is fully completed",
       },
       { value: "request.failed", label: "Request Failed", description: "When a request fails" },
-      { value: "step.completed", label: "Step Completed", description: "When a pipeline step completes" },
+      {
+        value: "step.completed",
+        label: "Step Completed",
+        description: "When a pipeline step completes",
+      },
       {
         value: "approval.required",
         label: "Approval Required",

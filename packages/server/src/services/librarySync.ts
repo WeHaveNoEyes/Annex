@@ -5,11 +5,11 @@
  * Supports both on-demand and scheduled syncing.
  */
 
-import { prisma } from "../db/client.js";
 import { MediaServerType, MediaType } from "@prisma/client";
+import { prisma } from "../db/client.js";
+import { getCryptoService } from "./crypto.js";
 import { fetchEmbyLibraryForSync, fetchEmbyShowsWithEpisodes } from "./emby.js";
 import { fetchPlexLibraryForSync, fetchPlexShowsWithEpisodes } from "./plex.js";
-import { getCryptoService } from "./crypto.js";
 
 // Decrypt value, falling back to raw value for legacy unencrypted data
 function decryptIfPresent(value: string | null | undefined): string | null {
@@ -47,7 +47,9 @@ export async function syncServerLibrary(
   options: LibrarySyncOptions = {}
 ): Promise<LibrarySyncResult> {
   const isIncremental = !!options.sinceDate;
-  console.log(`[LibrarySync] Starting ${isIncremental ? "incremental" : "full"} sync for server ${serverId}${isIncremental ? ` (since ${options.sinceDate?.toISOString()})` : ""}`);
+  console.log(
+    `[LibrarySync] Starting ${isIncremental ? "incremental" : "full"} sync for server ${serverId}${isIncremental ? ` (since ${options.sinceDate?.toISOString()})` : ""}`
+  );
 
   const server = await prisma.storageServer.findUnique({
     where: { id: serverId },
@@ -110,21 +112,19 @@ export async function syncServerLibrary(
       addedAt?: Date;
     }> = [];
 
-    console.log(`[LibrarySync] Fetching library from ${server.mediaServerType}${isIncremental ? " (incremental)" : ""}...`);
+    console.log(
+      `[LibrarySync] Fetching library from ${server.mediaServerType}${isIncremental ? " (incremental)" : ""}...`
+    );
     const fetchStart = Date.now();
 
     if (server.mediaServerType === MediaServerType.EMBY) {
-      items = await fetchEmbyLibraryForSync(
-        server.mediaServerUrl,
-        apiKey,
-        { sinceDate: options.sinceDate }
-      );
+      items = await fetchEmbyLibraryForSync(server.mediaServerUrl, apiKey, {
+        sinceDate: options.sinceDate,
+      });
     } else if (server.mediaServerType === MediaServerType.PLEX) {
-      items = await fetchPlexLibraryForSync(
-        server.mediaServerUrl,
-        apiKey,
-        { sinceDate: options.sinceDate }
-      );
+      items = await fetchPlexLibraryForSync(server.mediaServerUrl, apiKey, {
+        sinceDate: options.sinceDate,
+      });
     }
 
     console.log(`[LibrarySync] Fetched ${items.length} items in ${Date.now() - fetchStart}ms`);
@@ -176,8 +176,16 @@ export async function syncServerLibrary(
     const episodeStart = Date.now();
 
     try {
-      episodesSynced = await syncServerEpisodes(server.id, server.mediaServerType, server.mediaServerUrl, apiKey, options.sinceDate);
-      console.log(`[LibrarySync] Episode sync completed: ${episodesSynced} episodes in ${Date.now() - episodeStart}ms`);
+      episodesSynced = await syncServerEpisodes(
+        server.id,
+        server.mediaServerType,
+        server.mediaServerUrl,
+        apiKey,
+        options.sinceDate
+      );
+      console.log(
+        `[LibrarySync] Episode sync completed: ${episodesSynced} episodes in ${Date.now() - episodeStart}ms`
+      );
     } catch (episodeError) {
       console.error(`[LibrarySync] Error syncing episodes for ${server.name}:`, episodeError);
     }
@@ -221,7 +229,9 @@ async function syncServerEpisodes(
   sinceDate?: Date
 ): Promise<number> {
   const isIncremental = !!sinceDate;
-  console.log(`[LibrarySync] Fetching shows with episodes from ${mediaServerType}${isIncremental ? " (incremental)" : ""}...`);
+  console.log(
+    `[LibrarySync] Fetching shows with episodes from ${mediaServerType}${isIncremental ? " (incremental)" : ""}...`
+  );
   const fetchStart = Date.now();
 
   let showsWithEpisodes: Array<{
@@ -242,7 +252,9 @@ async function syncServerEpisodes(
   }
 
   const totalEpisodes = showsWithEpisodes.reduce((sum, show) => sum + show.episodes.length, 0);
-  console.log(`[LibrarySync] Fetched ${showsWithEpisodes.length} shows with ${totalEpisodes} episodes in ${Date.now() - fetchStart}ms`);
+  console.log(
+    `[LibrarySync] Fetched ${showsWithEpisodes.length} shows with ${totalEpisodes} episodes in ${Date.now() - fetchStart}ms`
+  );
 
   let episodeCount = 0;
   let showCount = 0;
@@ -280,7 +292,9 @@ async function syncServerEpisodes(
 
     // Log progress every 10 shows
     if (showCount % 10 === 0) {
-      console.log(`[LibrarySync] Episode progress: ${showCount}/${showsWithEpisodes.length} shows, ${episodeCount} episodes`);
+      console.log(
+        `[LibrarySync] Episode progress: ${showCount}/${showsWithEpisodes.length} shows, ${episodeCount} episodes`
+      );
     }
   }
 

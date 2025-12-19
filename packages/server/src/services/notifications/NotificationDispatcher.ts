@@ -1,12 +1,12 @@
 // NotificationDispatcher - Routes notifications to configured providers
 // Handles notification delivery, retries, and provider management
 
+import { ActivityType, MediaType, NotificationProvider } from "@prisma/client";
 import { prisma } from "../../db/client.js";
-import { NotificationProvider, ActivityType, MediaType } from "@prisma/client";
-import type { NotificationPayload, NotificationResult } from "./types.js";
 import { DiscordProvider } from "./providers/DiscordProvider.js";
-import { WebhookProvider } from "./providers/WebhookProvider.js";
 import { EmailProvider } from "./providers/EmailProvider.js";
+import { WebhookProvider } from "./providers/WebhookProvider.js";
+import type { NotificationPayload, NotificationResult } from "./types.js";
 
 export interface NotificationOptions {
   event: string;
@@ -158,7 +158,12 @@ export class NotificationDispatcher {
     }
   }
 
-  private async logActivity(requestId: string, type: ActivityType, message: string, details?: object): Promise<void> {
+  private async logActivity(
+    requestId: string,
+    type: ActivityType,
+    message: string,
+    details?: object
+  ): Promise<void> {
     await prisma.activityLog.create({
       data: {
         requestId,

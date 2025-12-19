@@ -1,8 +1,8 @@
 // Discord notification provider with rich embeds and poster thumbnails
 
+import { NotificationProvider } from "@prisma/client";
 import type { BaseNotificationProvider } from "../NotificationDispatcher.js";
 import type { NotificationPayload, NotificationResult } from "../types.js";
-import { NotificationProvider } from "@prisma/client";
 
 interface DiscordConfig {
   webhookUrl: string;
@@ -29,7 +29,10 @@ interface DiscordPayload {
 }
 
 export class DiscordProvider implements BaseNotificationProvider {
-  async send(payload: NotificationPayload, config: Record<string, unknown>): Promise<NotificationResult> {
+  async send(
+    payload: NotificationPayload,
+    config: Record<string, unknown>
+  ): Promise<NotificationResult> {
     const cfg = config as unknown as DiscordConfig;
 
     if (!cfg.webhookUrl) {
@@ -195,7 +198,10 @@ export class DiscordProvider implements BaseNotificationProvider {
         break;
 
       default:
-        embed.title = event.split(".").map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(" ");
+        embed.title = event
+          .split(".")
+          .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+          .join(" ");
         embed.description = data.message ? String(data.message) : undefined;
         embed.color = 0xef4444; // annex-500 red
     }

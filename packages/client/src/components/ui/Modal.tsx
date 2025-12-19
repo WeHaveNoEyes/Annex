@@ -1,4 +1,4 @@
-import { useEffect, useCallback, ReactNode } from "react";
+import { type ReactNode, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 
 interface ModalProps {
@@ -34,30 +34,19 @@ function Modal({ isOpen, onClose, children, className = "" }: ModalProps) {
   if (!isOpen) return null;
 
   return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" />
 
       {/* Modal content */}
-      <div
-        className={`relative z-10 ${className}`}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className={`relative z-10 ${className}`} onClick={(e) => e.stopPropagation()}>
         {/* Close button */}
         <button
           onClick={onClose}
           className="absolute -top-10 right-0 p-2 text-white/60 hover:text-white transition-colors"
           aria-label="Close"
         >
-          <svg
-            className="w-6 h-6"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path
               strokeLinecap="round"
               strokeLinejoin="round"

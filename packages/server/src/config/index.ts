@@ -31,21 +31,21 @@ export function resetConfig(): void {
   _config = null;
 }
 
-// Re-export types and schema
-export { configSchema } from "./schema.js";
+export { loadConfig, validateConfig } from "./loader.js";
 export type {
   Config,
-  ServerConfig,
   DatabaseConfig,
-  JobsConfig,
-  TmdbConfig,
-  OmdbConfig,
-  TraktConfig,
-  QBittorrentConfig,
-  EncodingConfig,
   DownloadsConfig,
-  LoggingConfig,
+  EncodingConfig,
   IrcConfig,
+  JobsConfig,
+  LoggingConfig,
+  OmdbConfig,
+  QBittorrentConfig,
   SchedulerConfig,
+  ServerConfig,
+  TmdbConfig,
+  TraktConfig,
 } from "./schema.js";
-export { loadConfig, validateConfig } from "./loader.js";
+// Re-export types and schema
+export { configSchema } from "./schema.js";

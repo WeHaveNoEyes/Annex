@@ -495,18 +495,20 @@ class DownloadService {
       if (!response.ok) {
         return {
           success: false,
-          error: `HTTP ${response.status}: ${response.statusText}`
+          error: `HTTP ${response.status}: ${response.statusText}`,
         };
       }
 
       const contentType = response.headers.get("content-type") || "";
       // Check if we got a torrent file (not an error page)
-      if (!contentType.includes("application/x-bittorrent") &&
-          !contentType.includes("application/octet-stream")) {
+      if (
+        !contentType.includes("application/x-bittorrent") &&
+        !contentType.includes("application/octet-stream")
+      ) {
         const text = await response.text();
         return {
           success: false,
-          error: `Unexpected content type: ${contentType}. Response: ${text.slice(0, 200)}`
+          error: `Unexpected content type: ${contentType}. Response: ${text.slice(0, 200)}`,
         };
       }
 
@@ -638,7 +640,9 @@ class DownloadService {
     videoFiles = videoFiles.filter((f) => !isSampleFile(f.name) && f.size >= minSizeBytes);
 
     if (originalCount > videoFiles.length) {
-      console.log(`[Download] Filtered out ${originalCount - videoFiles.length} sample/small files`);
+      console.log(
+        `[Download] Filtered out ${originalCount - videoFiles.length} sample/small files`
+      );
     }
 
     if (videoFiles.length === 0) return null;
@@ -746,7 +750,12 @@ class DownloadService {
       checkCancelled?: () => boolean;
     } = {}
   ): Promise<{ success: boolean; progress?: DownloadProgress; error?: string }> {
-    const { pollInterval = 5000, timeout = 24 * 60 * 60 * 1000, onProgress, checkCancelled } = options;
+    const {
+      pollInterval = 5000,
+      timeout = 24 * 60 * 60 * 1000,
+      onProgress,
+      checkCancelled,
+    } = options;
 
     const startTime = Date.now();
 

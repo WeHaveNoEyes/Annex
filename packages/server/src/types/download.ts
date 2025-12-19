@@ -4,7 +4,7 @@
  * Comprehensive type definitions for the download management system.
  */
 
-import type { Download, MediaType, DownloadStatus, TvEpisode } from "@prisma/client";
+import type { Download, DownloadStatus, MediaType, TvEpisode } from "@prisma/client";
 
 // =============================================================================
 // parse-torrent-title types (no @types package available)
@@ -36,13 +36,13 @@ export interface ParsedTorrent {
 
 export interface DownloadConfig {
   // Retry settings
-  maxAttempts: number;           // Max releases to try before giving up
-  backoffMinutes: number[];      // Wait between attempts [5, 15, 60]
+  maxAttempts: number; // Max releases to try before giving up
+  backoffMinutes: number[]; // Wait between attempts [5, 15, 60]
 
   // Health check thresholds
   stalledTimeoutMinutes: number; // No progress for this long = stalled
   noSeedsTimeoutMinutes: number; // 0 seeds for this long = give up
-  minDownloadSpeedKBps: number;  // Below this for extended time = slow
+  minDownloadSpeedKBps: number; // Below this for extended time = slow
   slowDownloadTimeoutMinutes: number;
 
   // Concurrency
@@ -50,8 +50,8 @@ export interface DownloadConfig {
   maxDownloadsPerRequest: number;
 
   // Cleanup settings
-  minSeedTimeMinutes: number;    // Seed for at least this long
-  minSeedRatio: number;          // Or until this ratio reached
+  minSeedTimeMinutes: number; // Seed for at least this long
+  minSeedRatio: number; // Or until this ratio reached
   deleteSourceAfterEncode: boolean;
   deleteSourceAfterDays: number;
   keepInQbittorrent: boolean;
@@ -171,18 +171,18 @@ export interface TorrentInfo {
   hash: string;
   name: string;
   size: number;
-  progress: number;        // 0-1
-  downloadSpeed: number;   // bytes/sec
-  uploadSpeed: number;     // bytes/sec
+  progress: number; // 0-1
+  downloadSpeed: number; // bytes/sec
+  uploadSpeed: number; // bytes/sec
   seeds: number;
   peers: number;
   ratio: number;
-  eta: number;             // seconds
+  eta: number; // seconds
   state: string;
   savePath: string;
   contentPath: string;
-  addedOn: number;         // Unix timestamp
-  completedOn: number;     // Unix timestamp
+  addedOn: number; // Unix timestamp
+  completedOn: number; // Unix timestamp
 }
 
 export interface TorrentMatch {
@@ -208,9 +208,9 @@ export interface IndexerRelease {
   leechers: number;
   magnetUri?: string;
   downloadUrl?: string;
-  indexer?: string;       // Optional - from internal types
-  indexerName?: string;   // Optional - from Release type in indexer.ts
-  indexerId?: string;     // Optional - from Release type in indexer.ts
+  indexer?: string; // Optional - from internal types
+  indexerName?: string; // Optional - from Release type in indexer.ts
+  indexerId?: string; // Optional - from Release type in indexer.ts
   publishDate?: Date;
   resolution?: string;
   source?: string;

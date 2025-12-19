@@ -5,7 +5,7 @@
  * Must be wrapped inside the tRPC provider.
  */
 
-import { useEffect, type ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 import { useAuthStore } from "../hooks/useAuth";
 import { trpc } from "../trpc";
 

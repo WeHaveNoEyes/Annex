@@ -1,33 +1,40 @@
-import { useState, useCallback, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
-import { trpc } from "../../trpc";
-import { Button, Input, Card, Label, Select } from "../../components/ui";
 import {
+  addEdge,
+  Background,
+  BackgroundVariant,
+  type Connection,
+  ConnectionLineType,
+  Controls,
+  type Edge,
+  MiniMap,
+  type Node,
   ReactFlow,
   ReactFlowProvider,
-  MiniMap,
-  Controls,
-  Background,
-  useNodesState,
   useEdgesState,
+  useNodesState,
   useReactFlow,
-  addEdge,
-  Node,
-  Edge,
-  Connection,
-  BackgroundVariant,
-  ConnectionLineType,
   type Viewport,
 } from "@xyflow/react";
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { Button, Card, Input, Label, Select } from "../../components/ui";
+import { trpc } from "../../trpc";
 import "@xyflow/react/dist/style.css";
-import StepNode from "../../components/pipeline/StepNode";
 import StepConfigModal from "../../components/pipeline/StepConfigModal";
+import StepNode from "../../components/pipeline/StepNode";
 
 const nodeTypes = {
   step: StepNode,
 };
 
-type StepType = "START" | "SEARCH" | "DOWNLOAD" | "ENCODE" | "DELIVER" | "APPROVAL" | "NOTIFICATION";
+type StepType =
+  | "START"
+  | "SEARCH"
+  | "DOWNLOAD"
+  | "ENCODE"
+  | "DELIVER"
+  | "APPROVAL"
+  | "NOTIFICATION";
 
 interface StepData extends Record<string, unknown> {
   label: string;
@@ -56,7 +63,7 @@ function PipelineEditorInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<StepData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
 
-  const { data: pipeline } = trpc.pipelines.get.useQuery({ id: id! }, { enabled: isEditing });
+  const { data: pipeline } = trpc.pipelines.get.useQuery({ id: id || "" }, { enabled: isEditing });
   const utils = trpc.useUtils();
 
   const createMutation = trpc.pipelines.create.useMutation({
@@ -96,7 +103,7 @@ function PipelineEditorInner() {
 
   // Load existing pipeline
   useEffect(() => {
-    if (pipeline && pipeline.steps) {
+    if (pipeline?.steps) {
       setName(pipeline.name);
       setDescription(pipeline.description || "");
       setMediaType(pipeline.mediaType as "MOVIE" | "TV");
@@ -113,10 +120,11 @@ function PipelineEditorInner() {
         setNodes(layoutData.nodes);
         setEdges(layoutData.edges);
         if (layoutData.viewport) {
-          setViewport(layoutData.viewport);
+          const savedViewport = layoutData.viewport;
+          setViewport(savedViewport);
           // Imperatively set the viewport on the ReactFlow instance
           setTimeout(() => {
-            reactFlowInstance.setViewport(layoutData.viewport!);
+            reactFlowInstance.setViewport(savedViewport);
           }, 0);
         }
         return;
@@ -298,7 +306,9 @@ function PipelineEditorInner() {
     };
 
     if (hasCycle("start")) {
-      alert("Pipeline validation failed: Cycles are not allowed. Please remove any circular connections.");
+      alert(
+        "Pipeline validation failed: Cycles are not allowed. Please remove any circular connections."
+      );
       return;
     }
 
@@ -320,8 +330,8 @@ function PipelineEditorInner() {
     };
 
     try {
-      if (isEditing) {
-        await updateMutation.mutateAsync({ id: id!, data });
+      if (isEditing && id) {
+        await updateMutation.mutateAsync({ id, data });
       } else {
         await createMutation.mutateAsync(data);
       }
@@ -470,7 +480,10 @@ function PipelineEditorInner() {
             </div>
           </div>
 
-          <div style={{ height: "600px" }} className="rounded border border-white/10 overflow-hidden">
+          <div
+            style={{ height: "600px" }}
+            className="rounded border border-white/10 overflow-hidden"
+          >
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -486,7 +499,8 @@ function PipelineEditorInner() {
               connectionRadius={50}
               className="bg-gradient-to-br from-black via-black to-annex-950/20"
               style={{
-                background: "linear-gradient(135deg, #000000 0%, #000000 50%, rgba(239, 68, 68, 0.05) 100%)",
+                background:
+                  "linear-gradient(135deg, #000000 0%, #000000 50%, rgba(239, 68, 68, 0.05) 100%)",
               }}
               defaultEdgeOptions={{
                 type: "smoothstep",
@@ -523,16 +537,13 @@ function PipelineEditorInner() {
             </ReactFlow>
           </div>
           <div className="mt-2 text-xs text-white/50">
-            Double-click a node to configure it. Select nodes or connections and press Delete/Backspace to remove
-            them.
+            Double-click a node to configure it. Select nodes or connections and press
+            Delete/Backspace to remove them.
           </div>
         </Card>
 
         <div className="flex gap-2">
-          <Button
-            type="submit"
-            disabled={createMutation.isPending || updateMutation.isPending}
-          >
+          <Button type="submit" disabled={createMutation.isPending || updateMutation.isPending}>
             {isEditing ? "Update Template" : "Create Template"}
           </Button>
           <Button type="button" variant="secondary" onClick={() => navigate("/settings/pipelines")}>
@@ -541,17 +552,24 @@ function PipelineEditorInner() {
         </div>
       </form>
 
-      {selectedNode && nodes.find((n) => n.id === selectedNode) && (
-        <StepConfigModal
-          nodeId={selectedNode}
-          nodeData={nodes.find((n) => n.id === selectedNode)!.data}
-          onClose={() => setSelectedNode(null)}
-          onUpdate={(updates) => {
-            updateNodeData(selectedNode, updates);
-            setSelectedNode(null);
-          }}
-        />
-      )}
+      {(() => {
+        if (!selectedNode) return null;
+        const node = nodes.find((n) => n.id === selectedNode);
+        if (!node) return null;
+
+        const nodeId = selectedNode; // Capture for closures
+        return (
+          <StepConfigModal
+            nodeId={nodeId}
+            nodeData={node.data}
+            onClose={() => setSelectedNode(null)}
+            onUpdate={(updates) => {
+              updateNodeData(nodeId, updates);
+              setSelectedNode(null);
+            }}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -1,17 +1,17 @@
-import { useState, useCallback } from "react";
-import { RangeSlider } from "./RangeSlider";
+import { useCallback, useState } from "react";
 import {
-  TRAKT_GENRES,
-  LANGUAGES,
   COUNTRIES,
-  RATING_SOURCES,
-  YEAR_PRESETS,
-  RUNTIME_PRESETS,
   countActiveRatingFilters,
   type DiscoverFilters,
+  LANGUAGES,
+  RATING_SOURCES,
   type RatingRange,
   type RatingSourceId,
+  RUNTIME_PRESETS,
+  TRAKT_GENRES,
+  YEAR_PRESETS,
 } from "../../hooks/useDiscoverFilters";
+import { RangeSlider } from "./RangeSlider";
 
 interface FilterPanelProps {
   filters: DiscoverFilters;
@@ -36,13 +36,7 @@ interface FilterSectionProps {
   badge?: string | number;
 }
 
-function FilterSection({
-  title,
-  isOpen,
-  onToggle,
-  children,
-  badge,
-}: FilterSectionProps) {
+function FilterSection({ title, isOpen, onToggle, children, badge }: FilterSectionProps) {
   return (
     <div className="border-b border-white/10 last:border-b-0">
       <button
@@ -65,12 +59,7 @@ function FilterSection({
           viewBox="0 0 24 24"
           stroke="currentColor"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
       <div

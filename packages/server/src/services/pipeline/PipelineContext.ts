@@ -1,7 +1,7 @@
 // Pipeline Context - Shared data structure passed between pipeline steps
 // Accumulates data as the pipeline executes, allowing steps to access results from previous steps
 
-import type { MediaType } from '@prisma/client';
+import type { MediaType } from "@prisma/client";
 
 export interface PipelineContext {
   // Request details
@@ -74,7 +74,7 @@ export interface PipelineContext {
 
   approval?: {
     approvalId: string;
-    status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SKIPPED' | 'TIMEOUT';
+    status: "PENDING" | "APPROVED" | "REJECTED" | "SKIPPED" | "TIMEOUT";
     processedBy?: string;
     comment?: string;
   };
@@ -91,9 +91,9 @@ export interface PipelineContext {
 
 export interface ConditionRule {
   field: string; // Context field path (e.g., "search.selectedRelease.quality")
-  operator: '==' | '!=' | '>' | '<' | '>=' | '<=' | 'in' | 'not_in' | 'contains' | 'matches';
+  operator: "==" | "!=" | ">" | "<" | ">=" | "<=" | "in" | "not_in" | "contains" | "matches";
   value: unknown;
-  logicalOp?: 'AND' | 'OR'; // For chaining multiple conditions
+  logicalOp?: "AND" | "OR"; // For chaining multiple conditions
   conditions?: ConditionRule[]; // Nested conditions
 }
 

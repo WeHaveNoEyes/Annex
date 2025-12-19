@@ -1,8 +1,8 @@
+import { ExecutionStatus, MediaType } from "@prisma/client";
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc.js";
 import { prisma } from "../db/client.js";
-import { MediaType, ExecutionStatus } from "@prisma/client";
 import { getPipelineExecutor } from "../services/pipeline/PipelineExecutor.js";
+import { publicProcedure, router } from "../trpc.js";
 
 export interface ConditionRuleType {
   field: string;
@@ -173,7 +173,9 @@ export const pipelinesRouter = router({
         isPublic: input.isPublic,
         userId: (ctx as { userId?: string }).userId,
         steps: input.steps as unknown as import("@prisma/client").Prisma.InputJsonValue,
-        layout: input.layout ? (input.layout as unknown as import("@prisma/client").Prisma.InputJsonValue) : undefined,
+        layout: input.layout
+          ? (input.layout as unknown as import("@prisma/client").Prisma.InputJsonValue)
+          : undefined,
       },
     });
 
@@ -201,12 +203,17 @@ export const pipelinesRouter = router({
       } = {};
 
       if (input.data.name) updateData.name = input.data.name;
-      if (input.data.description !== undefined) updateData.description = input.data.description || null;
+      if (input.data.description !== undefined)
+        updateData.description = input.data.description || null;
       if (input.data.isDefault !== undefined) updateData.isDefault = input.data.isDefault;
       if (input.data.isPublic !== undefined) updateData.isPublic = input.data.isPublic;
-      if (input.data.steps) updateData.steps = input.data.steps as unknown as import("@prisma/client").Prisma.InputJsonValue;
+      if (input.data.steps)
+        updateData.steps = input.data
+          .steps as unknown as import("@prisma/client").Prisma.InputJsonValue;
       if (input.data.layout !== undefined) {
-        updateData.layout = input.data.layout ? (input.data.layout as unknown as import("@prisma/client").Prisma.InputJsonValue) : undefined;
+        updateData.layout = input.data.layout
+          ? (input.data.layout as unknown as import("@prisma/client").Prisma.InputJsonValue)
+          : undefined;
       }
 
       await prisma.pipelineTemplate.update({
@@ -315,33 +322,35 @@ export const pipelinesRouter = router({
   /**
    * Get execution for a specific request
    */
-  getExecutionByRequest: publicProcedure.input(z.object({ requestId: z.string() })).query(async ({ input }) => {
-    const execution = await prisma.pipelineExecution.findUnique({
-      where: { requestId: input.requestId },
-      include: {
-        stepExecutions: {
-          orderBy: { stepOrder: "asc" },
+  getExecutionByRequest: publicProcedure
+    .input(z.object({ requestId: z.string() }))
+    .query(async ({ input }) => {
+      const execution = await prisma.pipelineExecution.findUnique({
+        where: { requestId: input.requestId },
+        include: {
+          stepExecutions: {
+            orderBy: { stepOrder: "asc" },
+          },
         },
-      },
-    });
+      });
 
-    if (!execution) {
-      return null;
-    }
+      if (!execution) {
+        return null;
+      }
 
-    return {
-      id: execution.id,
-      requestId: execution.requestId,
-      templateId: execution.templateId,
-      status: execution.status,
-      currentStep: execution.currentStep,
-      context: execution.context,
-      error: execution.error,
-      startedAt: execution.startedAt,
-      completedAt: execution.completedAt,
-      stepExecutions: execution.stepExecutions,
-    };
-  }),
+      return {
+        id: execution.id,
+        requestId: execution.requestId,
+        templateId: execution.templateId,
+        status: execution.status,
+        currentStep: execution.currentStep,
+        context: execution.context,
+        error: execution.error,
+        startedAt: execution.startedAt,
+        completedAt: execution.completedAt,
+        stepExecutions: execution.stepExecutions,
+      };
+    }),
 
   /**
    * List all executions for a template
@@ -399,20 +408,24 @@ export const pipelinesRouter = router({
   /**
    * Cancel a running pipeline execution
    */
-  cancelExecution: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
-    const executor = getPipelineExecutor();
-    await executor.cancelExecution(input.id);
+  cancelExecution: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      const executor = getPipelineExecutor();
+      await executor.cancelExecution(input.id);
 
-    return { success: true };
-  }),
+      return { success: true };
+    }),
 
   /**
    * Resume a paused pipeline execution
    */
-  resumeExecution: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
-    const executor = getPipelineExecutor();
-    await executor.resumeExecution(input.id);
+  resumeExecution: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      const executor = getPipelineExecutor();
+      await executor.resumeExecution(input.id);
 
-    return { success: true };
-  }),
+      return { success: true };
+    }),
 });

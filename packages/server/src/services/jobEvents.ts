@@ -5,7 +5,7 @@
  * Used by tRPC subscriptions to push job updates to connected clients.
  */
 
-import { EventEmitter } from "events";
+import { EventEmitter } from "node:events";
 
 // Job update event types
 export type JobUpdateType =

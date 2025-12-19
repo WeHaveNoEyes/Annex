@@ -4,9 +4,9 @@
  * Generates and optionally installs systemd service files.
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { CliArgs } from "../cli.js";
 
 interface SetupOptions {
@@ -99,11 +99,7 @@ function isRoot(): boolean {
 function hasSystemctl(): boolean {
   try {
     // Check common systemctl locations
-    const systemctlPaths = [
-      "/usr/bin/systemctl",
-      "/bin/systemctl",
-      "/usr/local/bin/systemctl",
-    ];
+    const systemctlPaths = ["/usr/bin/systemctl", "/bin/systemctl", "/usr/local/bin/systemctl"];
 
     for (const path of systemctlPaths) {
       if (fs.existsSync(path)) {
@@ -168,13 +164,10 @@ Configuration:
 
       if (proc.exitCode !== 0) {
         // User doesn't exist, create it
-        const createUserProc = Bun.spawn(
-          ["useradd", "-r", "-s", "/bin/false", options.user],
-          {
-            stdout: "inherit",
-            stderr: "inherit",
-          }
-        );
+        const createUserProc = Bun.spawn(["useradd", "-r", "-s", "/bin/false", options.user], {
+          stdout: "inherit",
+          stderr: "inherit",
+        });
         await createUserProc.exited;
         console.log(`  ✓ Created user: ${options.user}`);
       } else {
@@ -195,13 +188,10 @@ Configuration:
       }
 
       // Set ownership
-      const chownProc = Bun.spawn(
-        ["chown", `${options.user}:${options.user}`, options.workDir],
-        {
-          stdout: "inherit",
-          stderr: "inherit",
-        }
-      );
+      const chownProc = Bun.spawn(["chown", `${options.user}:${options.user}`, options.workDir], {
+        stdout: "inherit",
+        stderr: "inherit",
+      });
       await chownProc.exited;
       console.log(`  ✓ Set ownership: ${options.user}:${options.user}`);
     } catch (error) {

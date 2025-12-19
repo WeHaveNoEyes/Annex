@@ -4,13 +4,13 @@
  * Downloads and installs encoder updates from the server.
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
-import { createHash, randomUUID } from "crypto";
+import { createHash, randomUUID } from "node:crypto";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { CliArgs } from "../cli.js";
+import { detectPlatform, getPlatformBinaryName } from "../platform/index.js";
 import { VERSION } from "../version.js";
-import { getPlatformBinaryName, detectPlatform } from "../platform/index.js";
 
 interface ManifestResponse {
   version: string;
@@ -49,7 +49,7 @@ async function fetchManifestFromGitHub(): Promise<ManifestResponse> {
   try {
     const response = await fetch(GITHUB_API_URL, {
       headers: {
-        "Accept": "application/vnd.github.v3+json",
+        Accept: "application/vnd.github.v3+json",
         "User-Agent": "annex-encoder",
       },
     });
@@ -58,7 +58,9 @@ async function fetchManifestFromGitHub(): Promise<ManifestResponse> {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const release = await response.json() as { assets: Array<{ name: string; browser_download_url: string }> };
+    const release = (await response.json()) as {
+      assets: Array<{ name: string; browser_download_url: string }>;
+    };
 
     // Find the manifest.json asset
     const manifestAsset = release.assets.find((a) => a.name === "manifest.json");
@@ -72,7 +74,7 @@ async function fetchManifestFromGitHub(): Promise<ManifestResponse> {
       throw new Error(`Failed to download manifest: ${manifestResponse.status}`);
     }
 
-    return await manifestResponse.json() as ManifestResponse;
+    return (await manifestResponse.json()) as ManifestResponse;
   } catch (error) {
     throw new Error(`Failed to fetch from GitHub: ${error}`);
   }
@@ -91,7 +93,7 @@ async function fetchManifestFromServer(serverUrl: string): Promise<ManifestRespo
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const manifest = await response.json() as ManifestResponse;
+    const manifest = (await response.json()) as ManifestResponse;
     return manifest;
   } catch (error) {
     throw new Error(`Failed to fetch manifest: ${error}`);
@@ -101,17 +103,14 @@ async function fetchManifestFromServer(serverUrl: string): Promise<ManifestRespo
 /**
  * Download binary from GitHub releases
  */
-async function downloadBinaryFromGitHub(
-  platform: string,
-  outputPath: string
-): Promise<void> {
+async function downloadBinaryFromGitHub(platform: string, outputPath: string): Promise<void> {
   console.log(`[Update] Downloading ${platform} binary from GitHub...`);
 
   try {
     // Get latest release info
     const response = await fetch(GITHUB_API_URL, {
       headers: {
-        "Accept": "application/vnd.github.v3+json",
+        Accept: "application/vnd.github.v3+json",
         "User-Agent": "annex-encoder",
       },
     });
@@ -120,7 +119,9 @@ async function downloadBinaryFromGitHub(
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    const release = await response.json() as { assets: Array<{ name: string; browser_download_url: string }> };
+    const release = (await response.json()) as {
+      assets: Array<{ name: string; browser_download_url: string }>;
+    };
 
     // Find the binary asset for this platform
     const binaryName = `annex-encoder-${platform}${platform.startsWith("windows") ? ".exe" : ""}`;
@@ -293,7 +294,9 @@ Platform: ${getPlatformBinaryName()}
   const platform = getPlatformBinaryName();
   const force = args.flags.force ?? false;
 
-  console.log(`Update Source: ${updateSource.type === "github" ? "GitHub Releases" : updateSource.url}\n`);
+  console.log(
+    `Update Source: ${updateSource.type === "github" ? "GitHub Releases" : updateSource.url}\n`
+  );
 
   // Step 1: Fetch manifest
   console.log("[1/7] Checking for updates...");

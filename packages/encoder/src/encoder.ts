@@ -4,8 +4,8 @@
  * Handles FFmpeg execution for AV1 encoding with VAAPI hardware acceleration.
  */
 
-import * as fs from "fs";
-import * as path from "path";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type { EncodingConfig, JobProgressMessage } from "@annex/shared";
 import { getConfig } from "./config.js";
 
@@ -78,10 +78,13 @@ function validateFilePath(filePath: string): void {
 export async function probeMedia(filePath: string): Promise<MediaInfo> {
   validateFilePath(filePath);
 
-  const proc = Bun.spawn(["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  const proc = Bun.spawn(
+    ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath],
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+    }
+  );
 
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
@@ -138,16 +141,14 @@ function buildFfmpegArgs(
   mediaInfo: MediaInfo,
   gpuDevice: string
 ): string[] {
-  const args: string[] = [
-    "-hide_banner",
-    "-y",
-    "-progress", "pipe:1",
-  ];
+  const args: string[] = ["-hide_banner", "-y", "-progress", "pipe:1"];
 
   // Hardware acceleration for both decode and encode
   // Note: hwAccel comes from DB as uppercase enum value (VAAPI, QSV, etc.)
   const hwAccel = encodingConfig.hwAccel?.toUpperCase();
-  console.log(`[Encoder] hwAccel from profile: "${encodingConfig.hwAccel}" (normalized: "${hwAccel}")`);
+  console.log(
+    `[Encoder] hwAccel from profile: "${encodingConfig.hwAccel}" (normalized: "${hwAccel}")`
+  );
   if (hwAccel === "VAAPI") {
     console.log(`[Encoder] Using VAAPI hardware decode + encode on ${gpuDevice}`);
     // Hardware decode
@@ -163,7 +164,7 @@ function buildFfmpegArgs(
 
   // Explicit stream mapping - video and audio
   args.push("-map", "0:v:0"); // First video stream
-  args.push("-map", "0:a?");  // All audio streams (optional)
+  args.push("-map", "0:a?"); // All audio streams (optional)
 
   // Map compatible subtitle streams (or skip entirely)
   const { subArgs, hasCompatibleSubs } = buildSubtitleMapping(mediaInfo);
@@ -193,7 +194,10 @@ function buildFfmpegArgs(
 /**
  * Build subtitle stream mapping - only include MKV-compatible subtitle streams
  */
-function buildSubtitleMapping(mediaInfo: MediaInfo): { subArgs: string[]; hasCompatibleSubs: boolean } {
+function buildSubtitleMapping(mediaInfo: MediaInfo): {
+  subArgs: string[];
+  hasCompatibleSubs: boolean;
+} {
   const subArgs: string[] = [];
 
   if (mediaInfo.subtitleStreams.length === 0) {
@@ -207,7 +211,9 @@ function buildSubtitleMapping(mediaInfo: MediaInfo): { subArgs: string[]; hasCom
 
   if (compatibleSubs.length === 0) {
     // No compatible subtitles
-    console.log(`[Encoder] Skipping ${mediaInfo.subtitleStreams.length} incompatible subtitle stream(s): ${mediaInfo.subtitleStreams.map(s => s.codec).join(", ")}`);
+    console.log(
+      `[Encoder] Skipping ${mediaInfo.subtitleStreams.length} incompatible subtitle stream(s): ${mediaInfo.subtitleStreams.map((s) => s.codec).join(", ")}`
+    );
     return { subArgs: [], hasCompatibleSubs: false };
   }
 
@@ -217,9 +223,13 @@ function buildSubtitleMapping(mediaInfo: MediaInfo): { subArgs: string[]; hasCom
     const skippedCodecs = mediaInfo.subtitleStreams
       .filter((sub) => !MKV_COMPATIBLE_SUBTITLE_CODECS.has(sub.codec.toLowerCase()))
       .map((s) => s.codec);
-    console.log(`[Encoder] Skipping ${skipped} incompatible subtitle stream(s): ${skippedCodecs.join(", ")}`);
+    console.log(
+      `[Encoder] Skipping ${skipped} incompatible subtitle stream(s): ${skippedCodecs.join(", ")}`
+    );
   }
-  console.log(`[Encoder] Including ${compatibleSubs.length} compatible subtitle stream(s): ${compatibleSubs.map(s => s.codec).join(", ")}`);
+  console.log(
+    `[Encoder] Including ${compatibleSubs.length} compatible subtitle stream(s): ${compatibleSubs.map((s) => s.codec).join(", ")}`
+  );
 
   // Map only compatible subtitle streams
   for (const sub of compatibleSubs) {
@@ -292,10 +302,12 @@ function buildVideoArgs(
         // For av1_vaapi, compression_level must be 0-7
         if (hwAccel === "VAAPI" && key === "compression_level") {
           const level = parseInt(flagValue, 10);
-          if (!isNaN(level)) {
+          if (!Number.isNaN(level)) {
             flagValue = String(Math.min(7, Math.max(0, level)));
             if (flagValue !== String(value)) {
-              console.log(`[Encoder] Clamped compression_level ${value} -> ${flagValue} for av1_vaapi`);
+              console.log(
+                `[Encoder] Clamped compression_level ${value} -> ${flagValue} for av1_vaapi`
+              );
             }
           }
         }
@@ -347,11 +359,11 @@ function getTargetResolution(
     "720p": { width: 1280, height: 720 },
     "480p": { width: 854, height: 480 },
     // Prisma enum format (RES_*)
-    "RES_4K": { width: 3840, height: 2160 },
-    "RES_2K": { width: 2560, height: 1440 },
-    "RES_1080P": { width: 1920, height: 1080 },
-    "RES_720P": { width: 1280, height: 720 },
-    "RES_480P": { width: 854, height: 480 },
+    RES_4K: { width: 3840, height: 2160 },
+    RES_2K: { width: 2560, height: 1440 },
+    RES_1080P: { width: 1920, height: 1080 },
+    RES_720P: { width: 1280, height: 720 },
+    RES_480P: { width: 854, height: 480 },
   };
 
   const maxRes = resolutionMap[maxResolution] || resolutionMap["1080p"];
@@ -372,7 +384,7 @@ function getTargetResolution(
   } else {
     // Height-limited
     return {
-      width: Math.round(maxRes.height * aspectRatio / 2) * 2,
+      width: Math.round((maxRes.height * aspectRatio) / 2) * 2,
       height: maxRes.height,
     };
   }
@@ -392,12 +404,24 @@ function parseProgress(line: string): Partial<{
   const result: ReturnType<typeof parseProgress> = {};
 
   const matches: Record<string, (v: string) => void> = {
-    "frame=": (v) => { result.frame = parseInt(v, 10); },
-    "fps=": (v) => { result.fps = parseFloat(v); },
-    "bitrate=": (v) => { result.bitrate = parseFloat(v.replace("kbits/s", "")); },
-    "total_size=": (v) => { result.totalSize = parseInt(v, 10); },
-    "out_time_us=": (v) => { result.outTimeUs = parseInt(v, 10); },
-    "speed=": (v) => { result.speed = parseFloat(v.replace("x", "")); },
+    "frame=": (v) => {
+      result.frame = parseInt(v, 10);
+    },
+    "fps=": (v) => {
+      result.fps = parseFloat(v);
+    },
+    "bitrate=": (v) => {
+      result.bitrate = parseFloat(v.replace("kbits/s", ""));
+    },
+    "total_size=": (v) => {
+      result.totalSize = parseInt(v, 10);
+    },
+    "out_time_us=": (v) => {
+      result.outTimeUs = parseInt(v, 10);
+    },
+    "speed=": (v) => {
+      result.speed = parseFloat(v.replace("x", ""));
+    },
   };
 
   for (const [prefix, parser] of Object.entries(matches)) {
@@ -431,7 +455,9 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
 
   // Probe input file
   const mediaInfo = await probeMedia(job.inputPath);
-  console.log(`[Encoder] Input: ${mediaInfo.width}x${mediaInfo.height} @ ${mediaInfo.fps.toFixed(2)}fps, ${(mediaInfo.fileSize / 1024 / 1024 / 1024).toFixed(2)}GB`);
+  console.log(
+    `[Encoder] Input: ${mediaInfo.width}x${mediaInfo.height} @ ${mediaInfo.fps.toFixed(2)}fps, ${(mediaInfo.fileSize / 1024 / 1024 / 1024).toFixed(2)}GB`
+  );
 
   // Build FFmpeg arguments
   const args = buildFfmpegArgs(
@@ -487,14 +513,14 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
 
           // Calculate progress percentage
           const elapsedTime = progressState.outTimeUs / 1_000_000;
-          const progress = mediaInfo.duration > 0
-            ? Math.min(100, (elapsedTime / mediaInfo.duration) * 100)
-            : 0;
+          const progress =
+            mediaInfo.duration > 0 ? Math.min(100, (elapsedTime / mediaInfo.duration) * 100) : 0;
 
           // Calculate ETA
-          const eta = progressState.speed > 0
-            ? Math.round((mediaInfo.duration - elapsedTime) / progressState.speed)
-            : 0;
+          const eta =
+            progressState.speed > 0
+              ? Math.round((mediaInfo.duration - elapsedTime) / progressState.speed)
+              : 0;
 
           job.onProgress({
             type: "job:progress",
@@ -519,10 +545,7 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
   const stderrPromise = new Response(ffmpeg.stderr).text();
 
   // Wait for process to exit
-  const [exitCode, stderr] = await Promise.all([
-    ffmpeg.exited,
-    stderrPromise,
-  ]);
+  const [exitCode, stderr] = await Promise.all([ffmpeg.exited, stderrPromise]);
 
   // Also wait for stdout processing to complete
   await stdoutReader;
@@ -535,7 +558,9 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
       if (fs.existsSync(job.outputPath)) {
         fs.unlinkSync(job.outputPath);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     throw new Error(`FFmpeg exited with code ${exitCode}: ${stderr.slice(-500)}`);
   }
@@ -544,13 +569,15 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
   let outputSize = 0;
   try {
     outputSize = fs.statSync(job.outputPath).size;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
-  const compressionRatio = mediaInfo.fileSize > 0
-    ? mediaInfo.fileSize / outputSize
-    : 1;
+  const compressionRatio = mediaInfo.fileSize > 0 ? mediaInfo.fileSize / outputSize : 1;
 
-  console.log(`[Encoder] Complete: ${(outputSize / 1024 / 1024 / 1024).toFixed(2)}GB (${compressionRatio.toFixed(1)}x compression) in ${duration.toFixed(0)}s`);
+  console.log(
+    `[Encoder] Complete: ${(outputSize / 1024 / 1024 / 1024).toFixed(2)}GB (${compressionRatio.toFixed(1)}x compression) in ${duration.toFixed(0)}s`
+  );
 
   return {
     outputPath: job.outputPath,

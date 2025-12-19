@@ -1,4 +1,4 @@
-import { useCallback, useRef, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface RangeSliderProps {
   min: number;
@@ -32,10 +32,7 @@ export function RangeSlider({
     setLocalValue(value);
   }, [value]);
 
-  const getPercentage = useCallback(
-    (val: number) => ((val - min) / (max - min)) * 100,
-    [min, max]
-  );
+  const getPercentage = useCallback((val: number) => ((val - min) / (max - min)) * 100, [min, max]);
 
   const getValueFromPosition = useCallback(
     (clientX: number) => {
@@ -173,8 +170,8 @@ export function RangeSlider({
             isDragging === "min"
               ? `${color} border-white scale-110`
               : isActive
-              ? `${color} border-white/80 hover:scale-110`
-              : "bg-white/20 border-white/40 hover:bg-white/30"
+                ? `${color} border-white/80 hover:scale-110`
+                : "bg-white/20 border-white/40 hover:bg-white/30"
           }`}
           style={{ left: `${minPercent}%` }}
           onMouseDown={handleMouseDown("min")}
@@ -187,8 +184,8 @@ export function RangeSlider({
             isDragging === "max"
               ? `${color} border-white scale-110`
               : isActive
-              ? `${color} border-white/80 hover:scale-110`
-              : "bg-white/20 border-white/40 hover:bg-white/30"
+                ? `${color} border-white/80 hover:scale-110`
+                : "bg-white/20 border-white/40 hover:bg-white/30"
           }`}
           style={{ left: `${maxPercent}%` }}
           onMouseDown={handleMouseDown("max")}

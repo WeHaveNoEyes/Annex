@@ -19,7 +19,15 @@ export interface EmbyLibrary {
 export interface EmbyMediaItem {
   Id: string;
   Name: string;
-  Type: "Movie" | "Series" | "Episode" | "Season" | "BoxSet" | "MusicAlbum" | "MusicArtist" | "Audio";
+  Type:
+    | "Movie"
+    | "Series"
+    | "Episode"
+    | "Season"
+    | "BoxSet"
+    | "MusicAlbum"
+    | "MusicArtist"
+    | "Audio";
   ServerId: string;
   // Identification
   ProviderIds?: {
@@ -123,9 +131,7 @@ export interface EmbyLibraryItem {
  * (e.g., a 1920x800 ultrawide movie should be classified as 1080p, not 720p)
  */
 function extractQuality(item: EmbyMediaItem): string | undefined {
-  const videoStream = item.MediaSources?.[0]?.MediaStreams?.find(
-    (s) => s.Type === "Video"
-  );
+  const videoStream = item.MediaSources?.[0]?.MediaStreams?.find((s) => s.Type === "Video");
   if (!videoStream) return undefined;
 
   const width = videoStream.Width;
@@ -164,11 +170,8 @@ export async function fetchEmbyLibraryForSync(
     "Content-Type": "application/json",
   };
 
-  const includeTypes = options.type === "movie"
-    ? "Movie"
-    : options.type === "tv"
-      ? "Series"
-      : "Movie,Series";
+  const includeTypes =
+    options.type === "movie" ? "Movie" : options.type === "tv" ? "Series" : "Movie,Series";
 
   const batchSize = options.batchSize ?? 100;
   const allItems: EmbyLibraryItem[] = [];
@@ -197,7 +200,7 @@ export async function fetchEmbyLibraryForSync(
       throw new Error(`Emby API error (${response.status}): ${await response.text()}`);
     }
 
-    const data = await response.json() as EmbyItemsResponse;
+    const data = (await response.json()) as EmbyItemsResponse;
     totalCount = data.TotalRecordCount;
 
     // Normalize items with custom image URL builder
@@ -263,11 +266,8 @@ export async function fetchEmbyMediaPaginated(
     "Content-Type": "application/json",
   };
 
-  const includeTypes = options.type === "movie"
-    ? "Movie"
-    : options.type === "tv"
-      ? "Series"
-      : "Movie,Series";
+  const includeTypes =
+    options.type === "movie" ? "Movie" : options.type === "tv" ? "Series" : "Movie,Series";
 
   const params = new URLSearchParams({
     IncludeItemTypes: includeTypes,
@@ -289,7 +289,7 @@ export async function fetchEmbyMediaPaginated(
     throw new Error(`Emby API error (${response.status}): ${await response.text()}`);
   }
 
-  const data = await response.json() as EmbyItemsResponse;
+  const data = (await response.json()) as EmbyItemsResponse;
 
   const items: EmbyLibraryItem[] = [];
   for (const item of data.Items) {
@@ -352,7 +352,7 @@ export async function fetchEmbyStats(
     if (!response.ok) {
       throw new Error(`Emby API error (${response.status})`);
     }
-    const data = await response.json() as EmbyItemsResponse;
+    const data = (await response.json()) as EmbyItemsResponse;
     return data.TotalRecordCount;
   };
 
@@ -388,7 +388,7 @@ export async function testEmbyConnection(
       };
     }
 
-    const data = await response.json() as { ServerName?: string };
+    const data = (await response.json()) as { ServerName?: string };
     return {
       success: true,
       serverName: data.ServerName,
@@ -451,7 +451,7 @@ export async function fetchEmbyShowsWithEpisodes(
       throw new Error(`Emby API error (${showResponse.status}): ${await showResponse.text()}`);
     }
 
-    const showData = await showResponse.json() as EmbyItemsResponse;
+    const showData = (await showResponse.json()) as EmbyItemsResponse;
     totalCount = showData.TotalRecordCount;
 
     for (const show of showData.Items) {
@@ -485,7 +485,7 @@ export async function fetchEmbyShowsWithEpisodes(
         const episodeResponse = await fetch(`${baseUrl}/Items?${episodeParams}`, { headers });
         if (!episodeResponse.ok) continue;
 
-        const episodeData = await episodeResponse.json() as EmbyItemsResponse;
+        const episodeData = (await episodeResponse.json()) as EmbyItemsResponse;
 
         for (const ep of episodeData.Items) {
           if (ep.Type !== "Episode") continue;
@@ -554,25 +554,20 @@ export async function fetchEmbyWatchedItems(
   });
 
   try {
-    const movieResponse = await fetch(
-      `${baseUrl}/Users/${userId}/Items?${movieParams}`,
-      {
-        headers: {
-          "X-Emby-Token": apiKey,
-          Accept: "application/json",
-        },
-      }
-    );
+    const movieResponse = await fetch(`${baseUrl}/Users/${userId}/Items?${movieParams}`, {
+      headers: {
+        "X-Emby-Token": apiKey,
+        Accept: "application/json",
+      },
+    });
 
     if (movieResponse.ok) {
       const movieData = (await movieResponse.json()) as EmbyItemsResponse;
 
       for (const item of movieData.Items) {
-        const tmdbId = item.ProviderIds?.Tmdb
-          ? parseInt(item.ProviderIds.Tmdb, 10)
-          : undefined;
+        const tmdbId = item.ProviderIds?.Tmdb ? parseInt(item.ProviderIds.Tmdb, 10) : undefined;
 
-        if (!tmdbId || isNaN(tmdbId)) continue;
+        if (!tmdbId || Number.isNaN(tmdbId)) continue;
 
         watchedItems.push({
           tmdbId,
@@ -599,15 +594,12 @@ export async function fetchEmbyWatchedItems(
   });
 
   try {
-    const tvResponse = await fetch(
-      `${baseUrl}/Users/${userId}/Items?${tvParams}`,
-      {
-        headers: {
-          "X-Emby-Token": apiKey,
-          Accept: "application/json",
-        },
-      }
-    );
+    const tvResponse = await fetch(`${baseUrl}/Users/${userId}/Items?${tvParams}`, {
+      headers: {
+        "X-Emby-Token": apiKey,
+        Accept: "application/json",
+      },
+    });
 
     if (tvResponse.ok) {
       const tvData = (await tvResponse.json()) as EmbyItemsResponse;
@@ -618,11 +610,9 @@ export async function fetchEmbyWatchedItems(
           continue;
         }
 
-        const tmdbId = item.ProviderIds?.Tmdb
-          ? parseInt(item.ProviderIds.Tmdb, 10)
-          : undefined;
+        const tmdbId = item.ProviderIds?.Tmdb ? parseInt(item.ProviderIds.Tmdb, 10) : undefined;
 
-        if (!tmdbId || isNaN(tmdbId)) continue;
+        if (!tmdbId || Number.isNaN(tmdbId)) continue;
 
         watchedItems.push({
           tmdbId,

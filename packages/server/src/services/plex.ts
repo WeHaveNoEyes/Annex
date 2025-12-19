@@ -169,11 +169,7 @@ function extractQuality(item: PlexMediaItem): string | undefined {
 /**
  * Build image URL for Plex
  */
-function buildImageUrl(
-  baseUrl: string,
-  token: string,
-  path?: string
-): string | undefined {
+function buildImageUrl(baseUrl: string, token: string, path?: string): string | undefined {
   if (!path) return undefined;
   return `${baseUrl}${path}?X-Plex-Token=${token}`;
 }
@@ -267,11 +263,7 @@ export async function testPlexConnection(
 ): Promise<{ success: boolean; serverName?: string; version?: string; error?: string }> {
   try {
     const baseUrl = serverUrl.replace(/\/$/, "");
-    const data = await plexFetch<PlexMediaContainer<never>>(
-      baseUrl,
-      token,
-      "/"
-    );
+    const data = await plexFetch<PlexMediaContainer<never>>(baseUrl, token, "/");
 
     // The root endpoint returns server info in MediaContainer attributes
     const container = data.MediaContainer as unknown as {
@@ -295,10 +287,7 @@ export async function testPlexConnection(
 /**
  * Get all libraries from a Plex server
  */
-export async function getPlexLibraries(
-  serverUrl: string,
-  token: string
-): Promise<PlexLibrary[]> {
+export async function getPlexLibraries(serverUrl: string, token: string): Promise<PlexLibrary[]> {
   const baseUrl = serverUrl.replace(/\/$/, "");
   const data = await plexFetch<PlexMediaContainer<PlexLibrary>>(
     baseUrl,
@@ -342,11 +331,7 @@ export async function getPlexLibraryContents(
   const queryString = params.toString();
   const endpoint = `/library/sections/${sectionId}/all${queryString ? `?${queryString}` : ""}`;
 
-  const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(
-    baseUrl,
-    token,
-    endpoint
-  );
+  const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(baseUrl, token, endpoint);
 
   const items = (data.MediaContainer.Metadata || [])
     .map((item) => normalizePlexItem(item, baseUrl, token))
@@ -406,18 +391,14 @@ export async function fetchPlexLibraryForSync(
       }
 
       const endpoint = `/library/sections/${library.key}/all?${params}`;
-      const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(
-        baseUrl,
-        token,
-        endpoint
-      );
+      const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(baseUrl, token, endpoint);
 
       totalCount = data.MediaContainer.totalSize ?? data.MediaContainer.size;
 
       for (const item of data.MediaContainer.Metadata || []) {
         const normalized = normalizePlexItem(item, baseUrl, token);
         // Only include items with TMDB ID for library tracking
-        if (normalized && normalized.tmdbId) {
+        if (normalized?.tmdbId) {
           allItems.push(normalized);
         }
       }
@@ -533,11 +514,7 @@ export async function fetchPlexMediaPaginated(
   }
 
   const endpoint = `/library/sections/${library.key}/all?${params}`;
-  const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(
-    baseUrl,
-    token,
-    endpoint
-  );
+  const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(baseUrl, token, endpoint);
 
   const items = (data.MediaContainer.Metadata || [])
     .map((item) => normalizePlexItem(item, baseUrl, token))
@@ -621,12 +598,9 @@ export async function triggerPlexPathScan(
 ): Promise<void> {
   const baseUrl = serverUrl.replace(/\/$/, "");
   const encodedPath = encodeURIComponent(path);
-  await plexFetch(
-    baseUrl,
-    token,
-    `/library/sections/${sectionId}/refresh?path=${encodedPath}`,
-    { method: "GET" }
-  );
+  await plexFetch(baseUrl, token, `/library/sections/${sectionId}/refresh?path=${encodedPath}`, {
+    method: "GET",
+  });
 }
 
 /**
@@ -718,11 +692,7 @@ export async function fetchPlexEpisodesForSync(
       });
 
       const endpoint = `/library/sections/${library.key}/all?${params}`;
-      const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(
-        baseUrl,
-        token,
-        endpoint
-      );
+      const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(baseUrl, token, endpoint);
 
       totalCount = data.MediaContainer.totalSize ?? data.MediaContainer.size;
 
@@ -794,7 +764,9 @@ export async function fetchPlexShowsWithEpisodes(
   const baseUrl = serverUrl.replace(/\/$/, "");
   const batchSize = options.batchSize ?? 50;
   const results: PlexShowWithEpisodes[] = [];
-  const sinceDateTimestamp = options.sinceDate ? Math.floor(options.sinceDate.getTime() / 1000) : undefined;
+  const sinceDateTimestamp = options.sinceDate
+    ? Math.floor(options.sinceDate.getTime() / 1000)
+    : undefined;
 
   // Get all TV libraries
   const libraries = await getPlexLibraries(serverUrl, token);
@@ -905,9 +877,7 @@ export async function fetchPlexWatchedItems(
   const libraries = await getPlexLibraries(serverUrl, token);
 
   // Filter to movie and show libraries
-  const targetLibraries = libraries.filter(
-    (lib) => lib.type === "movie" || lib.type === "show"
-  );
+  const targetLibraries = libraries.filter((lib) => lib.type === "movie" || lib.type === "show");
 
   for (const library of targetLibraries) {
     const isMovieLibrary = library.type === "movie";
@@ -934,11 +904,7 @@ export async function fetchPlexWatchedItems(
       const endpoint = `/library/sections/${library.key}/all?${params}`;
 
       try {
-        const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(
-          baseUrl,
-          token,
-          endpoint
-        );
+        const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(baseUrl, token, endpoint);
 
         totalCount = data.MediaContainer.totalSize ?? data.MediaContainer.size;
         const items = data.MediaContainer.Metadata || [];
@@ -946,9 +912,9 @@ export async function fetchPlexWatchedItems(
         for (const item of items) {
           // For movies: check viewCount (lastViewedAt might also be available)
           // For shows: check viewedLeafCount (number of watched episodes)
+          const itemWithViewCount = item as PlexMediaItem & { viewCount?: number };
           const isWatched = isMovieLibrary
-            ? (item as PlexMediaItem & { viewCount?: number }).viewCount !== undefined &&
-              (item as PlexMediaItem & { viewCount?: number }).viewCount! > 0
+            ? itemWithViewCount.viewCount !== undefined && itemWithViewCount.viewCount > 0
             : (item.viewedLeafCount ?? 0) > 0;
 
           if (!isWatched) continue;
@@ -959,8 +925,8 @@ export async function fetchPlexWatchedItems(
 
           // Get view count
           const viewCount = isMovieLibrary
-            ? (item as PlexMediaItem & { viewCount?: number }).viewCount ?? 1
-            : item.viewedLeafCount ?? 1;
+            ? ((item as PlexMediaItem & { viewCount?: number }).viewCount ?? 1)
+            : (item.viewedLeafCount ?? 1);
 
           // Get last viewed timestamp if available
           const lastViewedAtRaw = (item as PlexMediaItem & { lastViewedAt?: number }).lastViewedAt;

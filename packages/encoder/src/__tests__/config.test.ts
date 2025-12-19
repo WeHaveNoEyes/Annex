@@ -6,8 +6,7 @@
  * multiple reloads with different env vars in a single process.
  */
 
-
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 
 // Import the schema to test validation directly
@@ -142,7 +141,7 @@ describe("config schema validation", () => {
   describe("happy path - all log levels", () => {
     const logLevels = ["debug", "info", "warn", "error"] as const;
 
-    logLevels.forEach(level => {
+    logLevels.forEach((level) => {
       test(`accepts logLevel "${level}"`, () => {
         const result = configSchema.safeParse({
           encoderId: "test",

@@ -4,9 +4,9 @@
  * Generates and optionally installs launchd service.
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { CliArgs } from "../cli.js";
 
 interface SetupOptions {
@@ -29,8 +29,12 @@ function getSetupOptions(args: CliArgs): SetupOptions {
  */
 function generatePlistFile(systemLevel: boolean): string {
   const hostname = os.hostname();
-  const binPath = systemLevel ? "/usr/local/bin/annex-encoder" : `${os.homedir()}/bin/annex-encoder`;
-  const logPath = systemLevel ? "/var/log/annex-encoder" : `${os.homedir()}/Library/Logs/annex-encoder`;
+  const binPath = systemLevel
+    ? "/usr/local/bin/annex-encoder"
+    : `${os.homedir()}/bin/annex-encoder`;
+  const logPath = systemLevel
+    ? "/var/log/annex-encoder"
+    : `${os.homedir()}/Library/Logs/annex-encoder`;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -173,7 +177,7 @@ Next steps:
   2. Ensure encoder binary is installed
   3. Reload service: launchctl unload ${plistPath} && launchctl load ${plistPath}
   4. Check status: launchctl list | grep annex
-  5. View logs: tail -f ${options.systemLevel ? "/var/log/annex-encoder" : os.homedir() + "/Library/Logs/annex-encoder"}.log
+  5. View logs: tail -f ${options.systemLevel ? "/var/log/annex-encoder" : `${os.homedir()}/Library/Logs/annex-encoder`}.log
 `);
   } else {
     // Generate plist only

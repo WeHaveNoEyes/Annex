@@ -1,8 +1,14 @@
-import { BaseStep, type StepOutput } from "./BaseStep.js";
-import type { PipelineContext } from "../PipelineContext.js";
-import { StepType, RequestStatus, ActivityType, AssignmentStatus, Prisma } from "@prisma/client";
+import {
+  ActivityType,
+  AssignmentStatus,
+  type Prisma,
+  RequestStatus,
+  StepType,
+} from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { getEncoderDispatchService } from "../../encoderDispatch.js";
+import type { PipelineContext } from "../PipelineContext.js";
+import { BaseStep, type StepOutput } from "./BaseStep.js";
 
 interface EncodeStepConfig {
   // Video encoder (e.g., "av1_qsv", "libsvtav1", "hevc_nvenc", "libx265")
@@ -89,11 +95,17 @@ export class EncodeStep extends BaseStep {
       throw new Error("preset must be one of: fast, medium, slow");
     }
 
-    if (cfg.hwAccel && !["NONE", "QSV", "NVENC", "VAAPI", "AMF", "VIDEOTOOLBOX"].includes(cfg.hwAccel)) {
+    if (
+      cfg.hwAccel &&
+      !["NONE", "QSV", "NVENC", "VAAPI", "AMF", "VIDEOTOOLBOX"].includes(cfg.hwAccel)
+    ) {
       throw new Error("hwAccel must be one of: NONE, QSV, NVENC, VAAPI, AMF, VIDEOTOOLBOX");
     }
 
-    if (cfg.subtitlesMode && !["COPY", "COPY_TEXT", "EXTRACT", "NONE"].includes(cfg.subtitlesMode)) {
+    if (
+      cfg.subtitlesMode &&
+      !["COPY", "COPY_TEXT", "EXTRACT", "NONE"].includes(cfg.subtitlesMode)
+    ) {
       throw new Error("subtitlesMode must be one of: COPY, COPY_TEXT, EXTRACT, NONE");
     }
 
@@ -195,7 +207,9 @@ export class EncodeStep extends BaseStep {
       if (assignmentStatus.progress !== null) {
         const overallProgress = 50 + assignmentStatus.progress * 0.4; // 50-90%
         const speed = assignmentStatus.speed ? ` - ${assignmentStatus.speed}x` : "";
-        const eta = assignmentStatus.eta ? ` - ETA: ${this.formatDuration(assignmentStatus.eta)}` : "";
+        const eta = assignmentStatus.eta
+          ? ` - ETA: ${this.formatDuration(assignmentStatus.eta)}`
+          : "";
 
         await prisma.mediaRequest.update({
           where: { id: requestId },
@@ -205,7 +219,10 @@ export class EncodeStep extends BaseStep {
           },
         });
 
-        this.reportProgress(assignmentStatus.progress, `Encoding: ${assignmentStatus.progress.toFixed(1)}%${speed}${eta}`);
+        this.reportProgress(
+          assignmentStatus.progress,
+          `Encoding: ${assignmentStatus.progress.toFixed(1)}%${speed}${eta}`
+        );
       }
 
       // Check if complete
@@ -232,7 +249,9 @@ export class EncodeStep extends BaseStep {
             outputPath: assignmentStatus.outputPath,
             encodedAt: new Date().toISOString(),
             duration: (Date.now() - startTime) / 1000,
-            outputSize: assignmentStatus.outputSize ? Number(assignmentStatus.outputSize) : undefined,
+            outputSize: assignmentStatus.outputSize
+              ? Number(assignmentStatus.outputSize)
+              : undefined,
             compressionRatio: assignmentStatus.compressionRatio || undefined,
           },
         };
@@ -273,7 +292,12 @@ export class EncodeStep extends BaseStep {
     };
   }
 
-  private async logActivity(requestId: string, type: ActivityType, message: string, details?: object): Promise<void> {
+  private async logActivity(
+    requestId: string,
+    type: ActivityType,
+    message: string,
+    details?: object
+  ): Promise<void> {
     await prisma.activityLog.create({
       data: {
         requestId,

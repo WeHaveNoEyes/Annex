@@ -1,6 +1,6 @@
-import { Modal } from "./Modal";
-import { Button, Badge } from "./index";
 import { trpc } from "../../trpc";
+import { Badge, Button } from "./index";
+import { Modal } from "./Modal";
 
 interface AlternativesModalProps {
   isOpen: boolean;
@@ -28,14 +28,14 @@ function formatBytes(bytes: number): string {
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+  return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`;
 }
 
 function AlternativesModal({ isOpen, onClose, requestId }: AlternativesModalProps) {
   const utils = trpc.useUtils();
 
   const alternatives = trpc.requests.getAlternatives.useQuery(
-    { id: requestId! },
+    { id: requestId || "" },
     { enabled: isOpen && !!requestId }
   );
 
@@ -66,15 +66,11 @@ function AlternativesModal({ isOpen, onClose, requestId }: AlternativesModalProp
         {/* Content */}
         <div className="p-4 max-h-[60vh] overflow-y-auto">
           {alternatives.isLoading && (
-            <div className="py-8 text-center text-surface-400">
-              Loading alternatives...
-            </div>
+            <div className="py-8 text-center text-surface-400">Loading alternatives...</div>
           )}
 
           {alternatives.isError && (
-            <div className="py-8 text-center text-red-400">
-              Failed to load alternatives
-            </div>
+            <div className="py-8 text-center text-red-400">Failed to load alternatives</div>
           )}
 
           {data && (
@@ -95,7 +91,7 @@ function AlternativesModal({ isOpen, onClose, requestId }: AlternativesModalProp
                 <div className="space-y-2">
                   {(data.availableReleases as AvailableRelease[]).map((release, index) => (
                     <div
-                      key={index}
+                      key={release.downloadUrl || release.magnetUri || `${release.title}-${index}`}
                       className="bg-surface-700/50 border border-surface-600 rounded p-3"
                     >
                       <div className="flex items-start justify-between gap-4">
@@ -104,32 +100,16 @@ function AlternativesModal({ isOpen, onClose, requestId }: AlternativesModalProp
                             {release.title || "Unknown"}
                           </div>
                           <div className="flex flex-wrap gap-2 mt-2">
-                            <Badge variant="info">
-                              {release.resolution || "Unknown"}
-                            </Badge>
-                            {release.source && (
-                              <Badge variant="default">
-                                {release.source}
-                              </Badge>
-                            )}
-                            {release.codec && (
-                              <Badge variant="default">
-                                {release.codec}
-                              </Badge>
-                            )}
+                            <Badge variant="info">{release.resolution || "Unknown"}</Badge>
+                            {release.source && <Badge variant="default">{release.source}</Badge>}
+                            {release.codec && <Badge variant="default">{release.codec}</Badge>}
                           </div>
                           <div className="flex items-center gap-4 mt-2 text-xs text-surface-400">
-                            {release.size !== undefined && (
-                              <span>{formatBytes(release.size)}</span>
-                            )}
+                            {release.size !== undefined && <span>{formatBytes(release.size)}</span>}
                             {release.seeders !== undefined && (
-                              <span className="text-green-400">
-                                {release.seeders} seeders
-                              </span>
+                              <span className="text-green-400">{release.seeders} seeders</span>
                             )}
-                            {release.indexerName && (
-                              <span>{release.indexerName}</span>
-                            )}
+                            {release.indexerName && <span>{release.indexerName}</span>}
                           </div>
                         </div>
                         <Button

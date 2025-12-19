@@ -1,8 +1,8 @@
 // Email notification provider (SMTP)
 
+import { NotificationProvider } from "@prisma/client";
 import type { BaseNotificationProvider } from "../NotificationDispatcher.js";
 import type { NotificationPayload, NotificationResult } from "../types.js";
-import { NotificationProvider } from "@prisma/client";
 
 interface EmailConfig {
   smtpHost: string;
@@ -16,11 +16,21 @@ interface EmailConfig {
 }
 
 export class EmailProvider implements BaseNotificationProvider {
-  async send(payload: NotificationPayload, config: Record<string, unknown>): Promise<NotificationResult> {
+  async send(
+    _payload: NotificationPayload,
+    config: Record<string, unknown>
+  ): Promise<NotificationResult> {
     const cfg = config as unknown as EmailConfig;
 
     // Validate config
-    if (!cfg.smtpHost || !cfg.smtpPort || !cfg.smtpUser || !cfg.smtpPassword || !cfg.fromAddress || !cfg.toAddress) {
+    if (
+      !cfg.smtpHost ||
+      !cfg.smtpPort ||
+      !cfg.smtpUser ||
+      !cfg.smtpPassword ||
+      !cfg.fromAddress ||
+      !cfg.toAddress
+    ) {
       return {
         success: false,
         provider: NotificationProvider.EMAIL,
@@ -76,54 +86,5 @@ export class EmailProvider implements BaseNotificationProvider {
       };
     }
     */
-  }
-
-  private buildSubject(payload: NotificationPayload): string {
-    const { event, data } = payload;
-    const title = data.title ? `${data.title} (${data.year})` : "Notification";
-
-    switch (event) {
-      case "request.started":
-        return `Annex: New Request - ${title}`;
-      case "request.completed":
-        return `Annex: Request Completed - ${title}`;
-      case "request.failed":
-        return `Annex: Request Failed - ${title}`;
-      case "approval.required":
-        return `Annex: Approval Required - ${title}`;
-      default:
-        return `Annex: ${event}`;
-    }
-  }
-
-  private buildHtml(payload: NotificationPayload): string {
-    const { event, data } = payload;
-
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { font-family: system-ui, sans-serif; line-height: 1.6; color: #333; }
-          .header { background: #ef4444; color: white; padding: 20px; }
-          .content { padding: 20px; }
-          .footer { padding: 20px; background: #f5f5f5; color: #666; font-size: 0.9em; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>Annex Notification</h1>
-        </div>
-        <div class="content">
-          <h2>${event}</h2>
-          <p><strong>${data.title || "Unknown"} (${data.year || ""})</strong></p>
-          ${data.message ? `<p>${data.message}</p>` : ""}
-        </div>
-        <div class="footer">
-          <p>Annex Media Server - ${new Date(payload.timestamp).toLocaleString()}</p>
-        </div>
-      </body>
-      </html>
-    `;
   }
 }

@@ -11,10 +11,10 @@
  * - Migration support from environment variables
  */
 
-import { EventEmitter } from "events";
-import type { CryptoService } from "./crypto.js";
+import { EventEmitter } from "node:events";
 import { getConfig } from "../config/index.js";
 import { prisma } from "../db/client.js";
+import type { CryptoService } from "./crypto.js";
 import { getCryptoService } from "./crypto.js";
 
 const DEFAULT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -26,8 +26,13 @@ interface CacheEntry {
 
 // Minimal interface for the Prisma operations we need
 interface SettingModel {
-  findUnique(args: { where: { key: string } }): Promise<{ key: string; value: string; updatedAt: Date } | null>;
-  findMany(args?: { select?: { key: boolean }; where?: { key?: { startsWith: string } } }): Promise<Array<{ key: string; value?: string }>>;
+  findUnique(args: {
+    where: { key: string };
+  }): Promise<{ key: string; value: string; updatedAt: Date } | null>;
+  findMany(args?: {
+    select?: { key: boolean };
+    where?: { key?: { startsWith: string } };
+  }): Promise<Array<{ key: string; value?: string }>>;
   upsert(args: {
     where: { key: string };
     create: { key: string; value: string };
@@ -209,9 +214,7 @@ export class SecretsService extends EventEmitter {
    * Set multiple secrets at once.
    */
   async setSecrets(secrets: Record<string, string>): Promise<void> {
-    await Promise.all(
-      Object.entries(secrets).map(([key, value]) => this.setSecret(key, value))
-    );
+    await Promise.all(Object.entries(secrets).map(([key, value]) => this.setSecret(key, value)));
   }
 
   /**
@@ -314,6 +317,7 @@ export async function migrateEnvSecretsIfNeeded(): Promise<{
   // First, get from env vars
   for (const [envKey, secretKey] of Object.entries(ENV_TO_SECRET_MAP)) {
     if (process.env[envKey]) {
+      // biome-ignore lint/style/noNonNullAssertion: envKey is checked in if condition above
       envValues[secretKey] = process.env[envKey]!;
     }
   }

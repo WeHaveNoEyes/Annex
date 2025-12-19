@@ -2,8 +2,7 @@
  * Tests for setup command
  */
 
-
-import { describe, test, expect, mock } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import type { CliArgs } from "../cli.js";
 
 describe("commands/setup", () => {
@@ -59,7 +58,8 @@ describe("commands/setup", () => {
       await setup(args);
 
       expect(runSetupMock).toHaveBeenCalledWith(args);
-      const firstCall = runSetupMock.mock.calls[0]! as unknown as [CliArgs];
+      const firstCall = runSetupMock.mock.calls[0] as unknown as [CliArgs];
+      expect(firstCall).toBeDefined();
       expect(firstCall[0].flags.install).toBe(true);
       expect(firstCall[0].flags.user).toBe("annex");
       expect(firstCall[0].flags.workDir).toBe("/opt/encoder");
@@ -85,7 +85,8 @@ describe("commands/setup", () => {
       await setup(args);
 
       expect(runSetupMock).toHaveBeenCalledWith(args);
-      const firstCall = runSetupMock.mock.calls[0]! as unknown as [CliArgs];
+      const firstCall = runSetupMock.mock.calls[0] as unknown as [CliArgs];
+      expect(firstCall).toBeDefined();
       expect(firstCall[0].flags.install).toBeUndefined();
     });
   });

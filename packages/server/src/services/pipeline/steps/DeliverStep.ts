@@ -1,9 +1,9 @@
-import { BaseStep, type StepOutput } from "./BaseStep.js";
-import type { PipelineContext } from "../PipelineContext.js";
-import { StepType, RequestStatus, ActivityType, MediaType } from "@prisma/client";
+import { ActivityType, MediaType, RequestStatus, StepType } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { getDeliveryService } from "../../delivery.js";
 import { getNamingService } from "../../naming.js";
+import type { PipelineContext } from "../PipelineContext.js";
+import { BaseStep, type StepOutput } from "./BaseStep.js";
 
 interface DeliverStepConfig {
   requireAllServersSuccess?: boolean;
@@ -70,7 +70,12 @@ export class DeliverStep extends BaseStep {
 
     // Process each encoded file
     for (const encodedFile of encodedFiles) {
-      const { path: encodedFilePath, resolution, codec, targetServerIds } = encodedFile as {
+      const {
+        path: encodedFilePath,
+        resolution,
+        codec,
+        targetServerIds,
+      } = encodedFile as {
         path: string;
         profileId: string;
         resolution: string;
@@ -110,7 +115,11 @@ export class DeliverStep extends BaseStep {
           });
         }
 
-        await this.logActivity(requestId, ActivityType.INFO, `Delivering to ${server.name}: ${remotePath}`);
+        await this.logActivity(
+          requestId,
+          ActivityType.INFO,
+          `Delivering to ${server.name}: ${remotePath}`
+        );
 
         await prisma.mediaRequest.update({
           where: { id: requestId },
@@ -122,8 +131,9 @@ export class DeliverStep extends BaseStep {
 
         const result = await delivery.deliver(server.id, encodedFilePath, remotePath, {
           onProgress: async (progress) => {
-            const stageProgress = 75 + ((serverIndex + progress.progress / 100) / servers.length) * 20;
-            const speed = this.formatBytes(progress.speed) + "/s";
+            const stageProgress =
+              75 + ((serverIndex + progress.progress / 100) / servers.length) * 20;
+            const speed = `${this.formatBytes(progress.speed)}/s`;
             const eta = progress.eta > 0 ? `ETA: ${this.formatDuration(progress.eta)}` : "";
 
             await prisma.mediaRequest.update({
@@ -173,7 +183,11 @@ export class DeliverStep extends BaseStep {
           });
         } else {
           failedServers.push(server.id);
-          await this.logActivity(requestId, ActivityType.ERROR, `Failed to deliver to ${server.name}: ${result.error}`);
+          await this.logActivity(
+            requestId,
+            ActivityType.ERROR,
+            `Failed to deliver to ${server.name}: ${result.error}`
+          );
         }
 
         serverIndex++;
@@ -239,7 +253,12 @@ export class DeliverStep extends BaseStep {
     }
   }
 
-  private async logActivity(requestId: string, type: ActivityType, message: string, details?: object): Promise<void> {
+  private async logActivity(
+    requestId: string,
+    type: ActivityType,
+    message: string,
+    details?: object
+  ): Promise<void> {
     await prisma.activityLog.create({
       data: {
         requestId,
@@ -255,7 +274,7 @@ export class DeliverStep extends BaseStep {
     const k = 1024;
     const sizes = ["B", "KB", "MB", "GB", "TB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+    return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`;
   }
 
   private formatDuration(seconds: number): string {

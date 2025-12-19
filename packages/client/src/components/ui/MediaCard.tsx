@@ -1,8 +1,8 @@
-import { HTMLAttributes, forwardRef, useState } from "react";
+import { forwardRef, type HTMLAttributes, useState } from "react";
 import { Link } from "react-router-dom";
 import { TrailerModal } from "./Modal";
-import { Tooltip } from "./Tooltip";
 import { RequestDialog } from "./RequestDialog";
+import { Tooltip } from "./Tooltip";
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
@@ -202,12 +202,7 @@ const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-white/20">
-                <svg
-                  className="w-12 h-12"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
+                <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -223,11 +218,10 @@ const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
               <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
                 {inLibrary.servers.map((server) => {
                   // For TV shows with episode info, determine if partial or complete
-                  const hasEpisodeInfo = server.episodeCount !== undefined && server.episodeCount > 0;
+                  const hasEpisodeInfo =
+                    server.episodeCount !== undefined && server.episodeCount > 0;
                   const isPartial = hasEpisodeInfo && server.isComplete === false;
-                  const badgeColor = isPartial
-                    ? "bg-yellow-500/90"
-                    : "bg-green-500/90";
+                  const badgeColor = isPartial ? "bg-yellow-500/90" : "bg-green-500/90";
 
                   // Build display text
                   let displayText = server.name;
@@ -246,16 +240,18 @@ const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
                       key={server.id}
                       className={`${badgeColor} text-white text-xs px-1.5 py-0.5 rounded flex items-center gap-1 shadow-lg`}
                     >
-                      <svg className="w-3 h-3 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <svg
+                        className="w-3 h-3 flex-shrink-0"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
                         <path
                           fillRule="evenodd"
                           d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
                           clipRule="evenodd"
                         />
                       </svg>
-                      <span className="font-medium truncate max-w-[100px]">
-                        {displayText}
-                      </span>
+                      <span className="font-medium truncate max-w-[100px]">{displayText}</span>
                     </div>
                   );
                 })}
@@ -266,16 +262,18 @@ const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
             {!isInLibrary && requestStatus && (
               <div className="absolute top-2 left-2 z-10">
                 <div className="bg-annex-500/90 text-white text-xs px-1.5 py-0.5 rounded flex items-center gap-1 shadow-lg">
-                  <svg className="w-3 h-3 flex-shrink-0 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
+                  <svg
+                    className="w-3 h-3 flex-shrink-0 animate-pulse"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
                     <path
                       fillRule="evenodd"
                       d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
                       clipRule="evenodd"
                     />
                   </svg>
-                  <span className="font-medium">
-                    {formatRequestStatus(requestStatus)}
-                  </span>
+                  <span className="font-medium">{formatRequestStatus(requestStatus)}</span>
                 </div>
               </div>
             )}
@@ -347,12 +345,7 @@ const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
                     className="w-10 h-10 flex items-center justify-center bg-annex-500/30 hover:bg-annex-500/50 border border-annex-500/50 text-annex-400 hover:text-white rounded-full transition-colors"
                     aria-label="Request"
                   >
-                    <svg
-                      className="w-5 h-5"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -395,9 +388,7 @@ const MediaCard = forwardRef<HTMLDivElement, MediaCardProps>(
             <h3 className="text-sm font-medium text-white/90 truncate group-hover:text-white">
               {title}
             </h3>
-            <p className="text-xs text-white/50">
-              {year > 0 ? year : "TBA"}
-            </p>
+            <p className="text-xs text-white/50">{year > 0 ? year : "TBA"}</p>
           </Link>
         </div>
 

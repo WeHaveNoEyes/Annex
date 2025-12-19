@@ -1,4 +1,4 @@
-import { HTMLAttributes, forwardRef } from "react";
+import { forwardRef, type HTMLAttributes } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "./Badge";
 
@@ -59,12 +59,7 @@ const LibraryCard = forwardRef<HTMLDivElement, LibraryCardProps>(
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-white/20">
-              <svg
-                className="w-12 h-12"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+              <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -125,11 +120,7 @@ const LibraryCard = forwardRef<HTMLDivElement, LibraryCardProps>(
             )}
 
             {/* Overview */}
-            {overview && (
-              <p className="text-xs text-white/60 line-clamp-4 flex-1">
-                {overview}
-              </p>
-            )}
+            {overview && <p className="text-xs text-white/60 line-clamp-4 flex-1">{overview}</p>}
 
             {/* Spacer */}
             <div className="flex-1" />
@@ -139,11 +130,7 @@ const LibraryCard = forwardRef<HTMLDivElement, LibraryCardProps>(
               <span className="text-xs text-white/50 uppercase">
                 {type === "movie" ? "Movie" : "TV Show"}
               </span>
-              {tmdbId && (
-                <span className="text-xs text-white/30">
-                  TMDB: {tmdbId}
-                </span>
-              )}
+              {tmdbId && <span className="text-xs text-white/30">TMDB: {tmdbId}</span>}
             </div>
           </div>
         </div>
@@ -153,9 +140,7 @@ const LibraryCard = forwardRef<HTMLDivElement, LibraryCardProps>(
           <h3 className="text-sm font-medium text-white/90 truncate group-hover:text-white">
             {title}
           </h3>
-          <p className="text-xs text-white/50">
-            {year && year > 0 ? year : "Unknown year"}
-          </p>
+          <p className="text-xs text-white/50">{year && year > 0 ? year : "Unknown year"}</p>
         </div>
       </div>
     );

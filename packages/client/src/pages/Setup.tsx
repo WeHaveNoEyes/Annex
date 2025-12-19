@@ -7,8 +7,8 @@
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button, Card, Input, Label } from "../components/ui";
 import { trpc } from "../trpc";
-import { Button, Input, Card, Label } from "../components/ui";
 
 type SetupStep = "welcome" | "tmdb" | "downloads" | "optional" | "complete";
 
@@ -16,7 +16,9 @@ export default function SetupPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState<SetupStep>("welcome");
   const [secrets, setSecrets] = useState<Record<string, string>>({});
-  const [testResults, setTestResults] = useState<Record<string, { success: boolean; message?: string }>>({});
+  const [testResults, setTestResults] = useState<
+    Record<string, { success: boolean; message?: string }>
+  >({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const completeSetupMutation = trpc.secrets.completeSetup.useMutation();
@@ -52,7 +54,7 @@ export default function SetupPage() {
         alert(result.error || "Setup failed");
       }
     } catch (error) {
-      alert("Setup failed: " + (error instanceof Error ? error.message : "Unknown error"));
+      alert(`Setup failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -96,8 +98,8 @@ export default function SetupPage() {
             <div className="space-y-2">
               <h2 className="text-2xl font-semibold">Welcome to Annex</h2>
               <p className="text-surface-400">
-                Let's get your media server set up. This wizard will help you configure
-                the essential services needed to discover, acquire, and deliver media.
+                Let's get your media server set up. This wizard will help you configure the
+                essential services needed to discover, acquire, and deliver media.
               </p>
             </div>
 
@@ -146,7 +148,11 @@ export default function SetupPage() {
                   {testConnectionMutation.isLoading ? "Testing..." : "Test Connection"}
                 </Button>
                 {testResults.tmdb && (
-                  <span className={testResults.tmdb.success ? "text-green-400 text-sm" : "text-red-400 text-sm"}>
+                  <span
+                    className={
+                      testResults.tmdb.success ? "text-green-400 text-sm" : "text-red-400 text-sm"
+                    }
+                  >
                     {testResults.tmdb.message}
                   </span>
                 )}
@@ -232,7 +238,13 @@ export default function SetupPage() {
                     {testConnectionMutation.isLoading ? "Testing..." : "Test Connection"}
                   </Button>
                   {testResults.qbittorrent && (
-                    <span className={testResults.qbittorrent.success ? "text-green-400 text-sm" : "text-red-400 text-sm"}>
+                    <span
+                      className={
+                        testResults.qbittorrent.success
+                          ? "text-green-400 text-sm"
+                          : "text-red-400 text-sm"
+                      }
+                    >
                       {testResults.qbittorrent.message}
                     </span>
                   )}
@@ -259,7 +271,8 @@ export default function SetupPage() {
             <div className="space-y-2">
               <h2 className="text-xl font-semibold">Optional Services</h2>
               <p className="text-surface-400 text-sm">
-                These services enhance Annex but aren't required. You can configure them later in Settings.
+                These services enhance Annex but aren't required. You can configure them later in
+                Settings.
               </p>
             </div>
 
@@ -289,9 +302,7 @@ export default function SetupPage() {
 
               {/* Trakt */}
               <div className="space-y-2">
-                <Label hint="For trending/popular lists from Trakt">
-                  Trakt Client ID
-                </Label>
+                <Label hint="For trending/popular lists from Trakt">Trakt Client ID</Label>
                 <Input
                   type="password"
                   value={secrets["trakt.clientId"] || ""}
@@ -328,8 +339,8 @@ export default function SetupPage() {
             <div className="space-y-2">
               <h2 className="text-2xl font-semibold">Setup Complete!</h2>
               <p className="text-surface-400">
-                Annex is now configured and ready to use. You can modify these settings
-                anytime from the Settings page.
+                Annex is now configured and ready to use. You can modify these settings anytime from
+                the Settings page.
               </p>
             </div>
 

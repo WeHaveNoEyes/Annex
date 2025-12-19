@@ -9,21 +9,11 @@
 // Encoder State
 // =============================================================================
 
-export type EncoderState =
-  | "CONNECTING"
-  | "REGISTERING"
-  | "IDLE"
-  | "ENCODING"
-  | "OFFLINE";
+export type EncoderState = "CONNECTING" | "REGISTERING" | "IDLE" | "ENCODING" | "OFFLINE";
 
 export type EncoderStatus = "OFFLINE" | "IDLE" | "ENCODING" | "ERROR";
 
-export type AssignmentStatus =
-  | "PENDING"
-  | "ENCODING"
-  | "COMPLETED"
-  | "FAILED"
-  | "CANCELLED";
+export type AssignmentStatus = "PENDING" | "ENCODING" | "COMPLETED" | "FAILED" | "CANCELLED";
 
 // =============================================================================
 // Encoder Capabilities

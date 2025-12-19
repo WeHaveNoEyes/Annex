@@ -1,8 +1,8 @@
-import { BaseStep, type StepOutput } from "./BaseStep.js";
-import type { PipelineContext } from "../PipelineContext.js";
-import { StepType, ActivityType } from "@prisma/client";
+import { ActivityType, StepType } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { getNotificationDispatcher } from "../../notifications/NotificationDispatcher.js";
+import type { PipelineContext } from "../PipelineContext.js";
+import { BaseStep, type StepOutput } from "./BaseStep.js";
 
 interface NotificationStepConfig {
   event: string; // Event name (e.g., "request.started", "step.completed")
@@ -75,12 +75,17 @@ export class NotificationStep extends BaseStep {
       });
 
       const successfulProviders = results.filter((r) => r.success).map((r) => r.provider);
-      const failedProviders = results.filter((r) => !r.success).map((r) => ({
-        provider: r.provider,
-        error: r.error || "Unknown error",
-      }));
+      const failedProviders = results
+        .filter((r) => !r.success)
+        .map((r) => ({
+          provider: r.provider,
+          error: r.error || "Unknown error",
+        }));
 
-      this.reportProgress(100, `Notifications sent: ${successfulProviders.length} succeeded, ${failedProviders.length} failed`);
+      this.reportProgress(
+        100,
+        `Notifications sent: ${successfulProviders.length} succeeded, ${failedProviders.length} failed`
+      );
 
       // Log notification results
       if (successfulProviders.length > 0) {
@@ -111,9 +116,10 @@ export class NotificationStep extends BaseStep {
           providers: successfulProviders,
           errors: failedProviders.length > 0 ? failedProviders : undefined,
         },
-        error: !success && failedProviders.length > 0
-          ? `All notifications failed: ${failedProviders.map((f) => f.error).join(", ")}`
-          : undefined,
+        error:
+          !success && failedProviders.length > 0
+            ? `All notifications failed: ${failedProviders.map((f) => f.error).join(", ")}`
+            : undefined,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -146,7 +152,12 @@ export class NotificationStep extends BaseStep {
     }
   }
 
-  private async logActivity(requestId: string, type: ActivityType, message: string, details?: object): Promise<void> {
+  private async logActivity(
+    requestId: string,
+    type: ActivityType,
+    message: string,
+    details?: object
+  ): Promise<void> {
     await prisma.activityLog.create({
       data: {
         requestId,

@@ -8,33 +8,28 @@
  * - Cleanup and lifecycle management
  */
 
+import { type Download, DownloadStatus, MediaType, TvEpisodeStatus } from "@prisma/client";
 import ptt from "parse-torrent-title";
 import { prisma } from "../db/client.js";
-import { getDownloadService, type DownloadProgress } from "./download.js";
-import {
-  MediaType,
-  DownloadStatus,
-  TvEpisodeStatus,
-  type Download,
-} from "@prisma/client";
 import type {
-  ParsedTorrent,
-  DownloadConfig,
-  TorrentMatch,
-  MatchResult,
-  IndexerRelease,
-  ScoredRelease,
-  QualityProfileConfig,
   CreateDownloadParams,
+  DownloadConfig,
   DownloadHealth,
-  SystemHealth,
+  IndexerRelease,
+  MatchResult,
+  ParsedTorrent,
+  QualityProfileConfig,
   Resolution,
+  ScoredRelease,
+  SystemHealth,
+  TorrentMatch,
 } from "../types/download.js";
 import {
   DEFAULT_DOWNLOAD_CONFIG,
   DEFAULT_QUALITY_PROFILES,
   RESOLUTION_RANK,
 } from "../types/download.js";
+import { type DownloadProgress, getDownloadService } from "./download.js";
 
 // =============================================================================
 // Configuration
@@ -326,10 +321,20 @@ export function scoreRelease(
   // Size check
   const sizeGB = release.size / 1e9;
   if (profile.minSizeGB && sizeGB < profile.minSizeGB) {
-    return { release, score: -1, parsed, rejectionReason: `Too small: ${sizeGB.toFixed(1)}GB < ${profile.minSizeGB}GB` };
+    return {
+      release,
+      score: -1,
+      parsed,
+      rejectionReason: `Too small: ${sizeGB.toFixed(1)}GB < ${profile.minSizeGB}GB`,
+    };
   }
   if (profile.maxSizeGB && sizeGB > profile.maxSizeGB) {
-    return { release, score: -1, parsed, rejectionReason: `Too large: ${sizeGB.toFixed(1)}GB > ${profile.maxSizeGB}GB` };
+    return {
+      release,
+      score: -1,
+      parsed,
+      rejectionReason: `Too large: ${sizeGB.toFixed(1)}GB > ${profile.maxSizeGB}GB`,
+    };
   }
 
   // Resolution check
@@ -338,7 +343,12 @@ export function scoreRelease(
   const minRank = RESOLUTION_RANK[profile.minResolution] || 0;
 
   if (resRank < minRank) {
-    return { release, score: -1, parsed, rejectionReason: `Resolution too low: ${resolution} < ${profile.minResolution}` };
+    return {
+      release,
+      score: -1,
+      parsed,
+      rejectionReason: `Resolution too low: ${resolution} < ${profile.minResolution}`,
+    };
   }
 
   // Resolution score (0-400)
@@ -428,7 +438,8 @@ export function getQualityProfile(id: string): QualityProfileConfig | undefined 
  * Create a new Download record and add torrent to qBittorrent
  */
 export async function createDownload(params: CreateDownloadParams): Promise<Download | null> {
-  const { requestId, mediaType, release, alternativeReleases, isSeasonPack, season, episodeIds } = params;
+  const { requestId, mediaType, release, alternativeReleases, isSeasonPack, season, episodeIds } =
+    params;
   const qb = getDownloadService();
 
   // Check if already at max concurrent downloads
@@ -437,7 +448,9 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
   });
 
   if (activeCount >= config.maxConcurrentDownloads) {
-    console.log(`[DownloadManager] Max concurrent downloads reached (${config.maxConcurrentDownloads}), queueing...`);
+    console.log(
+      `[DownloadManager] Max concurrent downloads reached (${config.maxConcurrentDownloads}), queueing...`
+    );
     // Create as PENDING, will be started later
   }
 
@@ -454,7 +467,7 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
   // when the hash isn't returned directly (e.g., when adding by URL)
   const uniqueTag = `annex:${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const requestTag = `request:${requestId}`;
-  let addResult;
+  let addResult: { success: boolean; hash?: string; error?: string };
 
   if (magnetUri) {
     addResult = await qb.addMagnet(magnetUri, {
@@ -464,10 +477,13 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
   } else if (downloadUrl) {
     // Fetch torrent file ourselves to avoid issues with authenticated URLs
     // (e.g., UNIT3D trackers where qBittorrent can't access the authenticated endpoint)
-    const redactedUrl = downloadUrl.replace(/(?:api_token|apikey|passkey|torrent_pass|key)=[^&]+/gi, (match) => {
-      const param = match.split("=")[0];
-      return `${param}=***`;
-    });
+    const redactedUrl = downloadUrl.replace(
+      /(?:api_token|apikey|passkey|torrent_pass|key)=[^&]+/gi,
+      (match) => {
+        const param = match.split("=")[0];
+        return `${param}=***`;
+      }
+    );
     console.log(`[DownloadManager] Fetching torrent file from: ${redactedUrl}`);
     const fetchResult = await qb.fetchTorrentFile(downloadUrl);
 
@@ -480,14 +496,18 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
       });
     } else {
       // Fallback: try adding URL directly (may work for some trackers)
-      console.warn(`[DownloadManager] Failed to fetch torrent file: ${fetchResult.error}, trying URL directly`);
+      console.warn(
+        `[DownloadManager] Failed to fetch torrent file: ${fetchResult.error}, trying URL directly`
+      );
       addResult = await qb.addTorrentUrl(downloadUrl, {
         category: "annex",
         tags: [requestTag, uniqueTag],
       });
     }
   } else {
-    console.error(`[DownloadManager] No magnet URI or download URL available for release: ${release.title}`);
+    console.error(
+      `[DownloadManager] No magnet URI or download URL available for release: ${release.title}`
+    );
     return null;
   }
 
@@ -512,10 +532,14 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
       const normalizedRelease = normalizeTitle(release.title);
       const existing = allTorrents.find((t) => normalizeTitle(t.name) === normalizedRelease);
       if (existing) {
-        console.log(`[DownloadManager] Found existing torrent with matching name: ${existing.hash}`);
+        console.log(
+          `[DownloadManager] Found existing torrent with matching name: ${existing.hash}`
+        );
         torrentHash = existing.hash;
       } else {
-        console.error(`[DownloadManager] Failed to find torrent after adding. Tag: ${uniqueTag}, Release: ${release.title}`);
+        console.error(
+          `[DownloadManager] Failed to find torrent after adding. Tag: ${uniqueTag}, Release: ${release.title}`
+        );
         console.error(`[DownloadManager] Total torrents in qBittorrent: ${allTorrents.length}`);
         return null;
       }
@@ -605,7 +629,9 @@ export async function createDownloadFromExisting(
       });
     }
 
-    console.log(`[DownloadManager] Reusing existing download ${existing.id} for ${match.torrent.name}`);
+    console.log(
+      `[DownloadManager] Reusing existing download ${existing.id} for ${match.torrent.name}`
+    );
     return existing;
   }
 
@@ -651,7 +677,9 @@ export async function createDownloadFromExisting(
     wasComplete: isComplete,
   });
 
-  console.log(`[DownloadManager] Created download ${download.id} from existing torrent ${match.torrent.name}`);
+  console.log(
+    `[DownloadManager] Created download ${download.id} from existing torrent ${match.torrent.name}`
+  );
   return download;
 }
 
@@ -857,7 +885,7 @@ export async function retryWithAlternative(downloadId: string): Promise<Download
   }
 
   const tag = `request:${download.requestId}`;
-  let addResult;
+  let addResult: { success: boolean; hash?: string; error?: string };
 
   if (magnetUri) {
     addResult = await qb.addMagnet(magnetUri, {
@@ -865,6 +893,7 @@ export async function retryWithAlternative(downloadId: string): Promise<Download
       tags: [tag],
     });
   } else {
+    // biome-ignore lint/style/noNonNullAssertion: downloadUrl is guaranteed to exist (checked above)
     addResult = await qb.addTorrentUrl(downloadUrl!, {
       category: "annex",
       tags: [tag],
@@ -935,9 +964,7 @@ export async function handleStalledDownload(downloadId: string, reason: string):
   // Check if we can retry
   const alternatives = download.alternativeReleases as IndexerRelease[] | null;
   const canRetry =
-    alternatives &&
-    alternatives.length > 0 &&
-    download.attemptCount < config.maxAttempts;
+    alternatives && alternatives.length > 0 && download.attemptCount < config.maxAttempts;
 
   if (canRetry) {
     await prisma.download.update({
@@ -1004,7 +1031,9 @@ export async function cleanupDownload(downloadId: string): Promise<void> {
   const seedRatioMet = torrent.ratio >= config.minSeedRatio;
 
   if (!seedTimeMet && !seedRatioMet) {
-    console.log(`[DownloadManager] Download ${downloadId} still seeding (ratio: ${torrent.ratio.toFixed(2)})`);
+    console.log(
+      `[DownloadManager] Download ${downloadId} still seeding (ratio: ${torrent.ratio.toFixed(2)})`
+    );
     return;
   }
 
@@ -1018,7 +1047,9 @@ export async function cleanupDownload(downloadId: string): Promise<void> {
     });
 
     if (unprocessedEpisodes > 0) {
-      console.log(`[DownloadManager] Download ${downloadId} has ${unprocessedEpisodes} unprocessed episodes`);
+      console.log(
+        `[DownloadManager] Download ${downloadId} has ${unprocessedEpisodes} unprocessed episodes`
+      );
       return;
     }
   }
@@ -1144,7 +1175,9 @@ export async function reconcileOnStartup(): Promise<{
     }
   }
 
-  console.log(`[DownloadManager] Reconciliation complete: ${recovered} recovered, ${orphaned} orphaned, ${completed} completed`);
+  console.log(
+    `[DownloadManager] Reconciliation complete: ${recovered} recovered, ${orphaned} orphaned, ${completed} completed`
+  );
   return { recovered, orphaned, completed };
 }
 

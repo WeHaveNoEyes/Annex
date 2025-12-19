@@ -4,8 +4,8 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- Test mocks require any for Bun.spawn and fs.Stats stubs */
 
-import { describe, test, expect, beforeEach, afterEach, spyOn, mock } from "bun:test";
-import * as fs from "fs";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
 
 describe("encoder - core functionality", () => {
   let originalSpawn: typeof Bun.spawn;
@@ -88,7 +88,7 @@ describe("encoder - core functionality", () => {
                     probeCall = false;
                     return {
                       done: false,
-                      value: new TextEncoder().encode(progressLines.join("\n") + "\n"),
+                      value: new TextEncoder().encode(`${progressLines.join("\n")}\n`),
                     };
                   }
                   return { done: true, value: undefined };
@@ -111,9 +111,9 @@ describe("encoder - core functionality", () => {
         inputPath: "/test/input.mp4",
         outputPath: "/test/output.mkv",
         encodingConfig: {
-        hwDevice: "/dev/dri/renderD128",
-        subtitlesMode: "embed",
-        container: "mkv",
+          hwDevice: "/dev/dri/renderD128",
+          subtitlesMode: "embed",
+          container: "mkv",
           hwAccel: "vaapi",
           videoEncoder: "av1_vaapi",
           crf: 30,
@@ -212,9 +212,9 @@ describe("encoder - core functionality", () => {
         inputPath: "/test/input.mp4",
         outputPath: "/test/output.mkv",
         encodingConfig: {
-        hwDevice: "/dev/dri/renderD128",
-        subtitlesMode: "embed",
-        container: "mkv",
+          hwDevice: "/dev/dri/renderD128",
+          subtitlesMode: "embed",
+          container: "mkv",
           hwAccel: "none",
           videoEncoder: "libsvtav1",
           crf: 35,
@@ -320,9 +320,9 @@ describe("encoder - core functionality", () => {
         inputPath: "/test/input.mkv",
         outputPath: "/test/output.mkv",
         encodingConfig: {
-        hwDevice: "/dev/dri/renderD128",
-        subtitlesMode: "embed",
-        container: "mkv",
+          hwDevice: "/dev/dri/renderD128",
+          subtitlesMode: "embed",
+          container: "mkv",
           hwAccel: "vaapi",
           videoEncoder: "av1_vaapi",
           crf: 30,
@@ -415,9 +415,9 @@ describe("encoder - core functionality", () => {
         inputPath: "/test/4k-input.mp4",
         outputPath: "/test/1080p-output.mkv",
         encodingConfig: {
-        hwDevice: "/dev/dri/renderD128",
-        subtitlesMode: "embed",
-        container: "mkv",
+          hwDevice: "/dev/dri/renderD128",
+          subtitlesMode: "embed",
+          container: "mkv",
           hwAccel: "vaapi",
           videoEncoder: "av1_vaapi",
           crf: 30,
@@ -459,9 +459,9 @@ describe("encoder - core functionality", () => {
           inputPath: "/nonexistent/input.mp4",
           outputPath: "/test/output.mkv",
           encodingConfig: {
-        hwDevice: "/dev/dri/renderD128",
-        subtitlesMode: "embed",
-        container: "mkv",
+            hwDevice: "/dev/dri/renderD128",
+            subtitlesMode: "embed",
+            container: "mkv",
             hwAccel: "vaapi",
             videoEncoder: "av1_vaapi",
             crf: 30,
@@ -470,7 +470,7 @@ describe("encoder - core functionality", () => {
             audioEncoder: "opus",
             audioFlags: {},
             videoFlags: {},
-          preset: "medium",
+            preset: "medium",
           },
           onProgress: mock(() => {}),
         })
@@ -550,9 +550,9 @@ describe("encoder - core functionality", () => {
           inputPath: "/test/input.mp4",
           outputPath: "/test/output.mkv",
           encodingConfig: {
-        hwDevice: "/dev/dri/renderD128",
-        subtitlesMode: "embed",
-        container: "mkv",
+            hwDevice: "/dev/dri/renderD128",
+            subtitlesMode: "embed",
+            container: "mkv",
             hwAccel: "vaapi",
             videoEncoder: "av1_vaapi",
             crf: 30,
@@ -561,7 +561,7 @@ describe("encoder - core functionality", () => {
             audioEncoder: "opus",
             audioFlags: {},
             videoFlags: {},
-          preset: "medium",
+            preset: "medium",
           },
           onProgress: mock(() => {}),
         })
@@ -646,9 +646,9 @@ describe("encoder - core functionality", () => {
         inputPath: "/test/input.mp4",
         outputPath: "/test/output.mkv",
         encodingConfig: {
-        hwDevice: "/dev/dri/renderD128",
-        subtitlesMode: "embed",
-        container: "mkv",
+          hwDevice: "/dev/dri/renderD128",
+          subtitlesMode: "embed",
+          container: "mkv",
           hwAccel: "vaapi",
           videoEncoder: "av1_vaapi",
           crf: 30,
@@ -758,9 +758,9 @@ describe("encoder - core functionality", () => {
         inputPath: "/test/input.mp4",
         outputPath: "/test/output.mkv",
         encodingConfig: {
-        hwDevice: "/dev/dri/renderD128",
-        subtitlesMode: "embed",
-        container: "mkv",
+          hwDevice: "/dev/dri/renderD128",
+          subtitlesMode: "embed",
+          container: "mkv",
           hwAccel: "vaapi",
           videoEncoder: "av1_vaapi",
           crf: 30,
@@ -862,9 +862,9 @@ describe("encoder - core functionality", () => {
         inputPath: "/test/input.mp4",
         outputPath: "/test/output.mkv",
         encodingConfig: {
-        hwDevice: "/dev/dri/renderD128",
-        subtitlesMode: "embed",
-        container: "mkv",
+          hwDevice: "/dev/dri/renderD128",
+          subtitlesMode: "embed",
+          container: "mkv",
           hwAccel: "vaapi",
           videoEncoder: "av1_vaapi",
           crf: 30,
@@ -959,9 +959,9 @@ describe("encoder - core functionality", () => {
         inputPath: "/test/input.mp4",
         outputPath: "/test/output.mkv",
         encodingConfig: {
-        hwDevice: "/dev/dri/renderD128",
-        subtitlesMode: "embed",
-        container: "mkv",
+          hwDevice: "/dev/dri/renderD128",
+          subtitlesMode: "embed",
+          container: "mkv",
           hwAccel: "vaapi",
           videoEncoder: "av1_vaapi",
           crf: 30,

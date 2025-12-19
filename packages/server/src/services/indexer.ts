@@ -5,21 +5,17 @@
  * Aggregates, deduplicates, and scores results by quality.
  */
 
-import { prisma } from "../db/client.js";
-import { XMLParser } from "fast-xml-parser";
 import { IndexerType } from "@prisma/client";
+import { XMLParser } from "fast-xml-parser";
+import { prisma } from "../db/client.js";
+import { getCryptoService } from "./crypto.js";
+import { getRateLimiter } from "./rateLimiter.js";
 import {
   getTorrentLeechProvider,
   TORRENTLEECH_CATEGORY_GROUPS,
   type TorrentLeechSearchOptions,
 } from "./torrentleech.js";
-import {
-  getUnit3dProvider,
-  UNIT3D_CATEGORY_GROUPS,
-  type Unit3dSearchOptions,
-} from "./unit3d.js";
-import { getRateLimiter } from "./rateLimiter.js";
-import { getCryptoService } from "./crypto.js";
+import { getUnit3dProvider, UNIT3D_CATEGORY_GROUPS, type Unit3dSearchOptions } from "./unit3d.js";
 
 // Decrypt API key, falling back to the raw value for legacy unencrypted data
 function decryptApiKey(encrypted: string): string {
@@ -55,13 +51,13 @@ const QUALITY_SCORES = {
   AV1: 15,
   HEVC: 12,
   H265: 12,
-  "X265": 12,
+  X265: 12,
   H264: 10,
-  "X264": 10,
+  X264: 10,
 
   // Audio
   ATMOS: 8,
-  "TRUEHD": 7,
+  TRUEHD: 7,
   "DTS-HD": 6,
   DTS: 4,
   AAC: 3,
@@ -116,13 +112,15 @@ interface TorznabItem {
     "@_length": string;
     "@_type": string;
   };
-  "torznab:attr"?: Array<{
-    "@_name": string;
-    "@_value": string;
-  }> | {
-    "@_name": string;
-    "@_value": string;
-  };
+  "torznab:attr"?:
+    | Array<{
+        "@_name": string;
+        "@_value": string;
+      }>
+    | {
+        "@_name": string;
+        "@_value": string;
+      };
 }
 
 class IndexerService {
@@ -229,9 +227,6 @@ class IndexerService {
 
       case IndexerType.UNIT3D:
         return this.searchUnit3d(indexer, options);
-
-      case IndexerType.TORZNAB:
-      case IndexerType.NEWZNAB:
       default:
         return this.searchTorznab(indexer, options);
     }
@@ -300,7 +295,9 @@ class IndexerService {
     }
 
     if (!username || !password) {
-      throw new Error("TorrentLeech requires credentials in format 'username:password' or 'username:password:alt2FAToken' or 'username:password:alt2FAToken:rssKey'");
+      throw new Error(
+        "TorrentLeech requires credentials in format 'username:password' or 'username:password:alt2FAToken' or 'username:password:alt2FAToken:rssKey'"
+      );
     }
 
     const provider = getTorrentLeechProvider({
@@ -327,9 +324,7 @@ class IndexerService {
           : TORRENTLEECH_CATEGORY_GROUPS.movies;
     } else {
       searchOptions.categories =
-        indexer.categoriesTv.length > 0
-          ? indexer.categoriesTv
-          : TORRENTLEECH_CATEGORY_GROUPS.tv;
+        indexer.categoriesTv.length > 0 ? indexer.categoriesTv : TORRENTLEECH_CATEGORY_GROUPS.tv;
     }
 
     // Add season/episode to query for TV searches
@@ -387,9 +382,7 @@ class IndexerService {
           : UNIT3D_CATEGORY_GROUPS.movies;
     } else {
       searchOptions.categories =
-        indexer.categoriesTv.length > 0
-          ? indexer.categoriesTv
-          : UNIT3D_CATEGORY_GROUPS.tv;
+        indexer.categoriesTv.length > 0 ? indexer.categoriesTv : UNIT3D_CATEGORY_GROUPS.tv;
 
       // Add season/episode for TV searches
       if (options.season !== undefined) {
@@ -586,7 +579,8 @@ class IndexerService {
   private extractSource(title: string): string {
     const upper = title.toUpperCase();
     if (upper.includes("REMUX")) return "REMUX";
-    if (upper.includes("BLURAY") || upper.includes("BLU-RAY") || upper.includes("BDRIP")) return "BLURAY";
+    if (upper.includes("BLURAY") || upper.includes("BLU-RAY") || upper.includes("BDRIP"))
+      return "BLURAY";
     if (upper.includes("WEB-DL") || upper.includes("WEBDL")) return "WEB-DL";
     if (upper.includes("WEBRIP") || upper.includes("WEB-RIP")) return "WEBRIP";
     if (upper.includes("HDTV")) return "HDTV";
@@ -601,8 +595,20 @@ class IndexerService {
   private extractCodec(title: string): string {
     const upper = title.toUpperCase();
     if (upper.includes("AV1")) return "AV1";
-    if (upper.includes("HEVC") || upper.includes("H.265") || upper.includes("H265") || upper.includes("X265")) return "HEVC";
-    if (upper.includes("H.264") || upper.includes("H264") || upper.includes("X264") || upper.includes("AVC")) return "H264";
+    if (
+      upper.includes("HEVC") ||
+      upper.includes("H.265") ||
+      upper.includes("H265") ||
+      upper.includes("X265")
+    )
+      return "HEVC";
+    if (
+      upper.includes("H.264") ||
+      upper.includes("H264") ||
+      upper.includes("X264") ||
+      upper.includes("AVC")
+    )
+      return "H264";
     return "UNKNOWN";
   }
 
@@ -756,9 +762,11 @@ class IndexerService {
 
     // Apply constraints
     if (constraints?.maxSize) {
+      // biome-ignore lint/style/noNonNullAssertion: maxSize is checked in if condition above
       candidates = candidates.filter((r) => r.size <= constraints.maxSize!);
     }
     if (constraints?.minSeeders) {
+      // biome-ignore lint/style/noNonNullAssertion: minSeeders is checked in if condition above
       candidates = candidates.filter((r) => r.seeders >= constraints.minSeeders!);
     }
 

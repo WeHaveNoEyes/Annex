@@ -86,12 +86,7 @@ class SchedulerService {
    * Register a recurring task
    * Loads last run time from database to prevent immediate execution on restart
    */
-  register(
-    id: string,
-    name: string,
-    intervalMs: number,
-    handler: () => Promise<void>
-  ): void {
+  register(id: string, name: string, intervalMs: number, handler: () => Promise<void>): void {
     if (this.recurringTasks.has(id)) {
       console.warn(`[Scheduler] Task ${id} already registered, updating handler`);
     }
@@ -136,13 +131,15 @@ class SchedulerService {
         const remaining = Math.max(0, task.intervalMs - age);
         console.log(
           `[Scheduler] Restored ${task.name}: last ran ${Math.round(age / 1000)}s ago, ` +
-          `next run in ${Math.round(remaining / 1000)}s`
+            `next run in ${Math.round(remaining / 1000)}s`
         );
       } else {
         // No previous run recorded - set lastRun to now to prevent immediate execution
         // This means new tasks wait one full interval before first run
         task.lastRun = new Date();
-        console.log(`[Scheduler] New task ${task.name}: first run in ${Math.round(task.intervalMs / 1000)}s`);
+        console.log(
+          `[Scheduler] New task ${task.name}: first run in ${Math.round(task.intervalMs / 1000)}s`
+        );
       }
     } catch {
       // If database is not ready yet, set lastRun to now to be safe
@@ -209,11 +206,7 @@ class SchedulerService {
   /**
    * Schedule a one-off task to run after a delay
    */
-  scheduleOnce(
-    name: string,
-    delayMs: number,
-    handler: () => Promise<void>
-  ): string {
+  scheduleOnce(name: string, delayMs: number, handler: () => Promise<void>): string {
     const id = `oneoff-${++this.oneOffCounter}-${Date.now()}`;
     const runAt = new Date(Date.now() + delayMs);
 
@@ -282,23 +275,17 @@ class SchedulerService {
     }
 
     // Wait for any running tasks to complete (with timeout)
-    const runningTasks = Array.from(this.recurringTasks.values()).filter(
-      (t) => t.isRunning
-    );
+    const runningTasks = Array.from(this.recurringTasks.values()).filter((t) => t.isRunning);
 
     if (runningTasks.length > 0) {
-      console.log(
-        `[Scheduler] Waiting for ${runningTasks.length} running tasks to complete...`
-      );
+      console.log(`[Scheduler] Waiting for ${runningTasks.length} running tasks to complete...`);
 
       // Give tasks up to 30 seconds to finish
       const timeout = 30000;
       const startWait = Date.now();
 
       while (Date.now() - startWait < timeout) {
-        const stillRunning = Array.from(this.recurringTasks.values()).filter(
-          (t) => t.isRunning
-        );
+        const stillRunning = Array.from(this.recurringTasks.values()).filter((t) => t.isRunning);
         if (stillRunning.length === 0) break;
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
@@ -316,33 +303,33 @@ class SchedulerService {
   getHealth(): SchedulerHealth {
     const now = Date.now();
 
-    const recurringTasks: RecurringTaskStats[] = Array.from(
-      this.recurringTasks.values()
-    ).map((task) => {
-      let nextRunIn: number | null = null;
-      if (task.enabled && !task.isRunning) {
-        if (task.lastRun) {
-          const timeSinceLastRun = now - task.lastRun.getTime();
-          nextRunIn = Math.max(0, task.intervalMs - timeSinceLastRun);
-        } else {
-          nextRunIn = 0; // Will run on next tick
+    const recurringTasks: RecurringTaskStats[] = Array.from(this.recurringTasks.values()).map(
+      (task) => {
+        let nextRunIn: number | null = null;
+        if (task.enabled && !task.isRunning) {
+          if (task.lastRun) {
+            const timeSinceLastRun = now - task.lastRun.getTime();
+            nextRunIn = Math.max(0, task.intervalMs - timeSinceLastRun);
+          } else {
+            nextRunIn = 0; // Will run on next tick
+          }
         }
-      }
 
-      return {
-        id: task.id,
-        name: task.name,
-        intervalMs: task.intervalMs,
-        lastRun: task.lastRun,
-        lastDurationMs: task.lastDuration,
-        lastError: task.lastError,
-        runCount: task.runCount,
-        errorCount: task.errorCount,
-        enabled: task.enabled,
-        isRunning: task.isRunning,
-        nextRunIn,
-      };
-    });
+        return {
+          id: task.id,
+          name: task.name,
+          intervalMs: task.intervalMs,
+          lastRun: task.lastRun,
+          lastDurationMs: task.lastDuration,
+          lastError: task.lastError,
+          runCount: task.runCount,
+          errorCount: task.errorCount,
+          enabled: task.enabled,
+          isRunning: task.isRunning,
+          nextRunIn,
+        };
+      }
+    );
 
     // Calculate loop delay (drift from expected schedule)
     let loopDelayMs = 0;
@@ -362,8 +349,7 @@ class SchedulerService {
         this.loopDurations.length > 0
           ? this.loopDurations.reduce((a, b) => a + b, 0) / this.loopDurations.length
           : 0,
-      maxLoopDurationMs:
-        this.loopDurations.length > 0 ? Math.max(...this.loopDurations) : 0,
+      maxLoopDurationMs: this.loopDurations.length > 0 ? Math.max(...this.loopDurations) : 0,
       loopDelayMs,
       recurringTasks,
       pendingOneOffs: this.oneOffTasks.size,

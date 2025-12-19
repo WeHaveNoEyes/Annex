@@ -9,11 +9,7 @@ interface ToggleGroupProps<T extends string> {
   onChange: (value: T) => void;
 }
 
-export function ToggleGroup<T extends string>({
-  options,
-  value,
-  onChange,
-}: ToggleGroupProps<T>) {
+export function ToggleGroup<T extends string>({ options, value, onChange }: ToggleGroupProps<T>) {
   return (
     <div className="flex rounded overflow-hidden border border-white/10 bg-white/5 backdrop-blur-sm">
       {options.map((option) => (

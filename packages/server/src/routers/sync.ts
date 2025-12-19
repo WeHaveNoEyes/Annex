@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc.js";
-import { getJobQueueService } from "../services/jobQueue.js";
 import { prisma } from "../db/client.js";
+import { getJobQueueService } from "../services/jobQueue.js";
+import { publicProcedure, router } from "../trpc.js";
 
 export const syncRouter = router({
   /**
@@ -35,46 +35,40 @@ export const syncRouter = router({
   /**
    * Cancel a pending job
    */
-  cancelJob: publicProcedure
-    .input(z.object({ jobId: z.string() }))
-    .mutation(async ({ input }) => {
-      const jobQueue = getJobQueueService();
-      const success = await jobQueue.cancelJob(input.jobId);
-      return {
-        success,
-        message: success ? "Job cancelled" : "Job not found or not pending",
-      };
-    }),
+  cancelJob: publicProcedure.input(z.object({ jobId: z.string() })).mutation(async ({ input }) => {
+    const jobQueue = getJobQueueService();
+    const success = await jobQueue.cancelJob(input.jobId);
+    return {
+      success,
+      message: success ? "Job cancelled" : "Job not found or not pending",
+    };
+  }),
 
   /**
    * Pause a pending or running job
    * Running jobs will stop at the next checkpoint
    */
-  pauseJob: publicProcedure
-    .input(z.object({ jobId: z.string() }))
-    .mutation(async ({ input }) => {
-      const jobQueue = getJobQueueService();
-      const success = await jobQueue.pauseJob(input.jobId);
-      return {
-        success,
-        message: success ? "Job paused" : "Job not found or not in pausable state",
-      };
-    }),
+  pauseJob: publicProcedure.input(z.object({ jobId: z.string() })).mutation(async ({ input }) => {
+    const jobQueue = getJobQueueService();
+    const success = await jobQueue.pauseJob(input.jobId);
+    return {
+      success,
+      message: success ? "Job paused" : "Job not found or not in pausable state",
+    };
+  }),
 
   /**
    * Resume a paused job
    * The job will be re-queued and processed from where it left off
    */
-  resumeJob: publicProcedure
-    .input(z.object({ jobId: z.string() }))
-    .mutation(async ({ input }) => {
-      const jobQueue = getJobQueueService();
-      const success = await jobQueue.resumeJob(input.jobId);
-      return {
-        success,
-        message: success ? "Job resumed" : "Job not found or not paused",
-      };
-    }),
+  resumeJob: publicProcedure.input(z.object({ jobId: z.string() })).mutation(async ({ input }) => {
+    const jobQueue = getJobQueueService();
+    const success = await jobQueue.resumeJob(input.jobId);
+    return {
+      success,
+      message: success ? "Job resumed" : "Job not found or not paused",
+    };
+  }),
 
   /**
    * Get running and paused jobs for the UI to show pause/resume/cancel buttons

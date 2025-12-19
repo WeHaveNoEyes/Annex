@@ -1,7 +1,7 @@
-import { createTRPCReact } from "@trpc/react-query";
-import { httpBatchLink } from "@trpc/client";
-import superjson from "superjson";
 import type { AppRouter } from "@annex/server/routers";
+import { httpBatchLink } from "@trpc/client";
+import { createTRPCReact } from "@trpc/react-query";
+import superjson from "superjson";
 import { getAuthToken } from "./hooks/useAuth";
 
 export const trpc = createTRPCReact<AppRouter>();

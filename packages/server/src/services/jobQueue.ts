@@ -5,13 +5,13 @@
  * Database is only used for persistence/crash recovery.
  */
 
-import { prisma } from "../db/client.js";
-import { getConfig } from "../config/index.js";
-import { syncAllLibraries, syncServerLibrary } from "./librarySync.js";
-import { getJobEventService, type JobEventData, type JobUpdateType } from "./jobEvents.js";
-import { getSchedulerService } from "./scheduler.js";
-import { hostname } from "os";
+import { hostname } from "node:os";
 import type { Job } from "@prisma/client";
+import { getConfig } from "../config/index.js";
+import { prisma } from "../db/client.js";
+import { getJobEventService, type JobEventData, type JobUpdateType } from "./jobEvents.js";
+import { syncAllLibraries, syncServerLibrary } from "./librarySync.js";
+import { getSchedulerService } from "./scheduler.js";
 
 // Job type definitions
 export type JobType =
@@ -40,12 +40,10 @@ interface MDBListHydratePayload {
 }
 
 // Generic payload type - specific types are defined in their respective services
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// biome-ignore lint/suspicious/noExplicitAny: Generic job queue accepts any payload type
 type JobPayload = any;
 
-interface JobHandler {
-  (payload: JobPayload, jobId: string): Promise<unknown>;
-}
+type JobHandler = (payload: JobPayload, jobId: string) => Promise<unknown>;
 
 class JobQueueService {
   private handlers: Map<JobType, JobHandler> = new Map();
@@ -102,7 +100,9 @@ class JobQueueService {
       const { getMDBListService } = await import("./mdblist.js");
       const mdblist = getMDBListService();
       const result = await mdblist.batchHydrateMediaItems(items);
-      console.log(`[MDBList] Hydrated discover items: ${result.success} success, ${result.failed} failed, ${result.skipped} skipped`);
+      console.log(
+        `[MDBList] Hydrated discover items: ${result.success} success, ${result.failed} failed, ${result.skipped} skipped`
+      );
       return result;
     });
 
@@ -305,14 +305,9 @@ class JobQueueService {
     const pollInterval = config.jobs.pollInterval;
 
     const scheduler = getSchedulerService();
-    scheduler.register(
-      "job-process",
-      "Job Processing",
-      pollInterval,
-      async () => {
-        await this.pollAndProcessJobs();
-      }
-    );
+    scheduler.register("job-process", "Job Processing", pollInterval, async () => {
+      await this.pollAndProcessJobs();
+    });
 
     console.log(`[JobQueue] Registered job process task (${pollInterval}ms interval)`);
   }
@@ -398,14 +393,9 @@ class JobQueueService {
     const intervalHours = await this.getAwaitingRetryIntervalHours();
     const intervalMs = intervalHours * 60 * 60 * 1000;
 
-    scheduler.register(
-      "awaiting-retry",
-      "Awaiting Request Retry",
-      intervalMs,
-      async () => {
-        await this.queueAwaitingRetries();
-      }
-    );
+    scheduler.register("awaiting-retry", "Awaiting Request Retry", intervalMs, async () => {
+      await this.queueAwaitingRetries();
+    });
 
     console.log(`[JobQueue] Registered awaiting retry task (${intervalHours}h interval)`);
   }
@@ -438,14 +428,9 @@ class JobQueueService {
     const scheduler = getSchedulerService();
     const intervalMs = 5 * 60 * 1000; // 5 minutes
 
-    scheduler.register(
-      "approval-timeout",
-      "Approval Timeout Check",
-      intervalMs,
-      async () => {
-        await this.checkApprovalTimeouts();
-      }
-    );
+    scheduler.register("approval-timeout", "Approval Timeout Check", intervalMs, async () => {
+      await this.checkApprovalTimeouts();
+    });
 
     console.log("[JobQueue] Registered approval timeout task (5m interval)");
   }
@@ -468,12 +453,10 @@ class JobQueueService {
    * Queue retry jobs for all awaiting requests
    */
   private async queueAwaitingRetries(): Promise<void> {
-    await this.addJobIfNotExists(
-      "pipeline:retry-awaiting",
-      {},
-      "pipeline:retry-awaiting",
-      { priority: 5, maxAttempts: 1 }
-    );
+    await this.addJobIfNotExists("pipeline:retry-awaiting", {}, "pipeline:retry-awaiting", {
+      priority: 5,
+      maxAttempts: 1,
+    });
   }
 
   /**
@@ -508,17 +491,14 @@ class JobQueueService {
     const taskId = `library-sync-${serverId}`;
     const intervalMs = intervalMinutes * 60 * 1000;
 
-    scheduler.register(
-      taskId,
-      `Library Sync: ${serverName}`,
-      intervalMs,
-      async () => {
-        await this.queueServerLibrarySync(serverId, intervalMinutes);
-      }
-    );
+    scheduler.register(taskId, `Library Sync: ${serverName}`, intervalMs, async () => {
+      await this.queueServerLibrarySync(serverId, intervalMinutes);
+    });
 
     this.registeredServerSyncs.add(serverId);
-    console.log(`[JobQueue] Registered library sync task for "${serverName}" (${intervalMinutes}m interval, incremental)`);
+    console.log(
+      `[JobQueue] Registered library sync task for "${serverName}" (${intervalMinutes}m interval, incremental)`
+    );
 
     // Run immediately on startup (full sync for first run)
     this.queueServerLibrarySync(serverId);
@@ -574,7 +554,9 @@ class JobQueueService {
       const totalMinutes = intervalMinutes + bufferMinutes;
       const since = new Date(Date.now() - totalMinutes * 60 * 1000);
       sinceDate = since.toISOString();
-      console.log(`[JobQueue] Queueing incremental sync for ${serverId} (since ${since.toISOString()})`);
+      console.log(
+        `[JobQueue] Queueing incremental sync for ${serverId} (since ${since.toISOString()})`
+      );
     }
 
     const payload: LibrarySyncServerPayload = {
@@ -854,7 +836,7 @@ class JobQueueService {
       if (shouldRetry) {
         const updatedJob = await prisma.job.findUnique({ where: { id: job.id } });
         if (updatedJob) {
-          const delay = Math.pow(2, currentJob.attempts) * 1000; // Exponential backoff
+          const delay = 2 ** currentJob.attempts * 1000; // Exponential backoff
           console.log(`[JobQueue] Job ${job.id} will retry in ${delay}ms`);
           setTimeout(() => this.scheduleJob(updatedJob), delay);
         }

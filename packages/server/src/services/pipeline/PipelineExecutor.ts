@@ -1,11 +1,11 @@
 // PipelineExecutor - Core service for executing customizable request pipelines
 // Manages pipeline execution state, step orchestration, and error handling
 
-import { prisma } from '../../db/client.js';
-import { Prisma, type StepType, type ExecutionStatus, type StepStatus } from '@prisma/client';
-import type { PipelineContext, StepOutput } from './PipelineContext';
-import { StepRegistry } from './StepRegistry';
-import { logger } from '../../utils/logger';
+import { type ExecutionStatus, Prisma, type StepStatus, type StepType } from "@prisma/client";
+import { prisma } from "../../db/client.js";
+import { logger } from "../../utils/logger";
+import type { PipelineContext, StepOutput } from "./PipelineContext";
+import { StepRegistry } from "./StepRegistry";
 
 // Tree-based step structure
 interface StepTree {
@@ -21,7 +21,6 @@ interface StepTree {
 }
 
 export class PipelineExecutor {
-
   // Start a new pipeline execution for a request
   async startExecution(requestId: string, templateId: string): Promise<void> {
     try {
@@ -54,7 +53,9 @@ export class PipelineExecutor {
         title: request.title,
         year: request.year,
         requestedSeasons: request.requestedSeasons,
-        requestedEpisodes: request.requestedEpisodes as Array<{ season: number; episode: number }> | undefined,
+        requestedEpisodes: request.requestedEpisodes as
+          | Array<{ season: number; episode: number }>
+          | undefined,
         targets: request.targets as Array<{ serverId: string; encodingProfileId?: string }>,
       };
 
@@ -63,7 +64,7 @@ export class PipelineExecutor {
         data: {
           requestId,
           templateId,
-          status: 'RUNNING' as ExecutionStatus,
+          status: "RUNNING" as ExecutionStatus,
           currentStep: 0,
           steps: stepsTree as unknown as Prisma.JsonArray,
           context: initialContext as unknown as Prisma.JsonObject,
@@ -79,7 +80,10 @@ export class PipelineExecutor {
       await this.completeExecution(execution.id);
     } catch (error) {
       logger.error(`Failed to execute pipeline for request ${requestId}:`, error);
-      await this.failExecution(await this.getExecutionId(requestId), error instanceof Error ? error.message : 'Unknown error');
+      await this.failExecution(
+        await this.getExecutionId(requestId),
+        error instanceof Error ? error.message : "Unknown error"
+      );
       throw error;
     }
   }
@@ -88,9 +92,9 @@ export class PipelineExecutor {
   private async getExecutionId(requestId: string): Promise<string> {
     const execution = await prisma.pipelineExecution.findFirst({
       where: { requestId },
-      orderBy: { id: 'desc' },
+      orderBy: { id: "desc" },
     });
-    return execution?.id || '';
+    return execution?.id || "";
   }
 
   // Execute a tree of steps (supports parallel execution of branches)
@@ -108,8 +112,10 @@ export class PipelineExecutor {
             where: { id: executionId },
           });
 
-          if (!execution || execution.status !== 'RUNNING') {
-            logger.info(`Pipeline execution ${executionId} is not running, stopping step ${stepDef.name}`);
+          if (!execution || execution.status !== "RUNNING") {
+            logger.info(
+              `Pipeline execution ${executionId} is not running, stopping step ${stepDef.name}`
+            );
             return currentContext;
           }
 
@@ -140,7 +146,7 @@ export class PipelineExecutor {
           if (result.shouldPause) {
             // Pause execution (used by ApprovalStep)
             await this.pauseExecution(executionId, `Awaiting approval: ${stepDef.name}`);
-            throw new Error('Execution paused for approval');
+            throw new Error("Execution paused for approval");
           }
 
           if (result.shouldSkip) {
@@ -186,7 +192,7 @@ export class PipelineExecutor {
     );
 
     // Merge all branch contexts (last one wins for conflicts)
-    const mergedContext = results.reduce((acc, ctx) => ({ ...acc, ...ctx }), currentContext);
+    const mergedContext = results.reduce((acc, ctx) => Object.assign(acc, ctx), { ...currentContext });
 
     // Update execution context in database once after all parallel branches complete
     await prisma.pipelineExecution.update({
@@ -205,7 +211,7 @@ export class PipelineExecutor {
         where: { id: executionId },
         include: {
           stepExecutions: {
-            orderBy: { stepOrder: 'asc' },
+            orderBy: { stepOrder: "asc" },
           },
         },
       });
@@ -215,13 +221,13 @@ export class PipelineExecutor {
       }
 
       // Check if execution is paused, cancelled, or completed
-      if (execution.status !== 'RUNNING') {
+      if (execution.status !== "RUNNING") {
         logger.info(`Pipeline execution ${executionId} is ${execution.status}, stopping`);
         return;
       }
 
       // Find next pending step
-      const nextStep = execution.stepExecutions.find((s) => s.status === 'PENDING');
+      const nextStep = execution.stepExecutions.find((s) => s.status === "PENDING");
 
       if (!nextStep) {
         // All steps completed
@@ -260,7 +266,10 @@ export class PipelineExecutor {
       await this.executeNextStep(executionId);
     } catch (error) {
       logger.error(`Failed to execute next step for execution ${executionId}:`, error);
-      await this.failExecution(executionId, error instanceof Error ? error.message : 'Unknown error');
+      await this.failExecution(
+        executionId,
+        error instanceof Error ? error.message : "Unknown error"
+      );
     }
   }
 
@@ -299,14 +308,17 @@ export class PipelineExecutor {
       step.validateConfig(stepDef.config);
 
       // Evaluate condition
-      const shouldExecute = step.evaluateCondition(context, stepDef.condition as unknown as Parameters<typeof step.evaluateCondition>[1]);
+      const shouldExecute = step.evaluateCondition(
+        context,
+        stepDef.condition as unknown as Parameters<typeof step.evaluateCondition>[1]
+      );
 
       if (!shouldExecute) {
         // Skip step
         await prisma.stepExecution.update({
           where: { id: stepExecutionId },
           data: {
-            status: 'SKIPPED' as StepStatus,
+            status: "SKIPPED" as StepStatus,
             completedAt: new Date(),
           },
         });
@@ -318,7 +330,7 @@ export class PipelineExecutor {
       await prisma.stepExecution.update({
         where: { id: stepExecutionId },
         data: {
-          status: 'RUNNING' as StepStatus,
+          status: "RUNNING" as StepStatus,
           startedAt: new Date(),
         },
       });
@@ -329,7 +341,7 @@ export class PipelineExecutor {
           where: { id: stepExecutionId },
           data: { progress },
         });
-        logger.debug(`Step ${stepDef.name} progress: ${progress}% ${message || ''}`);
+        logger.debug(`Step ${stepDef.name} progress: ${progress}% ${message || ""}`);
       });
 
       // Execute the step
@@ -338,11 +350,11 @@ export class PipelineExecutor {
       // Handle result
       if (result.shouldPause) {
         // Pause execution (used by ApprovalStep)
-        await this.pauseExecution(executionId, 'Awaiting approval');
+        await this.pauseExecution(executionId, "Awaiting approval");
         await prisma.stepExecution.update({
           where: { id: stepExecutionId },
           data: {
-            status: 'RUNNING' as StepStatus,
+            status: "RUNNING" as StepStatus,
             output: result.data ? (result.data as unknown as Prisma.JsonObject) : Prisma.JsonNull,
           },
         });
@@ -354,7 +366,7 @@ export class PipelineExecutor {
         await prisma.stepExecution.update({
           where: { id: stepExecutionId },
           data: {
-            status: 'SKIPPED' as StepStatus,
+            status: "SKIPPED" as StepStatus,
             output: result.data ? (result.data as unknown as Prisma.JsonObject) : Prisma.JsonNull,
             completedAt: new Date(),
           },
@@ -369,7 +381,7 @@ export class PipelineExecutor {
           await prisma.stepExecution.update({
             where: { id: stepExecutionId },
             data: {
-              status: 'FAILED' as StepStatus,
+              status: "FAILED" as StepStatus,
               error: result.error,
               completedAt: new Date(),
             },
@@ -377,7 +389,7 @@ export class PipelineExecutor {
           logger.warn(`Step ${stepDef.name} failed but continuing: ${result.error}`);
           return;
         } else {
-          throw new Error(result.error || 'Step execution failed');
+          throw new Error(result.error || "Step execution failed");
         }
       }
 
@@ -396,7 +408,7 @@ export class PipelineExecutor {
       await prisma.stepExecution.update({
         where: { id: stepExecutionId },
         data: {
-          status: 'COMPLETED' as StepStatus,
+          status: "COMPLETED" as StepStatus,
           progress: 100,
           output: result.data ? (result.data as unknown as Prisma.JsonObject) : Prisma.JsonNull,
           completedAt: new Date(),
@@ -411,8 +423,8 @@ export class PipelineExecutor {
       await prisma.stepExecution.update({
         where: { id: stepExecutionId },
         data: {
-          status: 'FAILED' as StepStatus,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          status: "FAILED" as StepStatus,
+          error: error instanceof Error ? error.message : "Unknown error",
           completedAt: new Date(),
         },
       });
@@ -429,7 +441,7 @@ export class PipelineExecutor {
     await prisma.pipelineExecution.update({
       where: { id: executionId },
       data: {
-        status: 'PAUSED' as ExecutionStatus,
+        status: "PAUSED" as ExecutionStatus,
         error: reason,
       },
     });
@@ -441,7 +453,7 @@ export class PipelineExecutor {
     await prisma.pipelineExecution.update({
       where: { id: executionId },
       data: {
-        status: 'RUNNING' as ExecutionStatus,
+        status: "RUNNING" as ExecutionStatus,
         error: null,
       },
     });
@@ -456,7 +468,7 @@ export class PipelineExecutor {
     await prisma.pipelineExecution.update({
       where: { id: executionId },
       data: {
-        status: 'FAILED' as ExecutionStatus,
+        status: "FAILED" as ExecutionStatus,
         error,
         completedAt: new Date(),
       },
@@ -469,7 +481,7 @@ export class PipelineExecutor {
     await prisma.pipelineExecution.update({
       where: { id: executionId },
       data: {
-        status: 'COMPLETED' as ExecutionStatus,
+        status: "COMPLETED" as ExecutionStatus,
         completedAt: new Date(),
       },
     });
@@ -481,7 +493,7 @@ export class PipelineExecutor {
     await prisma.pipelineExecution.update({
       where: { id: executionId },
       data: {
-        status: 'CANCELLED' as ExecutionStatus,
+        status: "CANCELLED" as ExecutionStatus,
         completedAt: new Date(),
       },
     });

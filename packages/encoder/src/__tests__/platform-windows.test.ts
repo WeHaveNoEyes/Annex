@@ -12,8 +12,7 @@
  * systems or E2E tests.
  */
 
-
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 describe("platform/windows", () => {
   describe("module exports", () => {

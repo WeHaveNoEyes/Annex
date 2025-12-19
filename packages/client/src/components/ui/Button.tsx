@@ -1,4 +1,4 @@
-import { ButtonHTMLAttributes, forwardRef, useRef, useState } from "react";
+import { type ButtonHTMLAttributes, forwardRef, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { PopcornParticles } from "./PopcornParticles";
 
@@ -16,8 +16,7 @@ const variantStyles: Record<ButtonVariant, string> = {
     "bg-annex-500/20 text-annex-400 hover:bg-annex-500/30 hover:text-white active:bg-annex-500/15 border border-annex-500/30",
   secondary:
     "bg-white/5 text-white/70 hover:bg-white/10 hover:text-white active:bg-white/5 border border-white/10",
-  ghost:
-    "bg-transparent text-white/60 hover:bg-white/5 hover:text-white",
+  ghost: "bg-transparent text-white/60 hover:bg-white/5 hover:text-white",
   danger:
     "bg-red-500/20 text-red-400 hover:bg-red-500/30 hover:text-white active:bg-red-500/15 border border-red-500/30",
 };
@@ -29,7 +28,18 @@ const sizeStyles: Record<ButtonSize, string> = {
 };
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = "primary", size = "md", popcorn = true, className = "", children, onClick, ...props }, ref) => {
+  (
+    {
+      variant = "primary",
+      size = "md",
+      popcorn = true,
+      className = "",
+      children,
+      onClick,
+      ...props
+    },
+    ref
+  ) => {
     const buttonRef = useRef<HTMLButtonElement>(null);
     const [particleTrigger, setParticleTrigger] = useState(0);
     const [particleOrigin, setParticleOrigin] = useState({ x: 0, y: 0, spread: 60 });
@@ -74,15 +84,16 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         >
           {children}
         </button>
-        {popcorn && createPortal(
-          <PopcornParticles
-            trigger={particleTrigger}
-            originX={particleOrigin.x}
-            originY={particleOrigin.y}
-            spread={particleOrigin.spread}
-          />,
-          document.body
-        )}
+        {popcorn &&
+          createPortal(
+            <PopcornParticles
+              trigger={particleTrigger}
+              originX={particleOrigin.x}
+              originY={particleOrigin.y}
+              spread={particleOrigin.spread}
+            />,
+            document.body
+          )}
       </>
     );
   }

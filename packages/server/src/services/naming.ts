@@ -176,10 +176,7 @@ class NamingService {
   /**
    * Generate destination path for movies on a server
    */
-  getMovieDestinationPath(
-    serverMoviesPath: string,
-    params: MovieNamingParams
-  ): string {
+  getMovieDestinationPath(serverMoviesPath: string, params: MovieNamingParams): string {
     const { fullPath } = this.generateMoviePath(params);
     // Ensure no double slashes
     const basePath = serverMoviesPath.replace(/\/+$/, "");
@@ -189,10 +186,7 @@ class NamingService {
   /**
    * Generate destination path for TV shows on a server
    */
-  getTvDestinationPath(
-    serverTvPath: string,
-    params: TvNamingParams
-  ): string {
+  getTvDestinationPath(serverTvPath: string, params: TvNamingParams): string {
     const { fullPath } = this.generateTvPath(params);
     const basePath = serverTvPath.replace(/\/+$/, "");
     return `${basePath}/${fullPath}`;

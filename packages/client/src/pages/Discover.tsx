@@ -1,16 +1,16 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
-import { trpc } from "../trpc";
-import { Input, ToggleGroup, MediaCard, Button, LibraryInfo } from "../components/ui";
-import { FilterPanel } from "../components/ui/FilterPanel";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button, Input, type LibraryInfo, MediaCard, Skeleton, ToggleGroup } from "../components/ui";
 import { DiscoveryModeTabs } from "../components/ui/DiscoveryModeTabs";
+import { FilterPanel } from "../components/ui/FilterPanel";
 import { PeriodSelector } from "../components/ui/PeriodSelector";
 import { SlideOutPanel } from "../components/ui/SlideOutPanel";
 import {
-  useDiscoverFilters,
-  DISCOVERY_MODES,
   countActiveRatingFilters,
+  DISCOVERY_MODES,
   modeHasPeriod,
+  useDiscoverFilters,
 } from "../hooks/useDiscoverFilters";
+import { trpc } from "../trpc";
 
 const mediaTypeOptions = [
   { value: "movie" as const, label: "Movies" },
@@ -70,20 +70,24 @@ function transformResult(item: {
 }): DisplayMediaItem {
   return {
     tmdbId: item.tmdbId,
-    type: (typeof item.type === "string" && item.type.toUpperCase() === "TV" ? "tv" : "movie") as "movie" | "tv",
+    type: (typeof item.type === "string" && item.type.toUpperCase() === "TV" ? "tv" : "movie") as
+      | "movie"
+      | "tv",
     title: item.title,
     posterPath: item.posterPath,
     year: item.year ?? 0,
     voteAverage: item.voteAverage ?? 0,
-    ratings: item.ratings ? {
-      imdbScore: item.ratings.imdbScore,
-      rtCriticScore: item.ratings.rtCriticScore,
-      rtAudienceScore: item.ratings.rtAudienceScore,
-      metacriticScore: item.ratings.metacriticScore,
-      traktScore: item.ratings.traktScore,
-      letterboxdScore: item.ratings.letterboxdScore,
-      mdblistScore: item.ratings.mdblistScore,
-    } : undefined,
+    ratings: item.ratings
+      ? {
+          imdbScore: item.ratings.imdbScore,
+          rtCriticScore: item.ratings.rtCriticScore,
+          rtAudienceScore: item.ratings.rtAudienceScore,
+          metacriticScore: item.ratings.metacriticScore,
+          traktScore: item.ratings.traktScore,
+          letterboxdScore: item.ratings.letterboxdScore,
+          mdblistScore: item.ratings.mdblistScore,
+        }
+      : undefined,
     trailerKey: item.trailerKey,
   };
 }
@@ -167,22 +171,46 @@ export default function DiscoverPage() {
     const params: Record<string, string | undefined> = {};
 
     if (filters.ratingFilters.trakt) {
-      params.ratings = formatRatingRange(filters.ratingFilters.trakt.min, filters.ratingFilters.trakt.max, 100);
+      params.ratings = formatRatingRange(
+        filters.ratingFilters.trakt.min,
+        filters.ratingFilters.trakt.max,
+        100
+      );
     }
     if (filters.ratingFilters.imdb) {
-      params.imdbRatings = formatRatingRange(filters.ratingFilters.imdb.min, filters.ratingFilters.imdb.max, 10);
+      params.imdbRatings = formatRatingRange(
+        filters.ratingFilters.imdb.min,
+        filters.ratingFilters.imdb.max,
+        10
+      );
     }
     if (filters.ratingFilters.tmdb) {
-      params.tmdbRatings = formatRatingRange(filters.ratingFilters.tmdb.min, filters.ratingFilters.tmdb.max, 10);
+      params.tmdbRatings = formatRatingRange(
+        filters.ratingFilters.tmdb.min,
+        filters.ratingFilters.tmdb.max,
+        10
+      );
     }
     if (filters.ratingFilters.rt_critic) {
-      params.rtMeters = formatRatingRange(filters.ratingFilters.rt_critic.min, filters.ratingFilters.rt_critic.max, 100);
+      params.rtMeters = formatRatingRange(
+        filters.ratingFilters.rt_critic.min,
+        filters.ratingFilters.rt_critic.max,
+        100
+      );
     }
     if (filters.ratingFilters.rt_audience) {
-      params.rtUserMeters = formatRatingRange(filters.ratingFilters.rt_audience.min, filters.ratingFilters.rt_audience.max, 100);
+      params.rtUserMeters = formatRatingRange(
+        filters.ratingFilters.rt_audience.min,
+        filters.ratingFilters.rt_audience.max,
+        100
+      );
     }
     if (filters.ratingFilters.metacritic) {
-      params.metascores = formatRatingRange(filters.ratingFilters.metacritic.min, filters.ratingFilters.metacritic.max, 100);
+      params.metascores = formatRatingRange(
+        filters.ratingFilters.metacritic.min,
+        filters.ratingFilters.metacritic.max,
+        100
+      );
     }
 
     return params;
@@ -291,19 +319,7 @@ export default function DiscoverPage() {
     setHasMore(true);
     setTotalResults(0);
     processedDataRef.current = "";
-  }, [
-    filters.type,
-    filters.mode,
-    filters.period,
-    filters.query,
-    filters.years,
-    filters.genres,
-    filters.languages,
-    filters.countries,
-    filters.runtimes,
-    filters.certifications,
-    filters.ratingFilters,
-  ]);
+  }, []);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchInput(e.target.value);
@@ -328,12 +344,7 @@ export default function DiscoverPage() {
     const observer = new IntersectionObserver(
       (entries) => {
         const [entry] = entries;
-        if (
-          entry.isIntersecting &&
-          hasMore &&
-          !discoverQuery.isFetching &&
-          allResults.length > 0
-        ) {
+        if (entry.isIntersecting && hasMore && !discoverQuery.isFetching && allResults.length > 0) {
           loadMore();
         }
       },
@@ -437,12 +448,7 @@ export default function DiscoverPage() {
               onClick={() => setShowFilters(true)}
               className="shrink-0 relative"
             >
-              <svg
-                className="w-4 h-4 mr-2"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
+              <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -473,9 +479,15 @@ export default function DiscoverPage() {
                 onClick={clearRatingFilters}
                 className="shrink-0 flex items-center gap-1 px-2 py-1 text-xs bg-annex-500/20 text-annex-300 rounded hover:bg-annex-500/30 transition-colors"
               >
-                {countActiveRatingFilters(filters.ratingFilters)} rating{countActiveRatingFilters(filters.ratingFilters) > 1 ? "s" : ""}
+                {countActiveRatingFilters(filters.ratingFilters)} rating
+                {countActiveRatingFilters(filters.ratingFilters) > 1 ? "s" : ""}
                 <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             )}
@@ -519,8 +531,7 @@ export default function DiscoverPage() {
             <h2 className="text-xl font-semibold">{resultsTitle}</h2>
             {totalResults > 0 && (
               <span className="text-sm text-white/50">
-                {allResults.length.toLocaleString()} of{" "}
-                {totalResults.toLocaleString()} items
+                {allResults.length.toLocaleString()} of {totalResults.toLocaleString()} items
               </span>
             )}
           </div>
@@ -539,22 +550,20 @@ export default function DiscoverPage() {
           {discoverQuery.error && (
             <div className="text-center py-12 text-red-400">
               <p>Failed to load content.</p>
-              <p className="text-sm mt-2 text-white/30">
-                {discoverQuery.error.message}
-              </p>
+              <p className="text-sm mt-2 text-white/30">{discoverQuery.error.message}</p>
             </div>
           )}
 
           {/* Initial loading state */}
           {isInitialLoading && (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-              {Array.from({ length: 15 }).map((_, i) => (
-                <div key={i} className="space-y-2">
+              <Skeleton count={15}>
+                <div className="space-y-2">
                   <div className="aspect-[2/3] bg-white/5 rounded animate-pulse" />
                   <div className="h-4 bg-white/5 rounded animate-pulse w-3/4" />
                   <div className="h-3 bg-white/5 rounded animate-pulse w-1/2" />
                 </div>
-              ))}
+              </Skeleton>
             </div>
           )}
 
@@ -619,10 +628,7 @@ export default function DiscoverPage() {
               </div>
 
               {/* Load more section */}
-              <div
-                ref={loadMoreRef}
-                className="flex flex-col items-center gap-4 py-8"
-              >
+              <div ref={loadMoreRef} className="flex flex-col items-center gap-4 py-8">
                 {isLoadingMore && (
                   <div className="flex items-center gap-3 text-white/50">
                     <div className="w-5 h-5 border-2 border-white/20 border-t-white/60 rounded-full animate-spin" />
@@ -641,9 +647,7 @@ export default function DiscoverPage() {
                 )}
 
                 {!hasMore && allResults.length > 0 && (
-                  <span className="text-sm text-white/30">
-                    You've reached the end
-                  </span>
+                  <span className="text-sm text-white/30">You've reached the end</span>
                 )}
               </div>
             </>

@@ -1,20 +1,23 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import type { Server, ServerWebSocket } from "bun";
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
-import { appRouter } from "./routers/index.js";
-import type { Context } from "./trpc.js";
 import { initConfig } from "./config/index.js";
-import { getJobQueueService } from "./services/jobQueue.js";
-import { verifySession, registerAuthTasks } from "./services/auth.js";
-import { registerPipelineSteps } from "./services/pipeline/registerSteps.js";
-import { getIrcAnnounceMonitor } from "./services/ircAnnounce.js";
-import { getRssAnnounceMonitor } from "./services/rssAnnounce.js";
-import { getEncoderDispatchService, type EncoderWebSocketData } from "./services/encoderDispatch.js";
-import { getSchedulerService } from "./services/scheduler.js";
+import { appRouter } from "./routers/index.js";
+import { registerAuthTasks, verifySession } from "./services/auth.js";
 import { getCryptoService } from "./services/crypto.js";
+import {
+  type EncoderWebSocketData,
+  getEncoderDispatchService,
+} from "./services/encoderDispatch.js";
+import { getIrcAnnounceMonitor } from "./services/ircAnnounce.js";
+import { getJobQueueService } from "./services/jobQueue.js";
+import { registerPipelineSteps } from "./services/pipeline/registerSteps.js";
+import { getRssAnnounceMonitor } from "./services/rssAnnounce.js";
+import { getSchedulerService } from "./services/scheduler.js";
 import { migrateEnvSecretsIfNeeded } from "./services/secrets.js";
+import type { Context } from "./trpc.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,7 +36,9 @@ const config = initConfig();
     // Migrate any secrets from env/config to encrypted storage
     const { migrated, skipped } = await migrateEnvSecretsIfNeeded();
     if (migrated.length > 0 || skipped.length > 0) {
-      console.log(`[Startup] Secrets migration complete: ${migrated.length} migrated, ${skipped.length} skipped`);
+      console.log(
+        `[Startup] Secrets migration complete: ${migrated.length} migrated, ${skipped.length} skipped`
+      );
     }
   } catch (error) {
     console.error("[Startup] Failed to initialize crypto/secrets:", error);
@@ -80,7 +85,7 @@ function parseCookies(cookieHeader: string | null): Record<string, string> {
 function getSessionTokenFromRequest(req: Request): string | null {
   // First, check Authorization header (Bearer token)
   const authHeader = req.headers.get("authorization");
-  if (authHeader && authHeader.startsWith("Bearer ")) {
+  if (authHeader?.startsWith("Bearer ")) {
     return authHeader.substring(7);
   }
 
@@ -142,7 +147,9 @@ function handleEncoderPackage(req: Request, url: URL): Response {
 
     if (!manifestPath || !fs.existsSync(manifestPath)) {
       return new Response(
-        JSON.stringify({ error: "Encoder binaries not built. Run: bun run --filter @annex/encoder build" }),
+        JSON.stringify({
+          error: "Encoder binaries not built. Run: bun run --filter @annex/encoder build",
+        }),
         { status: 404, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -150,16 +157,16 @@ function handleEncoderPackage(req: Request, url: URL): Response {
     try {
       const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
       console.log(`[Encoder] Serving manifest info to ${clientIp}`);
-      return new Response(
-        JSON.stringify(manifest),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify(manifest), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
     } catch (error) {
       console.error("[Encoder] Failed to read manifest:", error);
-      return new Response(
-        JSON.stringify({ error: "Failed to read manifest" }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Failed to read manifest" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
   }
 
@@ -167,11 +174,19 @@ function handleEncoderPackage(req: Request, url: URL): Response {
   const binaryMatch = pathname.match(/^\/api\/encoder\/binary\/([a-z0-9-]+)$/);
   if (binaryMatch) {
     const platform = binaryMatch[1];
-    const validPlatforms = ["linux-x64", "linux-arm64", "windows-x64", "darwin-x64", "darwin-arm64"];
+    const validPlatforms = [
+      "linux-x64",
+      "linux-arm64",
+      "windows-x64",
+      "darwin-x64",
+      "darwin-arm64",
+    ];
 
     if (!validPlatforms.includes(platform)) {
       return new Response(
-        JSON.stringify({ error: `Invalid platform: ${platform}. Valid platforms: ${validPlatforms.join(", ")}` }),
+        JSON.stringify({
+          error: `Invalid platform: ${platform}. Valid platforms: ${validPlatforms.join(", ")}`,
+        }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -183,7 +198,7 @@ function handleEncoderPackage(req: Request, url: URL): Response {
     if (!binaryPath) {
       return new Response(
         JSON.stringify({
-          error: `Binary not found for platform: ${platform}. Run: bun run --filter @annex/encoder build`
+          error: `Binary not found for platform: ${platform}. Run: bun run --filter @annex/encoder build`,
         }),
         { status: 404, headers: { "Content-Type": "application/json" } }
       );
@@ -191,7 +206,9 @@ function handleEncoderPackage(req: Request, url: URL): Response {
 
     try {
       const file = Bun.file(binaryPath);
-      console.log(`[Encoder] Serving ${platform} binary to ${clientIp} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+      console.log(
+        `[Encoder] Serving ${platform} binary to ${clientIp} (${(file.size / 1024 / 1024).toFixed(1)} MB)`
+      );
 
       return new Response(file, {
         status: 200,
@@ -204,10 +221,10 @@ function handleEncoderPackage(req: Request, url: URL): Response {
       });
     } catch (error) {
       console.error(`[Encoder] Failed to serve ${platform} binary:`, error);
-      return new Response(
-        JSON.stringify({ error: "Failed to serve binary" }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
+      return new Response(JSON.stringify({ error: "Failed to serve binary" }), {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      });
     }
   }
 

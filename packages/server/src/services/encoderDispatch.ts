@@ -8,24 +8,24 @@
  * - Crash-resilient: server restart seamlessly resumes encoding
  */
 
-import type { ServerWebSocket } from "bun";
-import { existsSync } from "fs";
-import { prisma } from "../db/client.js";
-import { Prisma } from "@prisma/client";
-import { getJobEventService } from "./jobEvents.js";
-import { getSchedulerService } from "./scheduler.js";
+import { existsSync } from "node:fs";
 import type {
   EncoderMessage,
-  ServerMessage,
-  RegisterMessage,
+  EncodingConfig,
   HeartbeatMessage,
-  JobProgressMessage,
+  JobAssignMessage,
   JobCompleteMessage,
   JobFailedMessage,
-  JobAssignMessage,
-  EncodingConfig,
+  JobProgressMessage,
+  RegisterMessage,
+  ServerMessage,
 } from "@annex/shared";
-import type { RemoteEncoder, EncoderAssignment } from "@prisma/client";
+import type { EncoderAssignment, RemoteEncoder } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import type { ServerWebSocket } from "bun";
+import { prisma } from "../db/client.js";
+import { getJobEventService } from "./jobEvents.js";
+import { getSchedulerService } from "./scheduler.js";
 
 // =============================================================================
 // Types
@@ -99,7 +99,9 @@ class EncoderDispatchService {
       data: { status: "PENDING", sentAt: null },
     });
     if (resetAssigned.count > 0) {
-      console.log(`[EncoderDispatch] Recovery: Reset ${resetAssigned.count} ASSIGNED jobs to PENDING`);
+      console.log(
+        `[EncoderDispatch] Recovery: Reset ${resetAssigned.count} ASSIGNED jobs to PENDING`
+      );
     }
 
     // Recovery: Mark all encoders offline (they'll re-register)
@@ -181,7 +183,9 @@ class EncoderDispatchService {
     });
 
     for (const job of stuckJobs) {
-      console.warn(`[EncoderDispatch] Job ${job.jobId} stuck in ASSIGNED state, resetting to PENDING`);
+      console.warn(
+        `[EncoderDispatch] Job ${job.jobId} stuck in ASSIGNED state, resetting to PENDING`
+      );
 
       await prisma.encoderAssignment.update({
         where: { id: job.id },
@@ -233,10 +237,12 @@ class EncoderDispatchService {
     }
 
     // Decrement encoder job count
-    await prisma.remoteEncoder.update({
-      where: { encoderId: job.encoderId },
-      data: { currentJobs: { decrement: 1 } },
-    }).catch(() => {});
+    await prisma.remoteEncoder
+      .update({
+        where: { encoderId: job.encoderId },
+        data: { currentJobs: { decrement: 1 } },
+      })
+      .catch(() => {});
 
     // Check retry eligibility
     const shouldRetry = job.attempt < job.maxAttempts;
@@ -252,9 +258,10 @@ class EncoderDispatchService {
           lastProgressAt: null,
           progress: 0,
           attempt: shouldIncrementAttempt ? { increment: 1 } : undefined,
-          error: job.progress > 0
-            ? `Stalled at ${job.progress.toFixed(1)}%`
-            : "Never started - requeuing",
+          error:
+            job.progress > 0
+              ? `Stalled at ${job.progress.toFixed(1)}%`
+              : "Never started - requeuing",
         },
       });
       console.log(`[EncoderDispatch] Requeued stalled job ${job.jobId}`);
@@ -268,10 +275,12 @@ class EncoderDispatchService {
         },
       });
 
-      await prisma.remoteEncoder.update({
-        where: { encoderId: job.encoderId },
-        data: { totalJobsFailed: { increment: 1 } },
-      }).catch(() => {});
+      await prisma.remoteEncoder
+        .update({
+          where: { encoderId: job.encoderId },
+          data: { totalJobsFailed: { increment: 1 } },
+        })
+        .catch(() => {});
 
       this.onJobFailed?.(job.jobId, "Job stalled");
     }
@@ -292,15 +301,9 @@ class EncoderDispatchService {
     const availableEncoders = await prisma.remoteEncoder.findMany({
       where: {
         status: { in: ["IDLE", "ENCODING"] },
-        OR: [
-          { blockedUntil: null },
-          { blockedUntil: { lt: now } },
-        ],
+        OR: [{ blockedUntil: null }, { blockedUntil: { lt: now } }],
       },
-      orderBy: [
-        { currentJobs: "asc" },
-        { totalJobsCompleted: "desc" },
-      ],
+      orderBy: [{ currentJobs: "asc" }, { totalJobsCompleted: "desc" }],
     });
 
     for (const job of pendingJobs) {
@@ -376,7 +379,10 @@ class EncoderDispatchService {
     console.log(`[EncoderDispatch] New encoder connection`);
   }
 
-  async handleMessage(ws: ServerWebSocket<EncoderWebSocketData>, data: string | Buffer): Promise<void> {
+  async handleMessage(
+    ws: ServerWebSocket<EncoderWebSocketData>,
+    data: string | Buffer
+  ): Promise<void> {
     try {
       const dataStr = typeof data === "string" ? data : data.toString();
       const msg = JSON.parse(dataStr) as EncoderMessage;
@@ -417,8 +423,12 @@ class EncoderDispatchService {
   // Message Handlers
   // ==========================================================================
 
-  private async handleRegister(ws: ServerWebSocket<EncoderWebSocketData>, msg: RegisterMessage): Promise<void> {
-    const { encoderId, gpuDevice, maxConcurrent, currentJobs, hostname, version, capabilities } = msg;
+  private async handleRegister(
+    ws: ServerWebSocket<EncoderWebSocketData>,
+    msg: RegisterMessage
+  ): Promise<void> {
+    const { encoderId, gpuDevice, maxConcurrent, currentJobs, hostname, version, capabilities } =
+      msg;
 
     // Upsert encoder in database
     await prisma.remoteEncoder.upsert({
@@ -429,7 +439,9 @@ class EncoderDispatchService {
         currentJobs,
         hostname,
         version,
-        capabilities: capabilities ? (capabilities as unknown as Prisma.JsonObject) : Prisma.JsonNull,
+        capabilities: capabilities
+          ? (capabilities as unknown as Prisma.JsonObject)
+          : Prisma.JsonNull,
         status: currentJobs > 0 ? "ENCODING" : "IDLE",
         lastHeartbeat: new Date(),
         blockedUntil: null,
@@ -441,7 +453,9 @@ class EncoderDispatchService {
         currentJobs,
         hostname,
         version,
-        capabilities: capabilities ? (capabilities as unknown as Prisma.JsonObject) : Prisma.JsonNull,
+        capabilities: capabilities
+          ? (capabilities as unknown as Prisma.JsonObject)
+          : Prisma.JsonNull,
         status: currentJobs > 0 ? "ENCODING" : "IDLE",
         lastHeartbeat: new Date(),
       },
@@ -459,7 +473,9 @@ class EncoderDispatchService {
 
     this.send(ws, { type: "registered" });
 
-    console.log(`[EncoderDispatch] Encoder registered: ${encoderId} (${maxConcurrent} slots, GPU: ${gpuDevice})`);
+    console.log(
+      `[EncoderDispatch] Encoder registered: ${encoderId} (${maxConcurrent} slots, GPU: ${gpuDevice})`
+    );
     this.emitEncoderStatusUpdate(encoderId);
   }
 
@@ -605,7 +621,9 @@ class EncoderDispatchService {
       },
     });
 
-    console.log(`[EncoderDispatch] Job ${msg.jobId} completed (${msg.compressionRatio.toFixed(2)}x compression)`);
+    console.log(
+      `[EncoderDispatch] Job ${msg.jobId} completed (${msg.compressionRatio.toFixed(2)}x compression)`
+    );
 
     // Clean up caches
     this.cleanupJobCaches(msg.jobId);
@@ -678,7 +696,9 @@ class EncoderDispatchService {
         },
       });
 
-      console.log(`[EncoderDispatch] Job ${msg.jobId} failed, retrying (attempt ${assignment.attempt + 1}/${assignment.maxAttempts})`);
+      console.log(
+        `[EncoderDispatch] Job ${msg.jobId} failed, retrying (attempt ${assignment.attempt + 1}/${assignment.maxAttempts})`
+      );
     } else {
       await prisma.encoderAssignment.update({
         where: { jobId: msg.jobId },
@@ -708,10 +728,12 @@ class EncoderDispatchService {
     console.log(`[EncoderDispatch] Encoder disconnected: ${encoderId}`);
 
     // Mark encoder offline
-    await prisma.remoteEncoder.update({
-      where: { encoderId },
-      data: { status: "OFFLINE", currentJobs: 0 },
-    }).catch(() => {});
+    await prisma.remoteEncoder
+      .update({
+        where: { encoderId },
+        data: { status: "OFFLINE", currentJobs: 0 },
+      })
+      .catch(() => {});
 
     // Reset any ASSIGNED or ENCODING jobs for this encoder to PENDING
     const jobs = await prisma.encoderAssignment.findMany({
@@ -784,15 +806,9 @@ class EncoderDispatchService {
     const encoder = await prisma.remoteEncoder.findFirst({
       where: {
         status: { in: ["IDLE", "ENCODING"] },
-        OR: [
-          { blockedUntil: null },
-          { blockedUntil: { lt: new Date() } },
-        ],
+        OR: [{ blockedUntil: null }, { blockedUntil: { lt: new Date() } }],
       },
-      orderBy: [
-        { currentJobs: "asc" },
-        { totalJobsCompleted: "desc" },
-      ],
+      orderBy: [{ currentJobs: "asc" }, { totalJobsCompleted: "desc" }],
     });
 
     if (!encoder) {
@@ -847,10 +863,12 @@ class EncoderDispatchService {
     });
 
     if (assignment.status === "ENCODING" || assignment.status === "ASSIGNED") {
-      await prisma.remoteEncoder.update({
-        where: { encoderId: assignment.encoderId },
-        data: { currentJobs: { decrement: 1 } },
-      }).catch(() => {});
+      await prisma.remoteEncoder
+        .update({
+          where: { encoderId: assignment.encoderId },
+          data: { currentJobs: { decrement: 1 } },
+        })
+        .catch(() => {});
     }
 
     return true;

@@ -11,13 +11,9 @@
  * - Constant-time comparison for auth tags
  */
 
-import {
-  randomBytes,
-  createCipheriv,
-  createDecipheriv,
-} from "crypto";
-import { readFile, writeFile, chmod, access, stat, constants } from "fs/promises";
-import { join } from "path";
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { access, chmod, constants, readFile, stat, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
@@ -53,8 +49,8 @@ export class CryptoService {
         if (permissions !== REQUIRED_PERMISSIONS) {
           throw new Error(
             `Key file has insecure permissions (${permissions.toString(8)}). ` +
-            `Expected ${REQUIRED_PERMISSIONS.toString(8)}. ` +
-            `Fix with: chmod 600 ${this.keyPath}`
+              `Expected ${REQUIRED_PERMISSIONS.toString(8)}. ` +
+              `Fix with: chmod 600 ${this.keyPath}`
           );
         }
       }
@@ -121,20 +117,15 @@ export class CryptoService {
     const cipher = createCipheriv(ALGORITHM, this.masterKey, iv);
 
     // Encrypt
-    const encrypted = Buffer.concat([
-      cipher.update(plaintext, "utf8"),
-      cipher.final(),
-    ]);
+    const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
 
     // Get auth tag
     const authTag = cipher.getAuthTag();
 
     // Combine: iv:authTag:ciphertext
-    return [
-      iv.toString("base64"),
-      authTag.toString("base64"),
-      encrypted.toString("base64"),
-    ].join(":");
+    return [iv.toString("base64"), authTag.toString("base64"), encrypted.toString("base64")].join(
+      ":"
+    );
   }
 
   /**
@@ -181,10 +172,7 @@ export class CryptoService {
 
     // Decrypt
     try {
-      const decrypted = Buffer.concat([
-        decipher.update(encrypted),
-        decipher.final(),
-      ]);
+      const decrypted = Buffer.concat([decipher.update(encrypted), decipher.final()]);
 
       return decrypted.toString("utf8");
     } catch {

@@ -2,8 +2,7 @@
  * Tests for help command
  */
 
-
-import { describe, test, expect, mock, spyOn } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 
 describe("commands/help", () => {
   describe("happy path", () => {
@@ -19,7 +18,7 @@ describe("commands/help", () => {
       help();
 
       expect(consoleSpy).toHaveBeenCalled();
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       // Verify key sections are present
       expect(output).toContain("Annex Remote Encoder");
@@ -37,7 +36,7 @@ describe("commands/help", () => {
       const { help } = await import("../commands/help.js");
       help();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       // Verify all commands are documented
       expect(output).toContain("--help");
@@ -54,7 +53,7 @@ describe("commands/help", () => {
       const { help } = await import("../commands/help.js");
       help();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       expect(output).toContain("--server");
       expect(output).toContain("--force");
@@ -68,7 +67,7 @@ describe("commands/help", () => {
       const { help } = await import("../commands/help.js");
       help();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       expect(output).toContain("--install");
       expect(output).toContain("--user");
@@ -83,7 +82,7 @@ describe("commands/help", () => {
       const { help } = await import("../commands/help.js");
       help();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       expect(output).toContain("ANNEX_SERVER_URL");
       expect(output).toContain("ANNEX_ENCODER_ID");
@@ -101,7 +100,7 @@ describe("commands/help", () => {
       const { help } = await import("../commands/help.js");
       help();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       expect(output).toContain("annex-encoder --version");
       expect(output).toContain("annex-encoder --update");
@@ -116,7 +115,7 @@ describe("commands/help", () => {
       const { help } = await import("../commands/help.js");
       help();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       expect(output).toContain("github.com/WeHaveNoEyes/Annex");
 
@@ -150,12 +149,12 @@ describe("commands/help", () => {
       const { help } = await import("../commands/help.js");
       help();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       // Check for consistent section headers
       const sectionHeaders = output.match(/^[A-Z ]+:$/gm);
       expect(sectionHeaders).toBeTruthy();
-      expect(sectionHeaders!.length).toBeGreaterThan(0);
+      expect(sectionHeaders?.length).toBeGreaterThan(0);
 
       consoleSpy.mockRestore();
     });
@@ -166,7 +165,7 @@ describe("commands/help", () => {
       const { help } = await import("../commands/help.js");
       help();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       // Check for box drawing characters
       expect(output).toContain("╔");

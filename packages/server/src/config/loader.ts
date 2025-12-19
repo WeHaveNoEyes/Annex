@@ -1,7 +1,7 @@
-import { existsSync, readFileSync } from "fs";
-import { resolve } from "path";
-import { configSchema, type Config } from "./schema.js";
-import { ZodError } from "zod";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import type { ZodError } from "zod";
+import { type Config, configSchema } from "./schema.js";
 
 /**
  * Environment variable to config path mapping
@@ -184,7 +184,10 @@ function loadFromEnv(): Record<string, unknown> {
 /**
  * Deep merge two objects
  */
-function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+function deepMerge(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>
+): Record<string, unknown> {
   const result = { ...target };
 
   for (const key of Object.keys(source)) {
@@ -197,7 +200,10 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
       typeof target[key] === "object" &&
       !Array.isArray(target[key])
     ) {
-      result[key] = deepMerge(target[key] as Record<string, unknown>, source[key] as Record<string, unknown>);
+      result[key] = deepMerge(
+        target[key] as Record<string, unknown>,
+        source[key] as Record<string, unknown>
+      );
     } else {
       result[key] = source[key];
     }

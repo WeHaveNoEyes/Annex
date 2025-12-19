@@ -8,21 +8,21 @@
  * - Auto-reconnection with exponential backoff
  */
 
-import * as os from "os";
+import * as os from "node:os";
 import type {
-  EncoderState,
   EncoderMessage,
-  ServerMessage,
-  RegisterMessage,
+  EncoderState,
   HeartbeatMessage,
   JobAcceptedMessage,
+  JobAssignMessage,
   JobCompleteMessage,
   JobFailedMessage,
-  JobAssignMessage,
+  RegisterMessage,
+  ServerMessage,
 } from "@annex/shared";
-import { getConfig, type EncoderConfig } from "./config.js";
+import { type EncoderConfig, getConfig } from "./config.js";
 import { encode } from "./encoder.js";
-import { validateEnvironment, detectCapabilities } from "./validation.js";
+import { detectCapabilities, validateEnvironment } from "./validation.js";
 
 interface ActiveJob {
   jobId: string;
@@ -78,7 +78,9 @@ Server: ${this.config.serverUrl}
     // Validate environment before connecting
     const validation = await validateEnvironment();
     if (!validation.valid) {
-      console.error("\n❌ Encoder validation failed. Please fix the errors above before starting.\n");
+      console.error(
+        "\n❌ Encoder validation failed. Please fix the errors above before starting.\n"
+      );
       process.exit(1);
     }
 
@@ -197,7 +199,7 @@ Server: ${this.config.serverUrl}
    */
   private scheduleReconnect(): void {
     const delay = Math.min(
-      this.config.reconnectInterval * Math.pow(2, this.reconnectAttempts),
+      this.config.reconnectInterval * 2 ** this.reconnectAttempts,
       this.config.maxReconnectInterval
     );
 
@@ -295,9 +297,10 @@ Server: ${this.config.serverUrl}
         if (msg.reconnectDelay) {
           // Wait before reconnecting
           this.reconnectAttempts = 0;
+          const delay = msg.reconnectDelay || this.config.reconnectInterval;
           setTimeout(() => {
-            this.config = { ...this.config, reconnectInterval: msg.reconnectDelay! };
-          }, msg.reconnectDelay);
+            this.config = { ...this.config, reconnectInterval: delay };
+          }, delay);
         }
         break;
 
@@ -317,7 +320,9 @@ Server: ${this.config.serverUrl}
       // Throttle capacity warnings to avoid log spam
       const now = Date.now();
       if (now - lastCapacityWarning >= WARNING_THROTTLE_INTERVAL) {
-        console.warn(`[Client] At capacity (${this.activeJobs.size}/${this.config.maxConcurrent}), rejecting jobs`);
+        console.warn(
+          `[Client] At capacity (${this.activeJobs.size}/${this.config.maxConcurrent}), rejecting jobs`
+        );
         lastCapacityWarning = now;
       }
       this.send({
@@ -332,7 +337,9 @@ Server: ${this.config.serverUrl}
     console.log(`[Client] Received job ${jobId}`);
     console.log(`  Input: ${inputPath}`);
     console.log(`  Output: ${outputPath}`);
-    console.log(`  Config: videoEncoder="${encodingConfig.videoEncoder}" hwAccel="${encodingConfig.hwAccel}"`);
+    console.log(
+      `  Config: videoEncoder="${encodingConfig.videoEncoder}" hwAccel="${encodingConfig.hwAccel}"`
+    );
 
     // Accept the job
     const abortController = new AbortController();
@@ -379,7 +386,6 @@ Server: ${this.config.serverUrl}
       } as JobCompleteMessage);
 
       console.log(`[Client] Job ${jobId} completed`);
-
     } catch (error) {
       this.activeJobs.delete(jobId);
       this.updateState();

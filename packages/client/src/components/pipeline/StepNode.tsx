@@ -83,7 +83,9 @@ export default function StepNode({ data, selected }: StepNodeProps) {
             <span className="bg-white/20 px-2 py-0.5 rounded border border-white/30">Required</span>
           )}
           {data.retryable && (
-            <span className="bg-white/20 px-2 py-0.5 rounded border border-white/30">Retryable</span>
+            <span className="bg-white/20 px-2 py-0.5 rounded border border-white/30">
+              Retryable
+            </span>
           )}
           {data.continueOnError && (
             <span className="bg-white/20 px-2 py-0.5 rounded border border-white/30">

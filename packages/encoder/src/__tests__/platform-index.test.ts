@@ -10,8 +10,7 @@
  * Platform detection is simple enough to be verified through manual testing.
  */
 
-
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 describe("platform/index", () => {
   describe("module exports", () => {

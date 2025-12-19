@@ -4,30 +4,30 @@
  * Handles Plex OAuth flow, Emby auth, and session management
  */
 
+import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { router, publicProcedure, protectedProcedure, adminProcedure } from "../trpc.js";
 import {
-  createPlexPin,
-  checkPlexPin,
-  getPlexUser,
-  findOrCreateUserFromPlex,
   authenticateWithEmby,
-  findOrCreateUserFromEmby,
-  isEmbyConfigured,
+  checkPlexPin,
+  createPlexPin,
   createSession,
   deleteSession,
+  findOrCreateUserFromEmby,
+  findOrCreateUserFromPlex,
   getAllUsers,
-  setUserAdmin,
-  setUserEnabled,
+  getPlexUser,
   getUserById,
   getUserWithAccounts,
-  linkPlexAccount,
-  unlinkPlexAccount,
+  isEmbyConfigured,
   linkEmbyAccount,
+  linkPlexAccount,
+  setUserAdmin,
+  setUserEnabled,
   unlinkEmbyAccount,
+  unlinkPlexAccount,
   updateUserProfile,
 } from "../services/auth.js";
-import { TRPCError } from "@trpc/server";
+import { adminProcedure, protectedProcedure, publicProcedure, router } from "../trpc.js";
 
 export const authRouter = router({
   /**
@@ -276,7 +276,8 @@ export const authRouter = router({
     if (user?.plexAccount) {
       throw new TRPCError({
         code: "BAD_REQUEST",
-        message: "You already have a Plex account linked. Unlink it first to link a different account.",
+        message:
+          "You already have a Plex account linked. Unlink it first to link a different account.",
       });
     }
 
@@ -369,7 +370,8 @@ export const authRouter = router({
       if (user?.embyAccount) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "You already have an Emby account linked. Unlink it first to link a different account.",
+          message:
+            "You already have an Emby account linked. Unlink it first to link a different account.",
         });
       }
 
@@ -381,11 +383,7 @@ export const authRouter = router({
         );
 
         // Link the account
-        const embyAccount = await linkEmbyAccount(
-          ctx.user.id,
-          embyUser,
-          embyToken
-        );
+        const embyAccount = await linkEmbyAccount(ctx.user.id, embyUser, embyToken);
 
         return {
           success: true,
@@ -506,32 +504,30 @@ export const authRouter = router({
   /**
    * Get a specific user by ID (admin only)
    */
-  getUser: adminProcedure
-    .input(z.object({ userId: z.string() }))
-    .query(async ({ input }) => {
-      const user = await getUserById(input.userId);
+  getUser: adminProcedure.input(z.object({ userId: z.string() })).query(async ({ input }) => {
+    const user = await getUserById(input.userId);
 
-      if (!user) {
-        throw new TRPCError({
-          code: "NOT_FOUND",
-          message: "User not found",
-        });
-      }
+    if (!user) {
+      throw new TRPCError({
+        code: "NOT_FOUND",
+        message: "User not found",
+      });
+    }
 
-      return {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        avatar: user.avatar,
-        isAdmin: user.isAdmin,
-        enabled: user.enabled,
-        createdAt: user.createdAt,
-        plexAccount: user.plexAccount
-          ? {
-              plexId: user.plexAccount.plexId,
-              plexUsername: user.plexAccount.plexUsername,
-            }
-          : null,
-      };
-    }),
+    return {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      avatar: user.avatar,
+      isAdmin: user.isAdmin,
+      enabled: user.enabled,
+      createdAt: user.createdAt,
+      plexAccount: user.plexAccount
+        ? {
+            plexId: user.plexAccount.plexId,
+            plexUsername: user.plexAccount.plexUsername,
+          }
+        : null,
+    };
+  }),
 });

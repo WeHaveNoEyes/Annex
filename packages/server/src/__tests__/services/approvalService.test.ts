@@ -8,9 +8,9 @@
  * - Role-based filtering
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
-import { createMockPrisma } from "../setup.js";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { ApprovalStatus } from "@prisma/client";
+import { createMockPrisma } from "../setup.js";
 
 // Mock the db/client module
 const mockPrisma = createMockPrisma();
@@ -35,11 +35,11 @@ describe("ApprovalService - Integration Tests", () => {
     // Create test request
     const request = await mockPrisma.mediaRequest.create({
       data: {
-        type: 'MOVIE',
+        type: "MOVIE",
         tmdbId: 12345,
-        title: 'Test Movie',
+        title: "Test Movie",
         year: 2024,
-        status: 'PENDING',
+        status: "PENDING",
         targets: [],
       },
     });
@@ -48,8 +48,8 @@ describe("ApprovalService - Integration Tests", () => {
     // Create test template
     const template = await mockPrisma.pipelineTemplate.create({
       data: {
-        name: 'Test Template',
-        mediaType: 'MOVIE',
+        name: "Test Template",
+        mediaType: "MOVIE",
         isPublic: false,
         isDefault: false,
         steps: [],
@@ -61,7 +61,7 @@ describe("ApprovalService - Integration Tests", () => {
       data: {
         requestId: mockRequestId,
         templateId: template.id,
-        status: 'RUNNING',
+        status: "RUNNING",
         steps: [],
         context: {},
       },
@@ -211,7 +211,7 @@ describe("ApprovalService - Integration Tests", () => {
       });
 
       expect(activities.length).toBeGreaterThanOrEqual(1);
-      expect(activities.some(a => a.message.includes("Approval"))).toBe(true);
+      expect(activities.some((a) => a.message.includes("Approval"))).toBe(true);
     });
 
     it("throws error when approval not found", async () => {
@@ -400,7 +400,7 @@ describe("ApprovalService - Integration Tests", () => {
       });
 
       expect(activities.length).toBeGreaterThan(0);
-      expect(activities.some(a => a.message.includes("timeout"))).toBe(true);
+      expect(activities.some((a) => a.message.includes("timeout"))).toBe(true);
     });
   });
 

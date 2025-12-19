@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
-import { Modal } from "./Modal";
-import { Button } from "./Button";
+import { useEffect, useState } from "react";
 import { trpc } from "../../trpc";
+import { Button } from "./Button";
+import { Modal } from "./Modal";
 
 interface RequestDialogProps {
   isOpen: boolean;
@@ -70,7 +70,7 @@ function RequestDialog({
       createTvMutation.reset();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- createMovieMutation and createTvMutation are stable tRPC refs
-  }, [isOpen]);
+  }, [isOpen, createMovieMutation.reset, createTvMutation.reset]);
 
   // Auto-select default pipeline when pipelines load
   useEffect(() => {
@@ -126,28 +126,31 @@ function RequestDialog({
 
   // Compute required resolution from selected servers
   const resolutionRank: Record<string, number> = {
-    "RES_4K": 4,
-    "RES_2K": 3,
-    "RES_1080P": 2,
-    "RES_720P": 1,
-    "RES_480P": 0,
+    RES_4K: 4,
+    RES_2K: 3,
+    RES_1080P: 2,
+    RES_720P: 1,
+    RES_480P: 0,
   };
   const resolutionLabels: Record<string, string> = {
-    "RES_4K": "4K",
-    "RES_2K": "2K",
-    "RES_1080P": "1080p",
-    "RES_720P": "720p",
-    "RES_480P": "480p",
+    RES_4K: "4K",
+    RES_2K: "2K",
+    RES_1080P: "1080p",
+    RES_720P: "720p",
+    RES_480P: "480p",
   };
   const requiredResolution = targets?.servers
     .filter((s) => serverSelections.has(s.id))
     .map((s) => s.maxResolution)
-    .reduce((highest, res) => {
-      if (!res) return highest;
-      const currentRank = highest ? resolutionRank[highest] ?? 0 : 0;
-      const newRank = resolutionRank[res] ?? 0;
-      return newRank > currentRank ? res : highest;
-    }, null as string | null);
+    .reduce(
+      (highest, res) => {
+        if (!res) return highest;
+        const currentRank = highest ? (resolutionRank[highest] ?? 0) : 0;
+        const newRank = resolutionRank[res] ?? 0;
+        return newRank > currentRank ? res : highest;
+      },
+      null as string | null
+    );
 
   const posterUrl = posterPath
     ? posterPath.startsWith("http")
@@ -210,25 +213,27 @@ function RequestDialog({
                     </select>
 
                     {/* Pipeline Preview */}
-                    {selectedPipelineId && (() => {
-                      const selected = pipelines.find((p) => p.id === selectedPipelineId);
-                      return selected ? (
-                        <div className="p-3 bg-white/5 border border-white/10 rounded">
-                          <div className="text-xs text-white/70">
-                            {selected.description}
+                    {selectedPipelineId &&
+                      (() => {
+                        const selected = pipelines.find((p) => p.id === selectedPipelineId);
+                        return selected ? (
+                          <div className="p-3 bg-white/5 border border-white/10 rounded">
+                            <div className="text-xs text-white/70">{selected.description}</div>
+                            <div className="text-xs text-white/40 mt-1">
+                              {selected.stepCount} step{selected.stepCount !== 1 ? "s" : ""} in
+                              pipeline
+                            </div>
                           </div>
-                          <div className="text-xs text-white/40 mt-1">
-                            {selected.stepCount} step{selected.stepCount !== 1 ? "s" : ""} in pipeline
-                          </div>
-                        </div>
-                      ) : null;
-                    })()}
+                        ) : null;
+                      })()}
                   </div>
                 </div>
               )}
 
               <div>
-                <h3 className="text-sm font-medium text-white/70 mb-3">Select Destination Servers</h3>
+                <h3 className="text-sm font-medium text-white/70 mb-3">
+                  Select Destination Servers
+                </h3>
                 <div className="space-y-2">
                   {targets.servers.map((server) => {
                     const isSelected = serverSelections.has(server.id);
@@ -247,9 +252,10 @@ function RequestDialog({
                           className={`
                             w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0
                             transition-colors
-                            ${isSelected
-                              ? "bg-annex-500 border-annex-500 text-white"
-                              : "border-white/30"
+                            ${
+                              isSelected
+                                ? "bg-annex-500 border-annex-500 text-white"
+                                : "border-white/30"
                             }
                           `}
                         >
@@ -285,7 +291,11 @@ function RequestDialog({
                   </div>
                   {requiredResolution && (
                     <div className="text-xs text-annex-400">
-                      Will search for: <span className="font-medium">{resolutionLabels[requiredResolution] || requiredResolution}+</span> quality releases
+                      Will search for:{" "}
+                      <span className="font-medium">
+                        {resolutionLabels[requiredResolution] || requiredResolution}+
+                      </span>{" "}
+                      quality releases
                     </div>
                   )}
                 </div>
@@ -308,9 +318,11 @@ function RequestDialog({
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="flex items-center gap-2 text-xs text-white/50 hover:text-white/70 transition-colors"
           >
-            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
-              showAdvanced ? "bg-annex-500/20 border-annex-500/50" : "border-white/30"
-            }`}>
+            <div
+              className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                showAdvanced ? "bg-annex-500/20 border-annex-500/50" : "border-white/30"
+              }`}
+            >
               {showAdvanced && (
                 <svg className="w-3 h-3 text-annex-400" fill="currentColor" viewBox="0 0 20 20">
                   <path

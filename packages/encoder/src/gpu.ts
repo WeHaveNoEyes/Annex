@@ -4,8 +4,8 @@
  * Detects available GPU devices for VAAPI encoding.
  */
 
-import { spawn } from "child_process";
-import * as fs from "fs";
+import { spawn } from "node:child_process";
+import * as fs from "node:fs";
 
 export interface GpuInfo {
   devicePath: string;
@@ -50,16 +50,26 @@ export async function testGpuEncoding(devicePath: string): Promise<boolean> {
     // Quick test: encode a few frames of test pattern
     const ffmpeg = spawn("ffmpeg", [
       "-hide_banner",
-      "-loglevel", "error",
-      "-f", "lavfi",
-      "-i", "testsrc=duration=1:size=320x240:rate=30",
-      "-vaapi_device", devicePath,
-      "-vf", "format=nv12,hwupload",
-      "-c:v", "av1_vaapi",
-      "-rc_mode", "CQP",
-      "-qp", "30",
-      "-frames:v", "5",
-      "-f", "null",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc=duration=1:size=320x240:rate=30",
+      "-vaapi_device",
+      devicePath,
+      "-vf",
+      "format=nv12,hwupload",
+      "-c:v",
+      "av1_vaapi",
+      "-rc_mode",
+      "CQP",
+      "-qp",
+      "30",
+      "-frames:v",
+      "5",
+      "-f",
+      "null",
       "-",
     ]);
 

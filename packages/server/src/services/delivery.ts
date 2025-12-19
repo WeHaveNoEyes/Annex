@@ -5,16 +5,15 @@
  * Also triggers library scans on Plex/Emby after delivery.
  */
 
-import { spawn } from "child_process";
-import { promises as fs } from "fs";
-import { createHash } from "crypto";
-import { createReadStream } from "fs";
-import { dirname } from "path";
+import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
+import { createReadStream, promises as fs } from "node:fs";
+import { dirname } from "node:path";
+import type { StorageServer } from "@prisma/client";
 import SftpClient from "ssh2-sftp-client";
 import { prisma } from "../db/client.js";
-import { triggerPlexLibraryScan } from "./plex.js";
 import { getCryptoService } from "./crypto.js";
-import type { StorageServer } from "@prisma/client";
+import { triggerPlexLibraryScan } from "./plex.js";
 
 // Decrypt value, falling back to raw value for legacy unencrypted data
 function decryptIfPresent(value: string | null | undefined): string | null {
@@ -124,7 +123,9 @@ class DeliveryService {
       };
     }
 
-    console.log(`[Delivery] Transferring to ${server.name} via ${server.protocol}: ${localPath} -> ${remotePath}`);
+    console.log(
+      `[Delivery] Transferring to ${server.name} via ${server.protocol}: ${localPath} -> ${remotePath}`
+    );
 
     let result: DeliveryResult;
 
@@ -235,7 +236,7 @@ class DeliveryService {
 
       // Copy file with progress tracking
       const readStream = createReadStream(localPath);
-      const { createWriteStream } = await import("fs");
+      const { createWriteStream } = await import("node:fs");
       const writeStream = createWriteStream(remotePath);
 
       let bytesTransferred = 0;
@@ -466,11 +467,12 @@ class DeliveryService {
       const sshTarget = `${server.username}@${server.host}:${remotePath}`;
 
       const args = [
-        "-rltDvz",       // Like -a but without -pog (no perms, owner, group)
+        "-rltDvz", // Like -a but without -pog (no perms, owner, group)
         "--progress",
         "--partial",
-        "--mkpath",      // Create parent directories on destination
-        "-e", `ssh -p ${server.port} -o StrictHostKeyChecking=no`,
+        "--mkpath", // Create parent directories on destination
+        "-e",
+        `ssh -p ${server.port} -o StrictHostKeyChecking=no`,
         localPath,
         sshTarget,
       ];
@@ -593,16 +595,19 @@ class DeliveryService {
       // Build smbclient command
       // Format: smbclient //server/share -U username%password -c "mkdir path; put localfile remotefile"
       const sharePath = `//${server.host}/${remotePath.split("/")[1]}`;
-      const relativePath = "/" + remotePath.split("/").slice(2).join("/");
+      const relativePath = `/${remotePath.split("/").slice(2).join("/")}`;
 
       const mkdirCmd = `mkdir "${dirname(relativePath)}"`;
       const putCmd = `put "${localPath}" "${relativePath}"`;
 
       const args = [
         sharePath,
-        "-U", `${server.username}%${server.encryptedPassword || ""}`,
-        "-p", server.port.toString(),
-        "-c", `${mkdirCmd}; ${putCmd}`,
+        "-U",
+        `${server.username}%${server.encryptedPassword || ""}`,
+        "-p",
+        server.port.toString(),
+        "-c",
+        `${mkdirCmd}; ${putCmd}`,
       ];
 
       const process = spawn("smbclient", args);
@@ -750,7 +755,11 @@ class DeliveryService {
   /**
    * Trigger Plex library scan
    */
-  private async triggerPlexScan(server: StorageServer, deliveredPath: string, apiKey: string): Promise<void> {
+  private async triggerPlexScan(
+    server: StorageServer,
+    deliveredPath: string,
+    apiKey: string
+  ): Promise<void> {
     // Determine which library to scan based on path
     const isMovie = deliveredPath.includes(server.pathMovies);
     const libraryIds = isMovie ? server.mediaServerLibraryMovies : server.mediaServerLibraryTv;
@@ -763,11 +772,8 @@ class DeliveryService {
     // Trigger scan for each configured library
     for (const libraryId of libraryIds) {
       try {
-        await triggerPlexLibraryScan(
-          server.mediaServerUrl!,
-          apiKey,
-          libraryId
-        );
+        // biome-ignore lint/style/noNonNullAssertion: mediaServerUrl is checked in triggerLibraryScan before calling this function
+        await triggerPlexLibraryScan(server.mediaServerUrl!, apiKey, libraryId);
         console.log(`[Delivery] Triggered Plex scan for library ${libraryId}`);
       } catch (error) {
         console.error(`[Delivery] Failed to trigger Plex scan for library ${libraryId}:`, error);
@@ -778,7 +784,11 @@ class DeliveryService {
   /**
    * Trigger Emby library scan
    */
-  private async triggerEmbyScan(server: StorageServer, deliveredPath: string, apiKey: string): Promise<void> {
+  private async triggerEmbyScan(
+    server: StorageServer,
+    deliveredPath: string,
+    apiKey: string
+  ): Promise<void> {
     // Determine which library to scan based on path
     const isMovie = deliveredPath.includes(server.pathMovies);
     const libraryIds = isMovie ? server.mediaServerLibraryMovies : server.mediaServerLibraryTv;
@@ -791,7 +801,7 @@ class DeliveryService {
     // Trigger scan using Emby's library refresh endpoint
     for (const libraryId of libraryIds) {
       try {
-        const baseUrl = server.mediaServerUrl!.replace(/\/$/, "");
+        const baseUrl = server.mediaServerUrl?.replace(/\/$/, "");
         const response = await fetch(`${baseUrl}/Library/Refresh`, {
           method: "POST",
           headers: {
@@ -857,7 +867,7 @@ class DeliveryService {
         return this.deliver(serverId, localPath, remotePath, {
           ...options,
           onProgress: options.onProgress
-            ? (progress) => options.onProgress!(serverId, progress)
+            ? (progress) => options.onProgress?.(serverId, progress)
             : undefined,
         });
       })

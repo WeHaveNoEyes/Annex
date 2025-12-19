@@ -43,7 +43,8 @@ interface CacheEntry<T> {
 
 class SimpleCache {
   private cache = new Map<string, CacheEntry<unknown>>();
-  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
+  // biome-ignore lint/correctness/noUnusedPrivateClassMembers: Interval must be stored to keep it alive
+  private cleanupInterval: NodeJS.Timeout;
 
   constructor() {
     // Cleanup expired entries every 5 minutes
@@ -102,7 +103,7 @@ interface TraktImages {
   fanart?: string[];
   banner?: string[];
   thumb?: string[];
-  screenshot?: string[];  // Used for episode images
+  screenshot?: string[]; // Used for episode images
   logo?: string[];
   clearart?: string[];
 }
@@ -386,10 +387,7 @@ class TraktService {
     return Boolean(clientId);
   }
 
-  private async fetch<T>(
-    endpoint: string,
-    params?: Record<string, string>
-  ): Promise<T> {
+  private async fetch<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
     const clientId = await this.getClientId();
     if (!clientId) {
       throw new Error(
@@ -493,6 +491,7 @@ class TraktService {
       return results
         .filter((item) => item.movie.ids.tmdb != null)
         .map((item) => ({
+          // biome-ignore lint/style/noNonNullAssertion: tmdb is filtered for null in previous filter
           tmdbId: item.movie.ids.tmdb!,
           type: "movie" as const,
           title: item.movie.title,
@@ -507,6 +506,7 @@ class TraktService {
       return results
         .filter((item) => item.show.ids.tmdb != null)
         .map((item) => ({
+          // biome-ignore lint/style/noNonNullAssertion: tmdb is filtered for null in previous filter
           tmdbId: item.show.ids.tmdb!,
           type: "tv" as const,
           title: item.show.title,
@@ -535,6 +535,7 @@ class TraktService {
       return results
         .filter((item) => item.ids.tmdb != null)
         .map((item) => ({
+          // biome-ignore lint/style/noNonNullAssertion: tmdb is filtered for null in previous filter
           tmdbId: item.ids.tmdb!,
           type: "movie" as const,
           title: item.title,
@@ -547,6 +548,7 @@ class TraktService {
       return results
         .filter((item) => item.ids.tmdb != null)
         .map((item) => ({
+          // biome-ignore lint/style/noNonNullAssertion: tmdb is filtered for null in previous filter
           tmdbId: item.ids.tmdb!,
           type: "tv" as const,
           title: item.title,
@@ -573,6 +575,7 @@ class TraktService {
       return results
         .filter((item) => item.movie.ids.tmdb != null)
         .map((item) => ({
+          // biome-ignore lint/style/noNonNullAssertion: tmdb is filtered for null in previous filter
           tmdbId: item.movie.ids.tmdb!,
           type: "movie" as const,
           title: item.movie.title,
@@ -587,6 +590,7 @@ class TraktService {
       return results
         .filter((item) => item.show.ids.tmdb != null)
         .map((item) => ({
+          // biome-ignore lint/style/noNonNullAssertion: tmdb is filtered for null in previous filter
           tmdbId: item.show.ids.tmdb!,
           type: "tv" as const,
           title: item.show.title,
@@ -609,14 +613,14 @@ class TraktService {
     filters?: TraktFilterParams
   ): Promise<TraktDiscoverItem[]> {
     const params = this.buildParams(page, limit, filters);
-    const endpoint =
-      type === "movie" ? `/movies/played/${period}` : `/shows/played/${period}`;
+    const endpoint = type === "movie" ? `/movies/played/${period}` : `/shows/played/${period}`;
 
     if (type === "movie") {
       const results = await this.fetch<TraktPlayedMovie[]>(endpoint, params);
       return results
         .filter((item) => item.movie.ids.tmdb != null)
         .map((item) => ({
+          // biome-ignore lint/style/noNonNullAssertion: tmdb is filtered for null in previous filter
           tmdbId: item.movie.ids.tmdb!,
           type: "movie" as const,
           title: item.movie.title,
@@ -631,6 +635,7 @@ class TraktService {
       return results
         .filter((item) => item.show.ids.tmdb != null)
         .map((item) => ({
+          // biome-ignore lint/style/noNonNullAssertion: tmdb is filtered for null in previous filter
           tmdbId: item.show.ids.tmdb!,
           type: "tv" as const,
           title: item.show.title,
@@ -653,14 +658,14 @@ class TraktService {
     filters?: TraktFilterParams
   ): Promise<TraktDiscoverItem[]> {
     const params = this.buildParams(page, limit, filters);
-    const endpoint =
-      type === "movie" ? `/movies/watched/${period}` : `/shows/watched/${period}`;
+    const endpoint = type === "movie" ? `/movies/watched/${period}` : `/shows/watched/${period}`;
 
     if (type === "movie") {
       const results = await this.fetch<TraktWatchedMovie[]>(endpoint, params);
       return results
         .filter((item) => item.movie.ids.tmdb != null)
         .map((item) => ({
+          // biome-ignore lint/style/noNonNullAssertion: tmdb is filtered for null in previous filter
           tmdbId: item.movie.ids.tmdb!,
           type: "movie" as const,
           title: item.movie.title,
@@ -675,6 +680,7 @@ class TraktService {
       return results
         .filter((item) => item.show.ids.tmdb != null)
         .map((item) => ({
+          // biome-ignore lint/style/noNonNullAssertion: tmdb is filtered for null in previous filter
           tmdbId: item.show.ids.tmdb!,
           type: "tv" as const,
           title: item.show.title,
@@ -698,15 +704,14 @@ class TraktService {
   ): Promise<TraktDiscoverItem[]> {
     const params = this.buildParams(page, limit, filters);
     const endpoint =
-      type === "movie"
-        ? `/movies/collected/${period}`
-        : `/shows/collected/${period}`;
+      type === "movie" ? `/movies/collected/${period}` : `/shows/collected/${period}`;
 
     if (type === "movie") {
       const results = await this.fetch<TraktCollectedMovie[]>(endpoint, params);
       return results
         .filter((item) => item.movie.ids.tmdb != null)
         .map((item) => ({
+          // biome-ignore lint/style/noNonNullAssertion: tmdb is filtered for null in previous filter
           tmdbId: item.movie.ids.tmdb!,
           type: "movie" as const,
           title: item.movie.title,
@@ -721,6 +726,7 @@ class TraktService {
       return results
         .filter((item) => item.show.ids.tmdb != null)
         .map((item) => ({
+          // biome-ignore lint/style/noNonNullAssertion: tmdb is filtered for null in previous filter
           tmdbId: item.show.ids.tmdb!,
           type: "tv" as const,
           title: item.show.title,
@@ -894,10 +900,7 @@ class TraktService {
 
   // === Lookup Trakt ID from TMDB ID ===
 
-  private async getTraktSlugFromTmdbId(
-    tmdbId: number,
-    type: "movie" | "show"
-  ): Promise<string> {
+  private async getTraktSlugFromTmdbId(tmdbId: number, type: "movie" | "show"): Promise<string> {
     const cacheKey = `tmdb-to-trakt:${type}:${tmdbId}`;
     const cached = cache.get<string>(cacheKey);
     if (cached) {
@@ -981,10 +984,7 @@ class TraktService {
   // === TV Season Episodes ===
   // Note: GET /shows/{id}/seasons/{season} returns an array of episodes directly
 
-  async getSeasonEpisodes(
-    tmdbId: number,
-    seasonNumber: number
-  ): Promise<TraktEpisodeDetails[]> {
+  async getSeasonEpisodes(tmdbId: number, seasonNumber: number): Promise<TraktEpisodeDetails[]> {
     const cacheKey = `show:season:episodes:${tmdbId}:${seasonNumber}`;
     const cached = cache.get<TraktEpisodeDetails[]>(cacheKey);
     if (cached) {

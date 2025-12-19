@@ -38,7 +38,12 @@ const popcornSvg = `data:image/svg+xml,${encodeURIComponent(`
 </svg>
 `)}`;
 
-export function PopcornParticles({ trigger, originX, originY, spread = 60 }: PopcornParticlesProps) {
+export function PopcornParticles({
+  trigger,
+  originX,
+  originY,
+  spread = 60,
+}: PopcornParticlesProps) {
   const [particles, setParticles] = useState<Particle[]>([]);
   const animationRef = useRef<number>();
   const lastTimeRef = useRef<number>(0);

@@ -1,7 +1,7 @@
+import type { EmbyAccount, PlexAccount, User } from "@prisma/client";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { Config } from "./config/index.js";
-import type { User, PlexAccount, EmbyAccount } from "@prisma/client";
 
 // Re-export the type with linked accounts from auth service
 export type AuthUser = User & {

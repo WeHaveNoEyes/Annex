@@ -2,9 +2,8 @@
  * Tests for version command
  */
 
-
-import { describe, test, expect, spyOn } from "bun:test";
-import * as os from "os";
+import { describe, expect, spyOn, test } from "bun:test";
+import * as os from "node:os";
 
 describe("commands/version", () => {
   describe("happy path", () => {
@@ -20,7 +19,7 @@ describe("commands/version", () => {
       version();
 
       expect(consoleSpy).toHaveBeenCalled();
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       expect(output).toContain("Annex Encoder");
 
@@ -34,7 +33,7 @@ describe("commands/version", () => {
       const { VERSION } = await import("../version.js");
       version();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(output).toContain(VERSION);
 
       consoleSpy.mockRestore();
@@ -46,7 +45,7 @@ describe("commands/version", () => {
       const { version } = await import("../commands/version.js");
       version();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(output).toContain("Build Date:");
 
       consoleSpy.mockRestore();
@@ -58,7 +57,7 @@ describe("commands/version", () => {
       const { version } = await import("../commands/version.js");
       version();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(output).toContain("Build Time:");
 
       consoleSpy.mockRestore();
@@ -70,7 +69,7 @@ describe("commands/version", () => {
       const { version } = await import("../commands/version.js");
       version();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(output).toContain("Platform:");
       expect(output).toContain(os.platform());
       expect(output).toContain(os.arch());
@@ -84,7 +83,7 @@ describe("commands/version", () => {
       const { version } = await import("../commands/version.js");
       version();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(output).toContain("Platform:");
       expect(output).toMatch(/Platform:\s+\w+-\w+/);
 
@@ -97,15 +96,10 @@ describe("commands/version", () => {
       const { version } = await import("../commands/version.js");
       version();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       // Check that all required sections are present
-      const requiredSections = [
-        "Annex Encoder",
-        "Build Date:",
-        "Build Time:",
-        "Platform:",
-      ];
+      const requiredSections = ["Annex Encoder", "Build Date:", "Build Time:", "Platform:"];
 
       for (const section of requiredSections) {
         expect(output).toContain(section);
@@ -163,7 +157,7 @@ describe("commands/version", () => {
       const { version } = await import("../commands/version.js");
       version();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       // Check for consistent label format
       const labels = ["Build Date:", "Build Time:", "Platform:"];
@@ -182,11 +176,11 @@ describe("commands/version", () => {
       const { version } = await import("../commands/version.js");
       version();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       // Should include current platform
       const validPlatforms = ["linux", "darwin", "win32", "freebsd", "openbsd"];
-      const hasValidPlatform = validPlatforms.some(p => output.includes(p));
+      const hasValidPlatform = validPlatforms.some((p) => output.includes(p));
       expect(hasValidPlatform).toBe(true);
 
       consoleSpy.mockRestore();
@@ -198,11 +192,11 @@ describe("commands/version", () => {
       const { version } = await import("../commands/version.js");
       version();
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
 
       // Should include current architecture
       const validArchs = ["x64", "arm64", "arm", "ia32"];
-      const hasValidArch = validArchs.some(a => output.includes(a));
+      const hasValidArch = validArchs.some((a) => output.includes(a));
       expect(hasValidArch).toBe(true);
 
       consoleSpy.mockRestore();

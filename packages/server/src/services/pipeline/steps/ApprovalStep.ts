@@ -1,8 +1,8 @@
-import { BaseStep, type StepOutput } from "./BaseStep.js";
-import type { PipelineContext } from "../PipelineContext.js";
-import { StepType, ApprovalStatus } from "@prisma/client";
+import { ApprovalStatus, StepType } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { getApprovalService } from "../../approvals/ApprovalService.js";
+import type { PipelineContext } from "../PipelineContext.js";
+import { BaseStep, type StepOutput } from "./BaseStep.js";
 
 interface ApprovalStepConfig {
   reason?: string;
@@ -43,7 +43,10 @@ export class ApprovalStep extends BaseStep {
       throw new Error("requiredRole must be 'admin', 'moderator', or 'any'");
     }
 
-    if (cfg.timeoutHours !== undefined && (typeof cfg.timeoutHours !== "number" || cfg.timeoutHours <= 0)) {
+    if (
+      cfg.timeoutHours !== undefined &&
+      (typeof cfg.timeoutHours !== "number" || cfg.timeoutHours <= 0)
+    ) {
       throw new Error("timeoutHours must be a positive number");
     }
 
@@ -121,7 +124,14 @@ export class ApprovalStep extends BaseStep {
     const approval = await prisma.approvalQueue.findFirst({
       where: {
         requestId: context.requestId,
-        status: { in: [ApprovalStatus.PENDING, ApprovalStatus.APPROVED, ApprovalStatus.REJECTED, ApprovalStatus.TIMEOUT] },
+        status: {
+          in: [
+            ApprovalStatus.PENDING,
+            ApprovalStatus.APPROVED,
+            ApprovalStatus.REJECTED,
+            ApprovalStatus.TIMEOUT,
+          ],
+        },
       },
       orderBy: {
         createdAt: "desc",
@@ -161,12 +171,16 @@ export class ApprovalStep extends BaseStep {
 
     // If rejected or timed out, fail pipeline
     if (approval.status === ApprovalStatus.REJECTED || approval.status === ApprovalStatus.TIMEOUT) {
-      this.reportProgress(0, approval.status === ApprovalStatus.REJECTED ? "Rejected" : "Timed out");
+      this.reportProgress(
+        0,
+        approval.status === ApprovalStatus.REJECTED ? "Rejected" : "Timed out"
+      );
       return {
         success: false,
-        error: approval.status === ApprovalStatus.REJECTED
-          ? `Approval rejected${approval.comment ? `: ${approval.comment}` : ""}`
-          : `Approval timed out${approval.comment ? `: ${approval.comment}` : ""}`,
+        error:
+          approval.status === ApprovalStatus.REJECTED
+            ? `Approval rejected${approval.comment ? `: ${approval.comment}` : ""}`
+            : `Approval timed out${approval.comment ? `: ${approval.comment}` : ""}`,
         data: {
           approvalId: approval.id,
           status: approval.status,

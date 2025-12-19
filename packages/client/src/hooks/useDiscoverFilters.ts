@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { useSearchParams, useLocation } from "react-router-dom";
+import { useLocation, useSearchParams } from "react-router-dom";
 
 // Trakt genre slugs (same for movies and TV)
 export const TRAKT_GENRES = [
@@ -29,7 +29,7 @@ export const TRAKT_GENRES = [
   { slug: "western", name: "Western" },
 ] as const;
 
-export type TraktGenreSlug = typeof TRAKT_GENRES[number]["slug"];
+export type TraktGenreSlug = (typeof TRAKT_GENRES)[number]["slug"];
 
 // Discovery modes - Trakt list types
 export const DISCOVERY_MODES = [
@@ -41,7 +41,7 @@ export const DISCOVERY_MODES = [
   { value: "collected", label: "Most Downloaded", description: "Most collected" },
 ] as const;
 
-export type DiscoveryMode = typeof DISCOVERY_MODES[number]["value"];
+export type DiscoveryMode = (typeof DISCOVERY_MODES)[number]["value"];
 
 // Period options for played/watched/collected
 export const PERIOD_OPTIONS = [
@@ -52,7 +52,7 @@ export const PERIOD_OPTIONS = [
   { value: "all", label: "All Time" },
 ] as const;
 
-export type TraktPeriod = typeof PERIOD_OPTIONS[number]["value"];
+export type TraktPeriod = (typeof PERIOD_OPTIONS)[number]["value"];
 
 // Common languages for filtering (ISO 639-1 codes)
 export const LANGUAGES = [
@@ -82,7 +82,7 @@ export const LANGUAGES = [
   { code: "id", name: "Indonesian" },
 ] as const;
 
-export type LanguageCode = typeof LANGUAGES[number]["code"];
+export type LanguageCode = (typeof LANGUAGES)[number]["code"];
 
 // Common countries for filtering (ISO 3166-1 alpha-2 codes)
 export const COUNTRIES = [
@@ -103,7 +103,7 @@ export const COUNTRIES = [
   { code: "ru", name: "Russia" },
 ] as const;
 
-export type CountryCode = typeof COUNTRIES[number]["code"];
+export type CountryCode = (typeof COUNTRIES)[number]["code"];
 
 // Content certifications
 export const CERTIFICATIONS = {
@@ -182,7 +182,7 @@ export const RATING_SOURCES = [
   },
 ] as const;
 
-export type RatingSourceId = typeof RATING_SOURCES[number]["id"];
+export type RatingSourceId = (typeof RATING_SOURCES)[number]["id"];
 
 export interface RatingRange {
   min: number;
@@ -341,9 +341,7 @@ export function useDiscoverFilters() {
     // Discovery mode - defaults to "trending"
     const modeParam = searchParams.get("mode") as DiscoveryMode | null;
     const mode =
-      modeParam && DISCOVERY_MODES.some((m) => m.value === modeParam)
-        ? modeParam
-        : DEFAULT_MODE;
+      modeParam && DISCOVERY_MODES.some((m) => m.value === modeParam) ? modeParam : DEFAULT_MODE;
 
     // Period - defaults to "weekly"
     const periodParam = searchParams.get("period") as TraktPeriod | null;
@@ -366,9 +364,7 @@ export function useDiscoverFilters() {
       languages: languagesParam ? languagesParam.split(",").filter(Boolean) : [],
       countries: countriesParam ? countriesParam.split(",").filter(Boolean) : [],
       runtimes,
-      certifications: certificationsParam
-        ? certificationsParam.split(",").filter(Boolean)
-        : [],
+      certifications: certificationsParam ? certificationsParam.split(",").filter(Boolean) : [],
       ratingFilters,
     };
   }, [searchParams]);
@@ -497,25 +493,13 @@ export function useDiscoverFilters() {
     [setFilters]
   );
 
-  const setPeriod = useCallback(
-    (period: TraktPeriod) => setFilters({ period }),
-    [setFilters]
-  );
+  const setPeriod = useCallback((period: TraktPeriod) => setFilters({ period }), [setFilters]);
 
-  const setQuery = useCallback(
-    (query: string) => setFilters({ query }),
-    [setFilters]
-  );
+  const setQuery = useCallback((query: string) => setFilters({ query }), [setFilters]);
 
-  const setYears = useCallback(
-    (years: string | null) => setFilters({ years }),
-    [setFilters]
-  );
+  const setYears = useCallback((years: string | null) => setFilters({ years }), [setFilters]);
 
-  const setGenres = useCallback(
-    (genres: string[]) => setFilters({ genres }),
-    [setFilters]
-  );
+  const setGenres = useCallback((genres: string[]) => setFilters({ genres }), [setFilters]);
 
   const toggleGenre = useCallback(
     (genreSlug: string) => {
@@ -646,12 +630,8 @@ export function useDiscoverFilters() {
     if (isInitialMount.current) {
       isInitialMount.current = false;
 
-      const navType =
-        performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
-      if (
-        navType?.type === "back_forward" ||
-        window.history.state?.idx !== undefined
-      ) {
+      const navType = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
+      if (navType?.type === "back_forward" || window.history.state?.idx !== undefined) {
         const restoreScroll = () => {
           if (hasRestoredScroll.current) return;
 

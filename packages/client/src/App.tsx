@@ -1,19 +1,19 @@
-import { useState, useRef, useEffect } from "react";
-import { Routes, Route, useLocation, Navigate, Link } from "react-router-dom";
-import DiscoverPage from "./pages/Discover";
-import MediaDetailPage from "./pages/MediaDetail";
-import RequestsPage from "./pages/Requests";
-import LibraryPage from "./pages/Library";
-import SettingsPage from "./pages/Settings";
-import PreferencesPage from "./pages/Preferences";
-import LoginPage from "./pages/Login";
-import SetupPage from "./pages/Setup";
-import ApprovalsPage from "./pages/Approvals";
-import { NavButton } from "./components/ui/NavButton";
-import { AuthProvider } from "./components/AuthProvider";
-import { useAuthStore } from "./hooks/useAuth";
-import { trpc } from "./trpc";
 import type { ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Link, Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { AuthProvider } from "./components/AuthProvider";
+import { NavButton } from "./components/ui/NavButton";
+import { useAuthStore } from "./hooks/useAuth";
+import ApprovalsPage from "./pages/Approvals";
+import DiscoverPage from "./pages/Discover";
+import LibraryPage from "./pages/Library";
+import LoginPage from "./pages/Login";
+import MediaDetailPage from "./pages/MediaDetail";
+import PreferencesPage from "./pages/Preferences";
+import RequestsPage from "./pages/Requests";
+import SettingsPage from "./pages/Settings";
+import SetupPage from "./pages/Setup";
+import { trpc } from "./trpc";
 
 // Setup guard - redirects to /setup if app is not configured
 function SetupGuard({ children }: { children: ReactNode }) {
@@ -90,11 +90,7 @@ function UserMenu() {
         className="flex items-center gap-2 hover:bg-white/5 rounded px-2 py-1 transition-colors"
       >
         {user.avatar ? (
-          <img
-            src={user.avatar}
-            alt={user.username}
-            className="w-8 h-8 rounded-full"
-          />
+          <img src={user.avatar} alt={user.username} className="w-8 h-8 rounded-full" />
         ) : (
           <div className="w-8 h-8 rounded-full bg-annex-500/20 flex items-center justify-center text-annex-400 text-sm font-medium">
             {user.username.charAt(0).toUpperCase()}
@@ -144,10 +140,10 @@ function UserMenu() {
   );
 }
 
-
 function AppLayout() {
   const location = useLocation();
-  const isMediaDetailPage = location.pathname.startsWith("/movie/") || location.pathname.startsWith("/tv/");
+  const isMediaDetailPage =
+    location.pathname.startsWith("/movie/") || location.pathname.startsWith("/tv/");
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -157,10 +153,14 @@ function AppLayout() {
           <div className="flex items-center gap-8">
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <span>🍿</span>
-              <span className="bg-gradient-to-r from-annex-500 to-gold-500 bg-clip-text text-transparent">Annex</span>
+              <span className="bg-gradient-to-r from-annex-500 to-gold-500 bg-clip-text text-transparent">
+                Annex
+              </span>
             </h1>
             <nav className="flex gap-2">
-              <NavButton to="/" end>Discover</NavButton>
+              <NavButton to="/" end>
+                Discover
+              </NavButton>
               <NavButton to="/requests">Requests</NavButton>
               <NavButton to="/library">Library</NavButton>
               <NavButton to="/approvals">Approvals</NavButton>
@@ -190,7 +190,8 @@ function AppLayout() {
       {/* Footer */}
       <footer className="bg-black border-t border-surface-900 py-4">
         <div className="max-w-7xl mx-auto px-4 text-center text-surface-500 text-sm">
-          <span className="text-annex-500">Annex</span> v0.1.0 — Media Acquisition & Delivery Platform
+          <span className="text-annex-500">Annex</span> v0.1.0 — Media Acquisition & Delivery
+          Platform
         </div>
       </footer>
     </div>

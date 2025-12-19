@@ -1,9 +1,9 @@
-import { z } from "zod";
-import { router, publicProcedure } from "../trpc.js";
-import { prisma } from "../db/client.js";
-import { getTraktService, type TraktEpisodeDetails } from "../services/trakt.js";
-import { getJobQueueService } from "../services/jobQueue.js";
 import type { TrendingResult } from "@annex/shared";
+import { z } from "zod";
+import { prisma } from "../db/client.js";
+import { getJobQueueService } from "../services/jobQueue.js";
+import { getTraktService, type TraktEpisodeDetails } from "../services/trakt.js";
+import { publicProcedure, router } from "../trpc.js";
 
 const ITEMS_PER_PAGE = 20;
 
@@ -54,10 +54,13 @@ interface TraktImageArray {
   fanart?: string[];
   banner?: string[];
   thumb?: string[];
-  screenshot?: string[];  // Used for episode images
+  screenshot?: string[]; // Used for episode images
 }
 
-function extractTraktImage(images: TraktImageArray | undefined, type: "poster" | "fanart" | "banner" | "thumb" | "screenshot"): string | null {
+function extractTraktImage(
+  images: TraktImageArray | undefined,
+  type: "poster" | "fanart" | "banner" | "thumb" | "screenshot"
+): string | null {
   const url = images?.[type]?.[0];
   if (!url) return null;
   return url.startsWith("http") ? url : `https://${url}`;
@@ -144,9 +147,7 @@ function extractTrailerKey(
   if (youtubeVideos.length === 0) return null;
 
   // Prefer official trailers first
-  const officialTrailer = youtubeVideos.find(
-    (v) => v.type === "Trailer" && v.official === true
-  );
+  const officialTrailer = youtubeVideos.find((v) => v.type === "Trailer" && v.official === true);
   if (officialTrailer) return officialTrailer.key;
 
   // Then any trailer
@@ -164,29 +165,27 @@ function extractTrailerKey(
 // Result Transformation Helper
 // =============================================================================
 
-function mediaItemToTrendingResult(
-  item: {
-    tmdbId: number;
-    type: "MOVIE" | "TV";
-    title: string;
-    posterPath: string | null;
-    backdropPath: string | null;
-    year: number | null;
-    overview: string | null;
-    videos?: unknown;
-    ratings: {
-      tmdbScore: number | null;
-      imdbScore: number | null;
-      rtCriticScore: number | null;
-      rtAudienceScore: number | null;
-      metacriticScore: number | null;
-      traktScore: number | null;
-      letterboxdScore: number | null;
-      mdblistScore: number | null;
-      tmdbPopularity: number | null;
-    } | null;
-  }
-): TrendingResult {
+function mediaItemToTrendingResult(item: {
+  tmdbId: number;
+  type: "MOVIE" | "TV";
+  title: string;
+  posterPath: string | null;
+  backdropPath: string | null;
+  year: number | null;
+  overview: string | null;
+  videos?: unknown;
+  ratings: {
+    tmdbScore: number | null;
+    imdbScore: number | null;
+    rtCriticScore: number | null;
+    rtAudienceScore: number | null;
+    metacriticScore: number | null;
+    traktScore: number | null;
+    letterboxdScore: number | null;
+    mdblistScore: number | null;
+    tmdbPopularity: number | null;
+  } | null;
+}): TrendingResult {
   const trailerKey = extractTrailerKey(
     item.videos as Array<{ key: string; site: string; type: string; official?: boolean }> | null
   );
@@ -200,16 +199,18 @@ function mediaItemToTrendingResult(
     year: item.year ?? 0,
     voteAverage: item.ratings?.tmdbScore ?? 0,
     overview: item.overview ?? "",
-    ratings: item.ratings ? {
-      tmdbScore: item.ratings.tmdbScore,
-      imdbScore: item.ratings.imdbScore,
-      rtCriticScore: item.ratings.rtCriticScore,
-      rtAudienceScore: item.ratings.rtAudienceScore,
-      metacriticScore: item.ratings.metacriticScore,
-      traktScore: item.ratings.traktScore,
-      letterboxdScore: item.ratings.letterboxdScore,
-      mdblistScore: item.ratings.mdblistScore,
-    } : undefined,
+    ratings: item.ratings
+      ? {
+          tmdbScore: item.ratings.tmdbScore,
+          imdbScore: item.ratings.imdbScore,
+          rtCriticScore: item.ratings.rtCriticScore,
+          rtAudienceScore: item.ratings.rtAudienceScore,
+          metacriticScore: item.ratings.metacriticScore,
+          traktScore: item.ratings.traktScore,
+          letterboxdScore: item.ratings.letterboxdScore,
+          mdblistScore: item.ratings.mdblistScore,
+        }
+      : undefined,
     trailerKey,
   };
 }
@@ -317,8 +318,8 @@ export const discoveryRouter = router({
         };
 
         // Fetch from Trakt - use search endpoint if query provided, otherwise use list endpoint
-        let traktItems;
-        if (input.query && input.query.trim()) {
+        let traktItems: Awaited<ReturnType<typeof trakt.search>>;
+        if (input.query?.trim()) {
           traktItems = await trakt.search(
             input.query,
             input.type,
@@ -349,9 +350,7 @@ export const discoveryRouter = router({
         }
 
         // Batch fetch from our database to enrich with ratings and trailer info
-        const mediaItemIds = traktItems.map(
-          (item) => `tmdb-${item.type}-${item.tmdbId}`
-        );
+        const mediaItemIds = traktItems.map((item) => `tmdb-${item.type}-${item.tmdbId}`);
 
         const localItems = await prisma.mediaItem.findMany({
           where: { id: { in: mediaItemIds } },
@@ -416,14 +415,16 @@ export const discoveryRouter = router({
         if (itemsToHydrate.length > 0) {
           // Fire and forget - queue job in background
           const jobQueue = getJobQueueService();
-          jobQueue.addJobIfNotExists(
-            "mdblist:hydrate-discover",
-            { items: itemsToHydrate },
-            `mdblist:hydrate-discover:${input.type}:${input.listType}:${input.page}`,
-            { priority: 1, maxAttempts: 2 }
-          ).catch((err) => {
-            console.error("[Discover] Failed to queue hydration job:", err);
-          });
+          jobQueue
+            .addJobIfNotExists(
+              "mdblist:hydrate-discover",
+              { items: itemsToHydrate },
+              `mdblist:hydrate-discover:${input.type}:${input.listType}:${input.page}`,
+              { priority: 1, maxAttempts: 2 }
+            )
+            .catch((err) => {
+              console.error("[Discover] Failed to queue hydration job:", err);
+            });
         }
 
         return {
@@ -431,7 +432,9 @@ export const discoveryRouter = router({
           results,
           page: input.page,
           totalPages: hasMore ? input.page + 1 : input.page,
-          totalResults: hasMore ? (input.page + 1) * ITEMS_PER_PAGE : input.page * traktItems.length,
+          totalResults: hasMore
+            ? (input.page + 1) * ITEMS_PER_PAGE
+            : input.page * traktItems.length,
           message: null,
         };
       } catch (error) {
@@ -466,7 +469,12 @@ export const discoveryRouter = router({
       });
 
       if (item?.videos && Array.isArray(item.videos) && item.videos.length > 0) {
-        const videos = item.videos as Array<{ key: string; name?: string; site: string; type: string }>;
+        const videos = item.videos as Array<{
+          key: string;
+          name?: string;
+          site: string;
+          type: string;
+        }>;
         const trailer = videos.find((v) => v.type === "Trailer" || v.type === "Teaser");
         if (trailer) {
           return {
@@ -506,14 +514,16 @@ export const discoveryRouter = router({
 
       const now = Date.now();
       const traktAge = cached?.traktUpdatedAt ? now - cached.traktUpdatedAt.getTime() : Infinity;
-      const ratingsAge = cached?.mdblistUpdatedAt ? now - cached.mdblistUpdatedAt.getTime() : Infinity;
+      const ratingsAge = cached?.mdblistUpdatedAt
+        ? now - cached.mdblistUpdatedAt.getTime()
+        : Infinity;
 
       // Helper to return cached data in the expected format
       const formatResponse = (item: typeof cached) => {
         if (!item) return null;
 
         const videos = item.videos as Array<{ key: string; site: string; type: string }> | null;
-        const trailer = videos?.find(v => v.type === "Trailer" && v.site === "YouTube");
+        const trailer = videos?.find((v) => v.type === "Trailer" && v.site === "YouTube");
 
         return {
           tmdbId: item.tmdbId,
@@ -538,16 +548,18 @@ export const discoveryRouter = router({
           cast: item.cast,
           crew: item.crew,
           director: item.director,
-          ratings: item.ratings ? {
-            tmdbScore: item.ratings.tmdbScore,
-            imdbScore: item.ratings.imdbScore,
-            rtCriticScore: item.ratings.rtCriticScore,
-            rtAudienceScore: item.ratings.rtAudienceScore,
-            metacriticScore: item.ratings.metacriticScore,
-            traktScore: item.ratings.traktScore,
-            letterboxdScore: item.ratings.letterboxdScore,
-            mdblistScore: item.ratings.mdblistScore,
-          } : null,
+          ratings: item.ratings
+            ? {
+                tmdbScore: item.ratings.tmdbScore,
+                imdbScore: item.ratings.imdbScore,
+                rtCriticScore: item.ratings.rtCriticScore,
+                rtAudienceScore: item.ratings.rtAudienceScore,
+                metacriticScore: item.ratings.metacriticScore,
+                traktScore: item.ratings.traktScore,
+                letterboxdScore: item.ratings.letterboxdScore,
+                mdblistScore: item.ratings.mdblistScore,
+              }
+            : null,
           traktUpdatedAt: item.traktUpdatedAt,
           mdblistUpdatedAt: item.mdblistUpdatedAt,
         };
@@ -583,7 +595,13 @@ export const discoveryRouter = router({
                   posterPath: extractTraktImage(traktData.images, "poster") || cached.posterPath,
                   backdropPath: extractTraktBackdrop(traktData.images) || cached.backdropPath,
                   videos: traktData.trailer
-                    ? [{ key: trakt.extractTrailerKey(traktData.trailer) || "", type: "Trailer", site: "YouTube" }]
+                    ? [
+                        {
+                          key: trakt.extractTrailerKey(traktData.trailer) || "",
+                          type: "Trailer",
+                          site: "YouTube",
+                        },
+                      ]
                     : undefined,
                   traktUpdatedAt: new Date(),
                 },
@@ -639,7 +657,9 @@ export const discoveryRouter = router({
         traktId: traktData.ids.trakt,
         posterPath: extractTraktImage(traktData.images, "poster"),
         backdropPath: extractTraktBackdrop(traktData.images),
-        videos: traktData.trailer ? [{ key: trakt.extractTrailerKey(traktData.trailer), type: "Trailer", site: "YouTube" }] : [],
+        videos: traktData.trailer
+          ? [{ key: trakt.extractTrailerKey(traktData.trailer), type: "Trailer", site: "YouTube" }]
+          : [],
         traktUpdatedAt: new Date(),
       };
 
@@ -697,14 +717,16 @@ export const discoveryRouter = router({
 
       const now = Date.now();
       const traktAge = cached?.traktUpdatedAt ? now - cached.traktUpdatedAt.getTime() : Infinity;
-      const ratingsAge = cached?.mdblistUpdatedAt ? now - cached.mdblistUpdatedAt.getTime() : Infinity;
+      const ratingsAge = cached?.mdblistUpdatedAt
+        ? now - cached.mdblistUpdatedAt.getTime()
+        : Infinity;
 
       // Helper to return cached data in the expected format
       const formatResponse = (item: typeof cached) => {
         if (!item) return null;
 
         const videos = item.videos as Array<{ key: string; site: string; type: string }> | null;
-        const trailer = videos?.find(v => v.type === "Trailer" && v.site === "YouTube");
+        const trailer = videos?.find((v) => v.type === "Trailer" && v.site === "YouTube");
 
         return {
           tmdbId: item.tmdbId,
@@ -732,32 +754,35 @@ export const discoveryRouter = router({
           createdBy: item.createdBy,
           numberOfSeasons: item.numberOfSeasons,
           numberOfEpisodes: item.numberOfEpisodes,
-          seasons: item.seasons?.map(s => ({
-            seasonNumber: s.seasonNumber,
-            name: s.name,
-            overview: s.overview,
-            posterPath: s.posterPath,
-            episodeCount: s.episodeCount,
-            airDate: s.airDate,
-            episodes: s.episodes?.map(e => ({
-              episodeNumber: e.episodeNumber,
-              name: e.name,
-              overview: e.overview,
-              stillPath: e.stillPath,
-              airDate: e.airDate,
-              runtime: e.runtime,
-            })),
-          })) || [],
-          ratings: item.ratings ? {
-            tmdbScore: item.ratings.tmdbScore,
-            imdbScore: item.ratings.imdbScore,
-            rtCriticScore: item.ratings.rtCriticScore,
-            rtAudienceScore: item.ratings.rtAudienceScore,
-            metacriticScore: item.ratings.metacriticScore,
-            traktScore: item.ratings.traktScore,
-            letterboxdScore: item.ratings.letterboxdScore,
-            mdblistScore: item.ratings.mdblistScore,
-          } : null,
+          seasons:
+            item.seasons?.map((s) => ({
+              seasonNumber: s.seasonNumber,
+              name: s.name,
+              overview: s.overview,
+              posterPath: s.posterPath,
+              episodeCount: s.episodeCount,
+              airDate: s.airDate,
+              episodes: s.episodes?.map((e) => ({
+                episodeNumber: e.episodeNumber,
+                name: e.name,
+                overview: e.overview,
+                stillPath: e.stillPath,
+                airDate: e.airDate,
+                runtime: e.runtime,
+              })),
+            })) || [],
+          ratings: item.ratings
+            ? {
+                tmdbScore: item.ratings.tmdbScore,
+                imdbScore: item.ratings.imdbScore,
+                rtCriticScore: item.ratings.rtCriticScore,
+                rtAudienceScore: item.ratings.rtAudienceScore,
+                metacriticScore: item.ratings.metacriticScore,
+                traktScore: item.ratings.traktScore,
+                letterboxdScore: item.ratings.letterboxdScore,
+                mdblistScore: item.ratings.mdblistScore,
+              }
+            : null,
           traktUpdatedAt: item.traktUpdatedAt,
           mdblistUpdatedAt: item.mdblistUpdatedAt,
         };
@@ -777,7 +802,7 @@ export const discoveryRouter = router({
 
               // Fetch seasons
               const traktSeasons = await trakt.getSeasons(input.tmdbId);
-              const seasonCount = traktSeasons.filter(s => s.number > 0).length;
+              const seasonCount = traktSeasons.filter((s) => s.number > 0).length;
 
               await prisma.mediaItem.update({
                 where: { id },
@@ -801,7 +826,13 @@ export const discoveryRouter = router({
                   posterPath: extractTraktImage(traktData.images, "poster") || cached.posterPath,
                   backdropPath: extractTraktBackdrop(traktData.images) || cached.backdropPath,
                   videos: traktData.trailer
-                    ? [{ key: trakt.extractTrailerKey(traktData.trailer) || "", type: "Trailer", site: "YouTube" }]
+                    ? [
+                        {
+                          key: trakt.extractTrailerKey(traktData.trailer) || "",
+                          type: "Trailer",
+                          site: "YouTube",
+                        },
+                      ]
                     : undefined,
                   traktUpdatedAt: new Date(),
                 },
@@ -867,7 +898,10 @@ export const discoveryRouter = router({
                     }
                   }
                 } catch (epError) {
-                  console.error(`[JIT] Background: Failed to fetch episodes for season ${season.number}:`, epError);
+                  console.error(
+                    `[JIT] Background: Failed to fetch episodes for season ${season.number}:`,
+                    epError
+                  );
                 }
               }
             }
@@ -923,7 +957,9 @@ export const discoveryRouter = router({
         networks: traktData.network ? [{ name: traktData.network }] : [],
         posterPath: extractTraktImage(traktData.images, "poster"),
         backdropPath: extractTraktBackdrop(traktData.images),
-        videos: traktData.trailer ? [{ key: trakt.extractTrailerKey(traktData.trailer), type: "Trailer", site: "YouTube" }] : [],
+        videos: traktData.trailer
+          ? [{ key: trakt.extractTrailerKey(traktData.trailer), type: "Trailer", site: "YouTube" }]
+          : [],
         traktUpdatedAt: new Date(),
       };
 
@@ -936,7 +972,7 @@ export const discoveryRouter = router({
       // Fetch and save seasons from Trakt
       try {
         const traktSeasons = await trakt.getSeasons(input.tmdbId);
-        const seasonCount = traktSeasons.filter(s => s.number > 0).length; // Exclude specials (season 0)
+        const seasonCount = traktSeasons.filter((s) => s.number > 0).length; // Exclude specials (season 0)
 
         // Update numberOfSeasons
         await prisma.mediaItem.update({
@@ -1039,10 +1075,12 @@ export const discoveryRouter = router({
    * Fetches season with episodes from Trakt API with database caching
    */
   traktSeason: publicProcedure
-    .input(z.object({
-      tmdbId: z.number(),
-      seasonNumber: z.number(),
-    }))
+    .input(
+      z.object({
+        tmdbId: z.number(),
+        seasonNumber: z.number(),
+      })
+    )
     .query(async ({ input }) => {
       const trakt = getTraktService();
 
@@ -1074,14 +1112,23 @@ export const discoveryRouter = router({
           posterPath: season.posterPath,
           episodeCount: season.episodeCount,
           airDate: season.airDate,
-          episodes: season.episodes.map((e: { episodeNumber: number; name: string; overview: string | null; stillPath: string | null; airDate: string | null; runtime: number | null }) => ({
-            episodeNumber: e.episodeNumber,
-            name: e.name,
-            overview: e.overview,
-            stillPath: e.stillPath,
-            airDate: e.airDate,
-            runtime: e.runtime,
-          })),
+          episodes: season.episodes.map(
+            (e: {
+              episodeNumber: number;
+              name: string;
+              overview: string | null;
+              stillPath: string | null;
+              airDate: string | null;
+              runtime: number | null;
+            }) => ({
+              episodeNumber: e.episodeNumber,
+              name: e.name,
+              overview: e.overview,
+              stillPath: e.stillPath,
+              airDate: e.airDate,
+              runtime: e.runtime,
+            })
+          ),
         };
       };
 

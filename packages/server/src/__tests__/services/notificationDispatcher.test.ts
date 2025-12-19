@@ -9,10 +9,13 @@
  * - Error handling and logging
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { MediaType, NotificationProvider } from "@prisma/client";
+import type {
+  NotificationPayload,
+  NotificationResult,
+} from "../../services/notifications/types.js";
 import { createMockPrisma } from "../setup.js";
-import { NotificationProvider, MediaType } from "@prisma/client";
-import type { NotificationPayload, NotificationResult } from "../../services/notifications/types.js";
 
 // Mock the db/client module
 const mockPrisma = createMockPrisma();
@@ -21,18 +24,24 @@ mock.module("../../db/client.js", () => ({
 }));
 
 // Import services AFTER mocking
-import { NotificationDispatcher, type BaseNotificationProvider } from "../../services/notifications/NotificationDispatcher.js";
+import {
+  type BaseNotificationProvider,
+  NotificationDispatcher,
+} from "../../services/notifications/NotificationDispatcher.js";
 
 // Mock notification provider
 class MockProvider implements BaseNotificationProvider {
   static calls: Array<{ payload: NotificationPayload; config: Record<string, unknown> }> = [];
   static shouldFail = false;
   static resetCalls() {
-    this.calls = [];
-    this.shouldFail = false;
+    MockProvider.calls = [];
+    MockProvider.shouldFail = false;
   }
 
-  async send(payload: NotificationPayload, config: Record<string, unknown>): Promise<NotificationResult> {
+  async send(
+    payload: NotificationPayload,
+    config: Record<string, unknown>
+  ): Promise<NotificationResult> {
     MockProvider.calls.push({ payload, config });
 
     if (MockProvider.shouldFail) {
@@ -56,7 +65,7 @@ class MockProvider implements BaseNotificationProvider {
 describe("NotificationDispatcher - Integration Tests", () => {
   let dispatcher: NotificationDispatcher;
   let mockRequestId: string;
-  let userId: string;
+  let _userId: string;
 
   beforeEach(async () => {
     // Create dispatcher with mock provider
@@ -74,16 +83,16 @@ describe("NotificationDispatcher - Integration Tests", () => {
     // Create test request
     const request = await mockPrisma.mediaRequest.create({
       data: {
-        type: 'MOVIE',
+        type: "MOVIE",
         tmdbId: 12345,
-        title: 'Test Movie',
+        title: "Test Movie",
         year: 2024,
-        status: 'PENDING',
+        status: "PENDING",
         targets: [],
       },
     });
     mockRequestId = request.id;
-    userId = "test-user-123";
+    _userId = "test-user-123";
   });
 
   afterEach(() => {
@@ -449,7 +458,10 @@ describe("NotificationDispatcher - Integration Tests", () => {
       // First call will fail, second will succeed
       let callCount = 0;
       const originalSend = MockProvider.prototype.send;
-      MockProvider.prototype.send = async function(payload: NotificationPayload, config: Record<string, unknown>) {
+      MockProvider.prototype.send = async function (
+        payload: NotificationPayload,
+        config: Record<string, unknown>
+      ) {
         callCount++;
         if (callCount === 1) {
           return {

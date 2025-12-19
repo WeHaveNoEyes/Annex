@@ -2,7 +2,7 @@
  * Tests for WebSocket encoder client
  */
 
-import { describe, test, expect, mock } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 
 describe("client", () => {
   describe("EncoderClient", () => {

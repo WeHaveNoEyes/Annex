@@ -12,8 +12,7 @@
  * testing with actual GPU hardware.
  */
 
-
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 describe("gpu", () => {
   describe("module exports", () => {

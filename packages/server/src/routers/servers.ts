@@ -1,21 +1,21 @@
+import { Codec, MediaServerType, MediaType, Protocol, Resolution } from "@prisma/client";
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc.js";
 import { prisma } from "../db/client.js";
-import { Protocol, Resolution, Codec, MediaServerType, MediaType } from "@prisma/client";
+import { getCryptoService } from "../services/crypto.js";
 import {
   fetchEmbyLibraryForSync,
-  testEmbyConnection,
   fetchEmbyMediaPaginated,
   fetchEmbyStats,
+  testEmbyConnection,
 } from "../services/emby.js";
+import { getJobQueueService } from "../services/jobQueue.js";
 import {
   fetchPlexLibraryForSync,
-  testPlexConnection,
   fetchPlexMediaPaginated,
   fetchPlexStats,
+  testPlexConnection,
 } from "../services/plex.js";
-import { getJobQueueService } from "../services/jobQueue.js";
-import { getCryptoService } from "../services/crypto.js";
+import { publicProcedure, router } from "../trpc.js";
 
 const mediaServerConfigSchema = z
   .object({
@@ -175,7 +175,7 @@ export const serversRouter = router({
         s.mediaServerType !== MediaServerType.NONE
           ? {
               type: fromMediaServerType(s.mediaServerType),
-              url: s.mediaServerUrl!,
+              url: s.mediaServerUrl ?? "",
               hasApiKey: !!s.mediaServerApiKey,
               libraryIds: {
                 movies: s.mediaServerLibraryMovies,
@@ -226,7 +226,7 @@ export const serversRouter = router({
         s.mediaServerType !== MediaServerType.NONE
           ? {
               type: fromMediaServerType(s.mediaServerType),
-              url: s.mediaServerUrl!,
+              url: s.mediaServerUrl ?? "",
               hasApiKey: !!s.mediaServerApiKey,
               libraryIds: {
                 movies: s.mediaServerLibraryMovies,
@@ -275,9 +275,17 @@ export const serversRouter = router({
     });
 
     // Start sync scheduler if media server is configured and sync is enabled
-    if (input.mediaServer && input.mediaServer.type !== "none" && (input.librarySync?.enabled ?? true)) {
+    if (
+      input.mediaServer &&
+      input.mediaServer.type !== "none" &&
+      (input.librarySync?.enabled ?? true)
+    ) {
       const jobQueue = getJobQueueService();
-      jobQueue.startServerSyncScheduler(server.id, server.name, input.librarySync?.intervalMinutes ?? 5);
+      jobQueue.startServerSyncScheduler(
+        server.id,
+        server.name,
+        input.librarySync?.intervalMinutes ?? 5
+      );
     }
 
     return { id: server.id };
@@ -298,17 +306,22 @@ export const serversRouter = router({
       if (updates.port !== undefined) data.port = updates.port;
       if (updates.protocol !== undefined) data.protocol = toProtocol(updates.protocol);
       if (updates.username !== undefined) data.username = updates.username;
-      if (updates.password !== undefined) data.encryptedPassword = encryptIfPresent(updates.password);
-      if (updates.privateKey !== undefined) data.encryptedPrivateKey = encryptIfPresent(updates.privateKey);
+      if (updates.password !== undefined)
+        data.encryptedPassword = encryptIfPresent(updates.password);
+      if (updates.privateKey !== undefined)
+        data.encryptedPrivateKey = encryptIfPresent(updates.privateKey);
       if (updates.paths?.movies !== undefined) data.pathMovies = updates.paths.movies;
       if (updates.paths?.tv !== undefined) data.pathTv = updates.paths.tv;
       if (updates.restrictions?.maxResolution !== undefined)
         data.maxResolution = toResolution(updates.restrictions.maxResolution);
       if (updates.restrictions?.maxFileSize !== undefined)
-        data.maxFileSize = updates.restrictions.maxFileSize ? BigInt(updates.restrictions.maxFileSize) : null;
+        data.maxFileSize = updates.restrictions.maxFileSize
+          ? BigInt(updates.restrictions.maxFileSize)
+          : null;
       if (updates.restrictions?.preferredCodec !== undefined)
         data.preferredCodec = toCodec(updates.restrictions.preferredCodec);
-      if (updates.restrictions?.maxBitrate !== undefined) data.maxBitrate = updates.restrictions.maxBitrate;
+      if (updates.restrictions?.maxBitrate !== undefined)
+        data.maxBitrate = updates.restrictions.maxBitrate;
       if (updates.enabled !== undefined) data.enabled = updates.enabled;
 
       if (updates.mediaServer !== undefined) {
@@ -382,119 +395,111 @@ export const serversRouter = router({
    * Sync library items from a storage server's media server (Emby/Plex)
    * Fetches all media from the media server and stores in LibraryItem table
    */
-  syncLibrary: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .mutation(async ({ input }) => {
-      const server = await prisma.storageServer.findUnique({
-        where: { id: input.id },
-      });
+  syncLibrary: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+    const server = await prisma.storageServer.findUnique({
+      where: { id: input.id },
+    });
 
-      if (!server) {
-        throw new Error("Server not found");
-      }
+    if (!server) {
+      throw new Error("Server not found");
+    }
 
-      if (server.mediaServerType === MediaServerType.NONE) {
-        throw new Error("No media server configured for this storage server");
-      }
+    if (server.mediaServerType === MediaServerType.NONE) {
+      throw new Error("No media server configured for this storage server");
+    }
 
-      if (!server.mediaServerUrl || !server.mediaServerApiKey) {
-        throw new Error("Media server URL or API key not configured");
-      }
+    if (!server.mediaServerUrl || !server.mediaServerApiKey) {
+      throw new Error("Media server URL or API key not configured");
+    }
 
-      // Decrypt the API key for use
-      const apiKey = decryptIfPresent(server.mediaServerApiKey);
-      if (!apiKey) {
-        throw new Error("Failed to decrypt media server API key");
-      }
+    // Decrypt the API key for use
+    const apiKey = decryptIfPresent(server.mediaServerApiKey);
+    if (!apiKey) {
+      throw new Error("Failed to decrypt media server API key");
+    }
 
-      let syncedCount = 0;
-      let skippedCount = 0;
+    let syncedCount = 0;
+    let skippedCount = 0;
 
-      if (server.mediaServerType === MediaServerType.EMBY) {
-        // Fetch all items from Emby
-        const items = await fetchEmbyLibraryForSync(
-          server.mediaServerUrl,
-          apiKey
-        );
+    if (server.mediaServerType === MediaServerType.EMBY) {
+      // Fetch all items from Emby
+      const items = await fetchEmbyLibraryForSync(server.mediaServerUrl, apiKey);
 
-        // Upsert all items to LibraryItem table
-        for (const item of items) {
-          if (!item.tmdbId) {
-            skippedCount++;
-            continue;
-          }
+      // Upsert all items to LibraryItem table
+      for (const item of items) {
+        if (!item.tmdbId) {
+          skippedCount++;
+          continue;
+        }
 
-          await prisma.libraryItem.upsert({
-            where: {
-              tmdbId_type_serverId: {
-                tmdbId: item.tmdbId,
-                type: item.type === "movie" ? MediaType.MOVIE : MediaType.TV,
-                serverId: server.id,
-              },
-            },
-            create: {
+        await prisma.libraryItem.upsert({
+          where: {
+            tmdbId_type_serverId: {
               tmdbId: item.tmdbId,
               type: item.type === "movie" ? MediaType.MOVIE : MediaType.TV,
-              quality: item.quality || null,
-              addedAt: item.addedAt || null,
               serverId: server.id,
             },
-            update: {
-              quality: item.quality || null,
-              addedAt: item.addedAt || null,
-              syncedAt: new Date(),
-            },
-          });
+          },
+          create: {
+            tmdbId: item.tmdbId,
+            type: item.type === "movie" ? MediaType.MOVIE : MediaType.TV,
+            quality: item.quality || null,
+            addedAt: item.addedAt || null,
+            serverId: server.id,
+          },
+          update: {
+            quality: item.quality || null,
+            addedAt: item.addedAt || null,
+            syncedAt: new Date(),
+          },
+        });
 
-          syncedCount++;
+        syncedCount++;
+      }
+    } else if (server.mediaServerType === MediaServerType.PLEX) {
+      // Fetch all items from Plex
+      const items = await fetchPlexLibraryForSync(server.mediaServerUrl, apiKey);
+
+      // Upsert all items to LibraryItem table
+      for (const item of items) {
+        if (!item.tmdbId) {
+          skippedCount++;
+          continue;
         }
-      } else if (server.mediaServerType === MediaServerType.PLEX) {
-        // Fetch all items from Plex
-        const items = await fetchPlexLibraryForSync(
-          server.mediaServerUrl,
-          apiKey
-        );
 
-        // Upsert all items to LibraryItem table
-        for (const item of items) {
-          if (!item.tmdbId) {
-            skippedCount++;
-            continue;
-          }
-
-          await prisma.libraryItem.upsert({
-            where: {
-              tmdbId_type_serverId: {
-                tmdbId: item.tmdbId,
-                type: item.type === "movie" ? MediaType.MOVIE : MediaType.TV,
-                serverId: server.id,
-              },
-            },
-            create: {
+        await prisma.libraryItem.upsert({
+          where: {
+            tmdbId_type_serverId: {
               tmdbId: item.tmdbId,
               type: item.type === "movie" ? MediaType.MOVIE : MediaType.TV,
-              quality: item.quality || null,
-              addedAt: item.addedAt || null,
               serverId: server.id,
             },
-            update: {
-              quality: item.quality || null,
-              addedAt: item.addedAt || null,
-              syncedAt: new Date(),
-            },
-          });
+          },
+          create: {
+            tmdbId: item.tmdbId,
+            type: item.type === "movie" ? MediaType.MOVIE : MediaType.TV,
+            quality: item.quality || null,
+            addedAt: item.addedAt || null,
+            serverId: server.id,
+          },
+          update: {
+            quality: item.quality || null,
+            addedAt: item.addedAt || null,
+            syncedAt: new Date(),
+          },
+        });
 
-          syncedCount++;
-        }
+        syncedCount++;
       }
+    }
 
-      return {
-        success: true,
-        synced: syncedCount,
-        skipped: skippedCount,
-        message: `Synced ${syncedCount} items, skipped ${skippedCount} (no TMDB ID)`,
-      };
-    }),
+    return {
+      success: true,
+      synced: syncedCount,
+      skipped: skippedCount,
+      message: `Synced ${syncedCount} items, skipped ${skippedCount} (no TMDB ID)`,
+    };
+  }),
 
   /**
    * Test media server connection (Emby/Plex)
@@ -518,40 +523,38 @@ export const serversRouter = router({
   /**
    * Get library sync status for a server
    */
-  libraryStatus: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
-      const server = await prisma.storageServer.findUnique({
-        where: { id: input.id },
-      });
+  libraryStatus: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+    const server = await prisma.storageServer.findUnique({
+      where: { id: input.id },
+    });
 
-      if (!server) {
-        return null;
-      }
+    if (!server) {
+      return null;
+    }
 
-      const [movieCount, tvCount, lastSynced] = await Promise.all([
-        prisma.libraryItem.count({
-          where: { serverId: input.id, type: MediaType.MOVIE },
-        }),
-        prisma.libraryItem.count({
-          where: { serverId: input.id, type: MediaType.TV },
-        }),
-        prisma.libraryItem.findFirst({
-          where: { serverId: input.id },
-          orderBy: { syncedAt: "desc" },
-          select: { syncedAt: true },
-        }),
-      ]);
+    const [movieCount, tvCount, lastSynced] = await Promise.all([
+      prisma.libraryItem.count({
+        where: { serverId: input.id, type: MediaType.MOVIE },
+      }),
+      prisma.libraryItem.count({
+        where: { serverId: input.id, type: MediaType.TV },
+      }),
+      prisma.libraryItem.findFirst({
+        where: { serverId: input.id },
+        orderBy: { syncedAt: "desc" },
+        select: { syncedAt: true },
+      }),
+    ]);
 
-      return {
-        movieCount,
-        tvCount,
-        totalCount: movieCount + tvCount,
-        lastSyncedAt: lastSynced?.syncedAt || null,
-        hasMediaServer: server.mediaServerType !== MediaServerType.NONE,
-        mediaServerType: fromMediaServerType(server.mediaServerType),
-      };
-    }),
+    return {
+      movieCount,
+      tvCount,
+      totalCount: movieCount + tvCount,
+      lastSyncedAt: lastSynced?.syncedAt || null,
+      hasMediaServer: server.mediaServerType !== MediaServerType.NONE,
+      mediaServerType: fromMediaServerType(server.mediaServerType),
+    };
+  }),
 
   /**
    * Bulk check if media items exist in any library
@@ -574,12 +577,8 @@ export const serversRouter = router({
       }
 
       // Group items by type for efficient querying
-      const movieIds = input.items
-        .filter((i) => i.type === "movie")
-        .map((i) => i.tmdbId);
-      const tvIds = input.items
-        .filter((i) => i.type === "tv")
-        .map((i) => i.tmdbId);
+      const movieIds = input.items.filter((i) => i.type === "movie").map((i) => i.tmdbId);
+      const tvIds = input.items.filter((i) => i.type === "tv").map((i) => i.tmdbId);
 
       // Query library items (movies and TV shows at series level)
       const libraryItems = await prisma.libraryItem.findMany({
@@ -588,9 +587,7 @@ export const serversRouter = router({
             movieIds.length > 0
               ? { tmdbId: { in: movieIds }, type: MediaType.MOVIE }
               : { tmdbId: -1 }, // Never matches
-            tvIds.length > 0
-              ? { tmdbId: { in: tvIds }, type: MediaType.TV }
-              : { tmdbId: -1 },
+            tvIds.length > 0 ? { tmdbId: { in: tvIds }, type: MediaType.TV } : { tmdbId: -1 },
           ],
         },
         include: {
@@ -638,10 +635,7 @@ export const serversRouter = router({
         });
 
         for (const item of mediaItems) {
-          const totalEps = item.seasons.reduce(
-            (sum, s) => sum + s._count.episodes,
-            0
-          );
+          const totalEps = item.seasons.reduce((sum, s) => sum + s._count.episodes, 0);
           if (totalEps > 0) {
             totalEpisodeCounts.set(item.tmdbId, totalEps);
           }
@@ -727,12 +721,8 @@ export const serversRouter = router({
       }
 
       // Group items by type for efficient querying
-      const movieIds = input.items
-        .filter((i) => i.type === "movie")
-        .map((i) => i.tmdbId);
-      const tvIds = input.items
-        .filter((i) => i.type === "tv")
-        .map((i) => i.tmdbId);
+      const movieIds = input.items.filter((i) => i.type === "movie").map((i) => i.tmdbId);
+      const tvIds = input.items.filter((i) => i.type === "tv").map((i) => i.tmdbId);
 
       // Query active requests (not completed/failed)
       const requests = await prisma.mediaRequest.findMany({
@@ -741,9 +731,7 @@ export const serversRouter = router({
             movieIds.length > 0
               ? { tmdbId: { in: movieIds }, type: MediaType.MOVIE }
               : { tmdbId: -1 },
-            tvIds.length > 0
-              ? { tmdbId: { in: tvIds }, type: MediaType.TV }
-              : { tmdbId: -1 },
+            tvIds.length > 0 ? { tmdbId: { in: tvIds }, type: MediaType.TV } : { tmdbId: -1 },
           ],
           status: {
             notIn: ["COMPLETED", "FAILED"],
@@ -829,18 +817,14 @@ export const serversRouter = router({
 
       if (server.mediaServerType === MediaServerType.EMBY) {
         const startIndex = (input.page - 1) * input.limit;
-        const result = await fetchEmbyMediaPaginated(
-          server.mediaServerUrl,
-          apiKey,
-          {
-            type: input.type,
-            startIndex,
-            limit: input.limit,
-            sortBy: input.sortBy,
-            sortOrder: input.sortOrder,
-            searchTerm: input.search,
-          }
-        );
+        const result = await fetchEmbyMediaPaginated(server.mediaServerUrl, apiKey, {
+          type: input.type,
+          startIndex,
+          limit: input.limit,
+          sortBy: input.sortBy,
+          sortOrder: input.sortOrder,
+          searchTerm: input.search,
+        });
 
         return {
           items: result.items,
@@ -854,18 +838,14 @@ export const serversRouter = router({
         const startIndex = (input.page - 1) * input.limit;
         // Convert sort order from Emby format to Plex format
         const plexSortOrder = input.sortOrder === "Ascending" ? "asc" : "desc";
-        const result = await fetchPlexMediaPaginated(
-          server.mediaServerUrl,
-          apiKey,
-          {
-            type: input.type,
-            startIndex,
-            limit: input.limit,
-            sortBy: input.sortBy,
-            sortOrder: plexSortOrder,
-            searchTerm: input.search,
-          }
-        );
+        const result = await fetchPlexMediaPaginated(server.mediaServerUrl, apiKey, {
+          type: input.type,
+          startIndex,
+          limit: input.limit,
+          sortBy: input.sortBy,
+          sortOrder: plexSortOrder,
+          searchTerm: input.search,
+        });
 
         return {
           items: result.items,
@@ -883,55 +863,47 @@ export const serversRouter = router({
   /**
    * Get stats from a specific server's media server
    */
-  mediaStats: publicProcedure
-    .input(z.object({ serverId: z.string() }))
-    .query(async ({ input }) => {
-      const server = await prisma.storageServer.findUnique({
-        where: { id: input.serverId },
-      });
+  mediaStats: publicProcedure.input(z.object({ serverId: z.string() })).query(async ({ input }) => {
+    const server = await prisma.storageServer.findUnique({
+      where: { id: input.serverId },
+    });
 
-      if (!server) {
-        throw new Error("Server not found");
-      }
+    if (!server) {
+      throw new Error("Server not found");
+    }
 
-      if (server.mediaServerType === MediaServerType.NONE) {
-        return null;
-      }
-
-      if (!server.mediaServerUrl || !server.mediaServerApiKey) {
-        return null;
-      }
-
-      // Decrypt the API key for use
-      const apiKey = decryptIfPresent(server.mediaServerApiKey);
-      if (!apiKey) {
-        return null;
-      }
-
-      if (server.mediaServerType === MediaServerType.EMBY) {
-        const stats = await fetchEmbyStats(
-          server.mediaServerUrl,
-          apiKey
-        );
-        return {
-          ...stats,
-          serverName: server.name,
-          mediaServerType: "emby" as const,
-        };
-      } else if (server.mediaServerType === MediaServerType.PLEX) {
-        const stats = await fetchPlexStats(
-          server.mediaServerUrl,
-          apiKey
-        );
-        return {
-          ...stats,
-          serverName: server.name,
-          mediaServerType: "plex" as const,
-        };
-      }
-
+    if (server.mediaServerType === MediaServerType.NONE) {
       return null;
-    }),
+    }
+
+    if (!server.mediaServerUrl || !server.mediaServerApiKey) {
+      return null;
+    }
+
+    // Decrypt the API key for use
+    const apiKey = decryptIfPresent(server.mediaServerApiKey);
+    if (!apiKey) {
+      return null;
+    }
+
+    if (server.mediaServerType === MediaServerType.EMBY) {
+      const stats = await fetchEmbyStats(server.mediaServerUrl, apiKey);
+      return {
+        ...stats,
+        serverName: server.name,
+        mediaServerType: "emby" as const,
+      };
+    } else if (server.mediaServerType === MediaServerType.PLEX) {
+      const stats = await fetchPlexStats(server.mediaServerUrl, apiKey);
+      return {
+        ...stats,
+        serverName: server.name,
+        mediaServerType: "plex" as const,
+      };
+    }
+
+    return null;
+  }),
 
   // =============================================================================
   // Per-Server Library Sync Control
@@ -940,58 +912,56 @@ export const serversRouter = router({
   /**
    * Get library sync status for a specific server
    */
-  syncStatus: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
-      const server = await prisma.storageServer.findUnique({
-        where: { id: input.id },
-      });
+  syncStatus: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+    const server = await prisma.storageServer.findUnique({
+      where: { id: input.id },
+    });
 
-      if (!server) {
-        return null;
-      }
+    if (!server) {
+      return null;
+    }
 
-      const jobQueue = getJobQueueService();
-      const schedulerRunning = jobQueue.isServerSyncSchedulerRunning(input.id);
+    const jobQueue = getJobQueueService();
+    const schedulerRunning = jobQueue.isServerSyncSchedulerRunning(input.id);
 
-      // Check for actively running sync jobs with recent heartbeat (within 2 minutes)
-      // This prevents stuck jobs from blocking the UI indefinitely
-      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
-      const activeSyncJob = await prisma.job.findFirst({
-        where: {
-          type: "library:sync-server",
-          status: "RUNNING",
-          heartbeatAt: { gte: twoMinutesAgo },
-          payload: {
-            path: ["serverId"],
-            equals: input.id,
-          },
+    // Check for actively running sync jobs with recent heartbeat (within 2 minutes)
+    // This prevents stuck jobs from blocking the UI indefinitely
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
+    const activeSyncJob = await prisma.job.findFirst({
+      where: {
+        type: "library:sync-server",
+        status: "RUNNING",
+        heartbeatAt: { gte: twoMinutesAgo },
+        payload: {
+          path: ["serverId"],
+          equals: input.id,
         },
-      });
-      const currentlySyncing = activeSyncJob !== null;
+      },
+    });
+    const currentlySyncing = activeSyncJob !== null;
 
-      // Get the last completed sync job for this server
-      const lastSyncJob = await prisma.job.findFirst({
-        where: {
-          type: "library:sync-server",
-          status: "COMPLETED",
-          payload: {
-            path: ["serverId"],
-            equals: input.id,
-          },
+    // Get the last completed sync job for this server
+    const lastSyncJob = await prisma.job.findFirst({
+      where: {
+        type: "library:sync-server",
+        status: "COMPLETED",
+        payload: {
+          path: ["serverId"],
+          equals: input.id,
         },
-        orderBy: { completedAt: "desc" },
-      });
+      },
+      orderBy: { completedAt: "desc" },
+    });
 
-      return {
-        enabled: server.librarySyncEnabled,
-        intervalMinutes: server.librarySyncInterval,
-        schedulerRunning,
-        currentlySyncing,
-        lastSyncAt: lastSyncJob?.completedAt?.toISOString() || null,
-        hasMediaServer: server.mediaServerType !== MediaServerType.NONE,
-      };
-    }),
+    return {
+      enabled: server.librarySyncEnabled,
+      intervalMinutes: server.librarySyncInterval,
+      schedulerRunning,
+      currentlySyncing,
+      lastSyncAt: lastSyncJob?.completedAt?.toISOString() || null,
+      hasMediaServer: server.mediaServerType !== MediaServerType.NONE,
+    };
+  }),
 
   /**
    * Update library sync settings for a specific server
@@ -1028,10 +998,12 @@ export const serversRouter = router({
    * @param incremental - If true, only sync items added since last sync
    */
   triggerSync: publicProcedure
-    .input(z.object({
-      id: z.string(),
-      incremental: z.boolean().optional().default(false),
-    }))
+    .input(
+      z.object({
+        id: z.string(),
+        incremental: z.boolean().optional().default(false),
+      })
+    )
     .mutation(async ({ input }) => {
       const server = await prisma.storageServer.findUnique({
         where: { id: input.id },

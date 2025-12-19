@@ -4,11 +4,11 @@
  * Global setup for all tests. Runs before each test file.
  */
 
-import { beforeAll, afterAll, afterEach, mock, spyOn } from "bun:test";
-import { randomBytes } from "crypto";
-import { mkdtempSync, rmSync, existsSync, writeFileSync, chmodSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
+import { afterAll, afterEach, beforeAll, mock, spyOn } from "bun:test";
+import { randomBytes } from "node:crypto";
+import { chmodSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 // Test temp directory for key files
 let testTempDir: string;
@@ -82,14 +82,14 @@ export function createMockPrisma() {
   return {
     $queryRaw: mock(async (query: TemplateStringsArray, ...values: any[]) => {
       // Mock implementation for timeout query
-      const queryStr = Array.from(query).join('');
+      const queryStr = Array.from(query).join("");
 
       // Handle ApprovalQueue timeout query
-      if (queryStr.includes('ApprovalQueue') && queryStr.includes('timeoutHours')) {
+      if (queryStr.includes("ApprovalQueue") && queryStr.includes("timeoutHours")) {
         const now = values[0] as Date;
         const results = Array.from(approvalQueueStore.values())
-          .filter(approval => {
-            if (approval.status !== 'PENDING') return false;
+          .filter((approval) => {
+            if (approval.status !== "PENDING") return false;
             if (!approval.timeoutHours) return false;
 
             // Calculate timeout
@@ -99,7 +99,7 @@ export function createMockPrisma() {
 
             return timeoutDate <= now;
           })
-          .map(a => ({
+          .map((a) => ({
             id: a.id,
             requestId: a.requestId,
             autoAction: a.autoAction,
@@ -116,16 +116,18 @@ export function createMockPrisma() {
       findUnique: mock(async ({ where }: { where: { key: string } }) => {
         return settingStore.get(where.key) || null;
       }),
-      findMany: mock(async (args?: { select?: { key: boolean }; where?: { key?: { startsWith: string } } }) => {
-        let results = Array.from(settingStore.values());
+      findMany: mock(
+        async (args?: { select?: { key: boolean }; where?: { key?: { startsWith: string } } }) => {
+          let results = Array.from(settingStore.values());
 
-        if (args?.where?.key?.startsWith) {
-          const prefix = args.where.key.startsWith;
-          results = results.filter((r) => r.key.startsWith(prefix));
+          if (args?.where?.key?.startsWith) {
+            const prefix = args.where.key.startsWith;
+            results = results.filter((r) => r.key.startsWith(prefix));
+          }
+
+          return results;
         }
-
-        return results;
-      }),
+      ),
       upsert: mock(
         async ({
           where,
@@ -165,12 +167,14 @@ export function createMockPrisma() {
       }),
       findFirst: mock(async ({ where }: { where: any }) => {
         const values = Array.from(mediaRequestStore.values());
-        return values.find(v => !where || Object.keys(where).every(k => v[k] === where[k])) || null;
+        return (
+          values.find((v) => !where || Object.keys(where).every((k) => v[k] === where[k])) || null
+        );
       }),
       findMany: mock(async ({ where }: { where?: any } = {}) => {
         let results = Array.from(mediaRequestStore.values());
         if (where) {
-          results = results.filter(r => Object.keys(where).every(k => r[k] === where[k]));
+          results = results.filter((r) => Object.keys(where).every((k) => r[k] === where[k]));
         }
         return results;
       }),
@@ -208,9 +212,11 @@ export function createMockPrisma() {
       }),
       findFirst: mock(async ({ where }: { where: any }) => {
         const values = Array.from(pipelineExecutionStore.values());
-        return values.find(v => !where || Object.keys(where).every(k => v[k] === where[k])) || null;
+        return (
+          values.find((v) => !where || Object.keys(where).every((k) => v[k] === where[k])) || null
+        );
       }),
-      update: mock(async ({ where, data }: { where: { id: string }, data: any }) => {
+      update: mock(async ({ where, data }: { where: { id: string }; data: any }) => {
         const record = pipelineExecutionStore.get(where.id);
         if (!record) return null;
         const updated = { ...record, ...data, updatedAt: new Date() };
@@ -249,7 +255,7 @@ export function createMockPrisma() {
       findMany: mock(async ({ where }: { where?: any } = {}) => {
         let results = Array.from(notificationConfigStore.values());
         if (where) {
-          results = results.filter(r => {
+          results = results.filter((r) => {
             // Filter by enabled
             if (where.enabled !== undefined && r.enabled !== where.enabled) return false;
 
@@ -261,7 +267,8 @@ export function createMockPrisma() {
             // Handle OR condition for mediaType
             if (where.OR) {
               const matchesOr = where.OR.some((condition: any) => {
-                if (condition.mediaType === null) return r.mediaType === null || r.mediaType === undefined;
+                if (condition.mediaType === null)
+                  return r.mediaType === null || r.mediaType === undefined;
                 if (condition.mediaType !== undefined) return r.mediaType === condition.mediaType;
                 return true;
               });
@@ -271,7 +278,7 @@ export function createMockPrisma() {
             // Filter by userId
             // When userId is in the where clause, match that specific userId
             // When userId is NOT in the where clause, match only null/undefined userId (global configs)
-            const hasUserIdInWhere = 'userId' in where;
+            const hasUserIdInWhere = "userId" in where;
             if (hasUserIdInWhere) {
               if (r.userId !== where.userId) return false;
             } else {
@@ -300,7 +307,7 @@ export function createMockPrisma() {
       findMany: mock(async ({ where }: { where?: any } = {}) => {
         let results = Array.from(activityLogStore.values());
         if (where) {
-          results = results.filter(r => Object.keys(where).every(k => r[k] === where[k]));
+          results = results.filter((r) => Object.keys(where).every((k) => r[k] === where[k]));
         }
         return results;
       }),
@@ -328,15 +335,15 @@ export function createMockPrisma() {
       findUnique: mock(async ({ where }: { where: { id: string } }) => {
         return approvalQueueStore.get(where.id) || null;
       }),
-      findMany: mock(async ({ where, include }: { where?: any, include?: any } = {}) => {
+      findMany: mock(async ({ where, include }: { where?: any; include?: any } = {}) => {
         let results = Array.from(approvalQueueStore.values());
         if (where) {
-          results = results.filter(r => {
+          results = results.filter((r) => {
             if (where.status && r.status !== where.status) return false;
 
             // Handle requiredRole filtering
             if (where.requiredRole) {
-              if (typeof where.requiredRole === 'string') {
+              if (typeof where.requiredRole === "string") {
                 // Exact match
                 if (r.requiredRole !== where.requiredRole) return false;
               } else if (where.requiredRole.in) {
@@ -360,25 +367,25 @@ export function createMockPrisma() {
           });
         }
         if (include?.request) {
-          results = results.map(r => ({
+          results = results.map((r) => ({
             ...r,
             request: mediaRequestStore.get(r.requestId) || null,
           }));
         }
         return results;
       }),
-      update: mock(async ({ where, data }: { where: { id: string }, data: any }) => {
+      update: mock(async ({ where, data }: { where: { id: string }; data: any }) => {
         const record = approvalQueueStore.get(where.id);
         if (!record) return null;
         const updated = { ...record, ...data, updatedAt: new Date() };
         approvalQueueStore.set(where.id, updated);
         return updated;
       }),
-      updateMany: mock(async ({ where, data }: { where: any, data: any }) => {
+      updateMany: mock(async ({ where, data }: { where: any; data: any }) => {
         let count = 0;
-        Array.from(approvalQueueStore.values()).forEach(r => {
-          const matches = Object.keys(where).every(k => {
-            if (k === 'id' && where.id.in) return where.id.in.includes(r.id);
+        Array.from(approvalQueueStore.values()).forEach((r) => {
+          const matches = Object.keys(where).every((k) => {
+            if (k === "id" && where.id.in) return where.id.in.includes(r.id);
             return r[k] === where[k];
           });
           if (matches) {
@@ -417,9 +424,4 @@ export function createMockPrisma() {
       approvalQueueStore.clear();
     },
   };
-}
-
-// Declare globals
-declare global {
-  var testTempDir: string;
 }

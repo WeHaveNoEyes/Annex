@@ -5,16 +5,16 @@
  * When a release matches a monitored request, it automatically triggers the download.
  */
 
-import { prisma } from "../db/client.js";
-import { getConfig } from "../config/index.js";
-import { RequestStatus, MediaType, TvEpisodeStatus, Prisma } from "@prisma/client";
-import { getJobQueueService } from "./jobQueue.js";
-import { getSchedulerService } from "./scheduler.js";
-import { getCryptoService } from "./crypto.js";
+import { MediaType, Prisma, RequestStatus, TvEpisodeStatus } from "@prisma/client";
 import { XMLParser } from "fast-xml-parser";
-import type { Release } from "./indexer.js";
-import { resolutionMeetsRequirement } from "./qualityService.js";
+import { getConfig } from "../config/index.js";
+import { prisma } from "../db/client.js";
 import type { Resolution } from "../types/download.js";
+import { getCryptoService } from "./crypto.js";
+import type { Release } from "./indexer.js";
+import { getJobQueueService } from "./jobQueue.js";
+import { resolutionMeetsRequirement } from "./qualityService.js";
+import { getSchedulerService } from "./scheduler.js";
 
 // =============================================================================
 // Types
@@ -106,7 +106,7 @@ class RssAnnounceMonitor {
       where: { type: "TORRENTLEECH", enabled: true },
     });
 
-    if (tlIndexer && tlIndexer.apiKey) {
+    if (tlIndexer?.apiKey) {
       // Decrypt the apiKey first (it's stored encrypted)
       let decryptedApiKey: string;
       try {
@@ -132,22 +132,19 @@ class RssAnnounceMonitor {
 
     if (!this.rssKey) {
       console.warn("[RSS] No RSS key found - cannot monitor TorrentLeech feed");
-      console.warn("[RSS] Add RSS key to TorrentLeech indexer config: username:password:alt2FAToken:rssKey");
+      console.warn(
+        "[RSS] Add RSS key to TorrentLeech indexer config: username:password:alt2FAToken:rssKey"
+      );
       return;
     }
 
     // Register polling task with scheduler
     const scheduler = getSchedulerService();
-    scheduler.register(
-      "rss-poll",
-      "RSS Feed Poll",
-      config.rss.pollInterval,
-      async () => {
-        await this.poll().catch((err) => {
-          console.error("[RSS] Poll error:", err.message);
-        });
-      }
-    );
+    scheduler.register("rss-poll", "RSS Feed Poll", config.rss.pollInterval, async () => {
+      await this.poll().catch((err) => {
+        console.error("[RSS] Poll error:", err.message);
+      });
+    });
 
     this.isStarted = true;
     console.log(`[RSS] Started monitor (polling every ${config.rss.pollInterval / 1000}s)`);
@@ -290,15 +287,24 @@ class RssAnnounceMonitor {
       if (this.releaseMatchesMovie(item.title, request.title, request.year)) {
         // Check if release meets quality requirement (if set)
         if (request.requiredResolution) {
-          const meetsQuality = resolutionMeetsRequirement(releaseResolution, request.requiredResolution as Resolution);
+          const meetsQuality = resolutionMeetsRequirement(
+            releaseResolution,
+            request.requiredResolution as Resolution
+          );
           if (!meetsQuality) {
-            console.log(`[RSS] Movie match but quality too low: "${item.title}" (${releaseResolution}) < ${request.requiredResolution}`);
+            console.log(
+              `[RSS] Movie match but quality too low: "${item.title}" (${releaseResolution}) < ${request.requiredResolution}`
+            );
             continue;
           }
         }
 
         console.log(`[RSS] Movie match: "${item.title}" -> "${request.title}" (${request.year})`);
-        await this.triggerDownload(request.id, item, request.status === RequestStatus.QUALITY_UNAVAILABLE);
+        await this.triggerDownload(
+          request.id,
+          item,
+          request.status === RequestStatus.QUALITY_UNAVAILABLE
+        );
         break;
       }
     }
@@ -333,9 +339,14 @@ class RssAnnounceMonitor {
       if (this.releaseMatchesTvShow(item.title, request.title)) {
         // Check if release meets quality requirement (if set)
         if (request.requiredResolution) {
-          const meetsQuality = resolutionMeetsRequirement(releaseResolution, request.requiredResolution as Resolution);
+          const meetsQuality = resolutionMeetsRequirement(
+            releaseResolution,
+            request.requiredResolution as Resolution
+          );
           if (!meetsQuality) {
-            console.log(`[RSS] TV match but quality too low: "${item.title}" (${releaseResolution}) < ${request.requiredResolution}`);
+            console.log(
+              `[RSS] TV match but quality too low: "${item.title}" (${releaseResolution}) < ${request.requiredResolution}`
+            );
             continue;
           }
         }
@@ -343,10 +354,14 @@ class RssAnnounceMonitor {
         const wasQualityUnavailable = episode.status === TvEpisodeStatus.QUALITY_UNAVAILABLE;
 
         if (seInfo.episode !== null) {
-          console.log(`[RSS] TV match: "${item.title}" -> "${request.title}" S${seInfo.season}E${seInfo.episode}`);
+          console.log(
+            `[RSS] TV match: "${item.title}" -> "${request.title}" S${seInfo.season}E${seInfo.episode}`
+          );
           await this.triggerEpisodeDownload(episode.id, item, wasQualityUnavailable);
         } else {
-          console.log(`[RSS] TV season match: "${item.title}" -> "${request.title}" S${seInfo.season}`);
+          console.log(
+            `[RSS] TV season match: "${item.title}" -> "${request.title}" S${seInfo.season}`
+          );
           await this.triggerSeasonDownload(request.id, seInfo.season, item, wasQualityUnavailable);
         }
         break;
@@ -478,7 +493,8 @@ class RssAnnounceMonitor {
   private extractSource(title: string): string {
     const upper = title.toUpperCase();
     if (upper.includes("REMUX")) return "REMUX";
-    if (upper.includes("BLURAY") || upper.includes("BLU-RAY") || upper.includes("BDRIP")) return "BLURAY";
+    if (upper.includes("BLURAY") || upper.includes("BLU-RAY") || upper.includes("BDRIP"))
+      return "BLURAY";
     if (upper.includes("WEB-DL") || upper.includes("WEBDL")) return "WEB-DL";
     if (upper.includes("WEBRIP") || upper.includes("WEB-RIP")) return "WEBRIP";
     if (upper.includes("HDTV")) return "HDTV";
@@ -493,15 +509,31 @@ class RssAnnounceMonitor {
   private extractCodec(title: string): string {
     const upper = title.toUpperCase();
     if (upper.includes("AV1")) return "AV1";
-    if (upper.includes("HEVC") || upper.includes("H.265") || upper.includes("H265") || upper.includes("X265")) return "HEVC";
-    if (upper.includes("H.264") || upper.includes("H264") || upper.includes("X264") || upper.includes("AVC")) return "H264";
+    if (
+      upper.includes("HEVC") ||
+      upper.includes("H.265") ||
+      upper.includes("H265") ||
+      upper.includes("X265")
+    )
+      return "HEVC";
+    if (
+      upper.includes("H.264") ||
+      upper.includes("H264") ||
+      upper.includes("X264") ||
+      upper.includes("AVC")
+    )
+      return "H264";
     return "UNKNOWN";
   }
 
   /**
    * Trigger download for a movie request
    */
-  private async triggerDownload(requestId: string, item: RssItem, wasQualityUnavailable = false): Promise<void> {
+  private async triggerDownload(
+    requestId: string,
+    item: RssItem,
+    wasQualityUnavailable = false
+  ): Promise<void> {
     const release = this.buildRelease(item);
 
     if (!release.downloadUrl) {
@@ -527,13 +559,19 @@ class RssAnnounceMonitor {
     const jobQueue = getJobQueueService();
     await jobQueue.addJob("pipeline:download", { requestId }, { priority: 10 });
 
-    console.log(`[RSS] Queued download for request ${requestId}: ${release.title}${wasQualityUnavailable ? " (quality upgrade)" : ""}`);
+    console.log(
+      `[RSS] Queued download for request ${requestId}: ${release.title}${wasQualityUnavailable ? " (quality upgrade)" : ""}`
+    );
   }
 
   /**
    * Trigger download for a specific episode
    */
-  private async triggerEpisodeDownload(episodeId: string, item: RssItem, wasQualityUnavailable = false): Promise<void> {
+  private async triggerEpisodeDownload(
+    episodeId: string,
+    item: RssItem,
+    wasQualityUnavailable = false
+  ): Promise<void> {
     const release = this.buildRelease(item);
 
     if (!release.downloadUrl) {
@@ -564,15 +602,26 @@ class RssAnnounceMonitor {
 
     // Queue episode download job
     const jobQueue = getJobQueueService();
-    await jobQueue.addJob("tv:download-episode", { requestId: episode.requestId, episodeId }, { priority: 10 });
+    await jobQueue.addJob(
+      "tv:download-episode",
+      { requestId: episode.requestId, episodeId },
+      { priority: 10 }
+    );
 
-    console.log(`[RSS] Queued episode download: S${episode.season}E${episode.episode}${wasQualityUnavailable ? " (quality upgrade)" : ""}`);
+    console.log(
+      `[RSS] Queued episode download: S${episode.season}E${episode.episode}${wasQualityUnavailable ? " (quality upgrade)" : ""}`
+    );
   }
 
   /**
    * Trigger download for a season pack
    */
-  private async triggerSeasonDownload(requestId: string, season: number, item: RssItem, wasQualityUnavailable = false): Promise<void> {
+  private async triggerSeasonDownload(
+    requestId: string,
+    season: number,
+    item: RssItem,
+    wasQualityUnavailable = false
+  ): Promise<void> {
     const release = this.buildRelease(item);
 
     if (!release.downloadUrl) {
@@ -627,9 +676,15 @@ class RssAnnounceMonitor {
 
     // Queue season download job
     const jobQueue = getJobQueueService();
-    await jobQueue.addJob("tv:download-season", { requestId, season, episodeId: episodes[0].id }, { priority: 10 });
+    await jobQueue.addJob(
+      "tv:download-season",
+      { requestId, season, episodeId: episodes[0].id },
+      { priority: 10 }
+    );
 
-    console.log(`[RSS] Queued season ${season} download for request ${requestId}${wasQualityUnavailable ? " (quality upgrade)" : ""}`);
+    console.log(
+      `[RSS] Queued season ${season} download for request ${requestId}${wasQualityUnavailable ? " (quality upgrade)" : ""}`
+    );
   }
 }
 

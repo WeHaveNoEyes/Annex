@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Badge, Button, Card, EmptyState, Input, LibraryCard, ToggleGroup } from "../components/ui";
 import { trpc } from "../trpc";
-import { Button, Input, EmptyState, LibraryCard, Card, ToggleGroup, Badge } from "../components/ui";
 
 type MediaType = "all" | "movie" | "tv";
 type SortBy = "SortName" | "DateCreated" | "PremiereDate" | "CommunityRating";
@@ -20,7 +20,8 @@ export default function LibraryPage() {
   const limit = 24;
 
   // Get list of servers with media server configured
-  const { data: servers, isLoading: isLoadingServers } = trpc.servers.listWithMediaServer.useQuery();
+  const { data: servers, isLoading: isLoadingServers } =
+    trpc.servers.listWithMediaServer.useQuery();
 
   // Auto-select first server when loaded
   useEffect(() => {
@@ -31,14 +32,14 @@ export default function LibraryPage() {
 
   // Get stats for selected server
   const { data: stats } = trpc.servers.mediaStats.useQuery(
-    { serverId: selectedServerId! },
+    { serverId: selectedServerId || "" },
     { enabled: !!selectedServerId }
   );
 
   // Get library media for selected server
   const { data: mediaData, isLoading: isLoadingMedia } = trpc.servers.browseMedia.useQuery(
     {
-      serverId: selectedServerId!,
+      serverId: selectedServerId || "",
       type: mediaType === "all" ? undefined : mediaType,
       page,
       limit,
@@ -92,12 +93,7 @@ export default function LibraryPage() {
           title="No media servers configured"
           description="Add a storage server with Emby or Plex integration in Settings to browse your library"
           icon={
-            <svg
-              className="w-16 h-16"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
+            <svg className="w-16 h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -119,9 +115,7 @@ export default function LibraryPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Library</h1>
-          <p className="text-white/50 text-sm mt-1">
-            Browse your media library
-          </p>
+          <p className="text-white/50 text-sm mt-1">Browse your media library</p>
         </div>
 
         {/* Stats */}
@@ -164,11 +158,11 @@ export default function LibraryPage() {
               >
                 {server.mediaServerType === "emby" ? (
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M11.041 2.008c-.073.007-.134.073-.134.148v9.66l-8.09-4.67a.15.15 0 0 0-.224.13v9.448a.15.15 0 0 0 .224.13l8.09-4.67v9.66a.15.15 0 0 0 .224.13l10.276-5.93a.15.15 0 0 0 0-.26L11.131 2.008a.15.15 0 0 0-.09 0z"/>
+                    <path d="M11.041 2.008c-.073.007-.134.073-.134.148v9.66l-8.09-4.67a.15.15 0 0 0-.224.13v9.448a.15.15 0 0 0 .224.13l8.09-4.67v9.66a.15.15 0 0 0 .224.13l10.276-5.93a.15.15 0 0 0 0-.26L11.131 2.008a.15.15 0 0 0-.09 0z" />
                   </svg>
                 ) : (
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M12 0C5.383 0 0 5.383 0 12s5.383 12 12 12 12-5.383 12-12S18.617 0 12 0zm4.707 15.707a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414l4-4a1 1 0 0 1 1.414 1.414L13.414 11H18a1 1 0 1 1 0 2h-4.586l3.293 3.293a1 1 0 0 1 0 1.414z"/>
+                    <path d="M12 0C5.383 0 0 5.383 0 12s5.383 12 12 12 12-5.383 12-12S18.617 0 12 0zm4.707 15.707a1 1 0 0 1-1.414 0l-4-4a1 1 0 0 1 0-1.414l4-4a1 1 0 0 1 1.414 1.414L13.414 11H18a1 1 0 1 1 0 2h-4.586l3.293 3.293a1 1 0 0 1 0 1.414z" />
                   </svg>
                 )}
                 {server.name}
@@ -248,11 +242,21 @@ export default function LibraryPage() {
           >
             {sortOrder === "Ascending" ? (
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 15l7-7 7 7"
+                />
               </svg>
             ) : (
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 9l-7 7-7-7"
+                />
               </svg>
             )}
           </Button>
@@ -281,12 +285,7 @@ export default function LibraryPage() {
               : "This server's library appears to be empty"
           }
           icon={
-            <svg
-              className="w-16 h-16"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
+            <svg className="w-16 h-16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
@@ -300,7 +299,8 @@ export default function LibraryPage() {
         <>
           {/* Results count */}
           <div className="text-white/50 text-sm">
-            Showing {((page - 1) * limit) + 1}-{Math.min(page * limit, mediaData?.totalItems || 0)} of {mediaData?.totalItems} items
+            Showing {(page - 1) * limit + 1}-{Math.min(page * limit, mediaData?.totalItems || 0)} of{" "}
+            {mediaData?.totalItems} items
           </div>
 
           {/* Grid */}

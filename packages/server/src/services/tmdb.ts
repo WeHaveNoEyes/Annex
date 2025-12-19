@@ -10,11 +10,15 @@ const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 /**
  * TMDBService class - minimal version for image URL construction only
  */
+// biome-ignore lint/complexity/noStaticOnlyClass: Utility class provides namespacing for TMDB operations
 export class TMDBService {
   /**
    * Build a TMDB image URL from a path
    */
-  static getImageUrl(path: string | null, size: "w92" | "w154" | "w185" | "w342" | "w500" | "w780" | "original" = "w500"): string | null {
+  static getImageUrl(
+    path: string | null,
+    size: "w92" | "w154" | "w185" | "w342" | "w500" | "w780" | "original" = "w500"
+  ): string | null {
     if (!path) return null;
     return `${TMDB_IMAGE_BASE}/${size}${path}`;
   }

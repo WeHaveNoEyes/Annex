@@ -9,7 +9,7 @@
  * - Non-happy path scenarios (errors, edge cases)
  */
 
-import { describe, it, expect } from "bun:test";
+import { describe, expect, it } from "bun:test";
 
 // =============================================================================
 // Path Translation Tests
@@ -70,7 +70,9 @@ describe("Path Translation", () => {
 
       // Should match /media/encoding, not /media
       expect(result).toBe("/mnt/downloads/encoding/output.mkv");
-      expect(result).not.toBe("/mnt/downloads/encoding/output.mkv".replace("encoding", "downloads"));
+      expect(result).not.toBe(
+        "/mnt/downloads/encoding/output.mkv".replace("encoding", "downloads")
+      );
     });
   });
 
@@ -417,7 +419,8 @@ describe("Retry Logic", () => {
       const fileExistsOnServer = false;
 
       // If file doesn't exist on server, don't retry
-      const shouldRetry = !error.toLowerCase().includes("input file not found") || fileExistsOnServer;
+      const shouldRetry =
+        !error.toLowerCase().includes("input file not found") || fileExistsOnServer;
       expect(shouldRetry).toBe(false);
     });
 
@@ -426,7 +429,8 @@ describe("Retry Logic", () => {
       const fileExistsOnServer = true;
 
       // If file exists on server but encoder couldn't find it (NFS issue), retry
-      const shouldRetry = !error.toLowerCase().includes("input file not found") || fileExistsOnServer;
+      const shouldRetry =
+        !error.toLowerCase().includes("input file not found") || fileExistsOnServer;
       expect(shouldRetry).toBe(true);
     });
   });
@@ -478,7 +482,7 @@ describe("Stall Detection", () => {
       };
 
       expect(neverStartedJob.lastProgressAt).toBe(null);
-      expect(neverStartedJob.startedAt! < cutoff).toBe(true);
+      expect(neverStartedJob.startedAt < cutoff).toBe(true);
     });
   });
 
@@ -629,7 +633,8 @@ describe("Capacity Management", () => {
       ];
 
       const available = encoders.find(
-        (e) => e.currentJobs < e.maxConcurrent && (!e.blockedUntil || e.blockedUntil.getTime() < now)
+        (e) =>
+          e.currentJobs < e.maxConcurrent && (!e.blockedUntil || e.blockedUntil.getTime() < now)
       );
       expect(available?.encoderId).toBe("enc-2");
     });
@@ -647,12 +652,23 @@ describe("Capacity Management", () => {
     it("should return null if all encoders blocked", () => {
       const now = Date.now();
       const encoders = [
-        { encoderId: "enc-1", blockedUntil: new Date(now + 5000), currentJobs: 0, maxConcurrent: 2 },
-        { encoderId: "enc-2", blockedUntil: new Date(now + 10000), currentJobs: 0, maxConcurrent: 2 },
+        {
+          encoderId: "enc-1",
+          blockedUntil: new Date(now + 5000),
+          currentJobs: 0,
+          maxConcurrent: 2,
+        },
+        {
+          encoderId: "enc-2",
+          blockedUntil: new Date(now + 10000),
+          currentJobs: 0,
+          maxConcurrent: 2,
+        },
       ];
 
       const available = encoders.find(
-        (e) => e.currentJobs < e.maxConcurrent && (!e.blockedUntil || e.blockedUntil.getTime() < now)
+        (e) =>
+          e.currentJobs < e.maxConcurrent && (!e.blockedUntil || e.blockedUntil.getTime() < now)
       );
       expect(available).toBeUndefined();
     });

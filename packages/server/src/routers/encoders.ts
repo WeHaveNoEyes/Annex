@@ -4,13 +4,13 @@
  * API for managing remote encoders and viewing status.
  */
 
-import { router, publicProcedure } from "../trpc.js";
-import { z } from "zod";
+import type { EncoderAssignmentInfo, RemoteEncoderInfo } from "@annex/shared";
 import { observable } from "@trpc/server/observable";
+import { z } from "zod";
 import { prisma } from "../db/client.js";
 import { getEncoderDispatchService } from "../services/encoderDispatch.js";
 import { getJobEventService, type JobUpdateEvent } from "../services/jobEvents.js";
-import type { RemoteEncoderInfo, EncoderAssignmentInfo } from "@annex/shared";
+import { publicProcedure, router } from "../trpc.js";
 
 export const encodersRouter = router({
   /**
@@ -71,10 +71,12 @@ export const encodersRouter = router({
    * Update encoder name
    */
   updateName: publicProcedure
-    .input(z.object({
-      encoderId: z.string(),
-      name: z.string().min(1).max(100),
-    }))
+    .input(
+      z.object({
+        encoderId: z.string(),
+        name: z.string().min(1).max(100),
+      })
+    )
     .mutation(async ({ input }) => {
       return prisma.remoteEncoder.update({
         where: { encoderId: input.encoderId },
@@ -85,27 +87,25 @@ export const encodersRouter = router({
   /**
    * Remove encoder (only if offline)
    */
-  remove: publicProcedure
-    .input(z.object({ encoderId: z.string() }))
-    .mutation(async ({ input }) => {
-      const encoder = await prisma.remoteEncoder.findUnique({
-        where: { encoderId: input.encoderId },
-      });
+  remove: publicProcedure.input(z.object({ encoderId: z.string() })).mutation(async ({ input }) => {
+    const encoder = await prisma.remoteEncoder.findUnique({
+      where: { encoderId: input.encoderId },
+    });
 
-      if (!encoder) {
-        throw new Error("Encoder not found");
-      }
+    if (!encoder) {
+      throw new Error("Encoder not found");
+    }
 
-      if (encoder.status !== "OFFLINE") {
-        throw new Error("Cannot remove an online encoder. Shut it down first.");
-      }
+    if (encoder.status !== "OFFLINE") {
+      throw new Error("Cannot remove an online encoder. Shut it down first.");
+    }
 
-      await prisma.remoteEncoder.delete({
-        where: { encoderId: input.encoderId },
-      });
+    await prisma.remoteEncoder.delete({
+      where: { encoderId: input.encoderId },
+    });
 
-      return { success: true };
-    }),
+    return { success: true };
+  }),
 
   /**
    * Get all active encoding assignments
@@ -142,9 +142,11 @@ export const encodersRouter = router({
    * Get assignment history (recent completed/failed)
    */
   assignmentHistory: publicProcedure
-    .input(z.object({
-      limit: z.number().int().min(1).max(100).default(50),
-    }))
+    .input(
+      z.object({
+        limit: z.number().int().min(1).max(100).default(50),
+      })
+    )
     .query(async ({ input }): Promise<EncoderAssignmentInfo[]> => {
       const assignments = await prisma.encoderAssignment.findMany({
         where: {
@@ -216,9 +218,10 @@ export const encodersRouter = router({
       failedAssignments,
       totalJobsCompleted: totalJobsCompleted._sum.totalJobsCompleted || 0,
       totalJobsFailed: totalJobsFailed._sum.totalJobsFailed || 0,
-      successRate: completedAssignments > 0
-        ? Math.round((completedAssignments / (completedAssignments + failedAssignments)) * 100)
-        : 0,
+      successRate:
+        completedAssignments > 0
+          ? Math.round((completedAssignments / (completedAssignments + failedAssignments)) * 100)
+          : 0,
     };
   }),
 
@@ -226,10 +229,12 @@ export const encodersRouter = router({
    * Cancel an encoding job
    */
   cancelJob: publicProcedure
-    .input(z.object({
-      jobId: z.string(),
-      reason: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        jobId: z.string(),
+        reason: z.string().optional(),
+      })
+    )
     .mutation(async ({ input }) => {
       const dispatch = getEncoderDispatchService();
       const cancelled = await dispatch.cancelJob(input.jobId, input.reason);
@@ -301,19 +306,21 @@ export const encodersRouter = router({
       const handler = (event: JobUpdateEvent) => {
         if (event.job.type === "remote:encode" && event.eventType === "progress") {
           // Fetch full assignment info
-          prisma.encoderAssignment.findUnique({
-            where: { jobId: event.job.id },
-          }).then((assignment) => {
-            if (assignment) {
-              emit.next({
-                jobId: assignment.jobId,
-                progress: assignment.progress,
-                fps: assignment.fps,
-                speed: assignment.speed,
-                eta: assignment.eta,
-              });
-            }
-          });
+          prisma.encoderAssignment
+            .findUnique({
+              where: { jobId: event.job.id },
+            })
+            .then((assignment) => {
+              if (assignment) {
+                emit.next({
+                  jobId: assignment.jobId,
+                  progress: assignment.progress,
+                  fps: assignment.fps,
+                  speed: assignment.speed,
+                  eta: assignment.eta,
+                });
+              }
+            });
         }
       };
 

@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Button, Input, Card, Label, Select } from "../ui";
+import { useEffect, useState } from "react";
+import { Button, Card, Input, Label, Select } from "../ui";
 
 interface StepNodeData {
   label: string;
@@ -53,7 +53,9 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
               <Input
                 type="number"
                 value={(config.minSeeds as number) || 1}
-                onChange={(e) => setConfig({ ...config, minSeeds: parseInt(e.target.value) || 1 })}
+                onChange={(e) =>
+                  setConfig({ ...config, minSeeds: parseInt(e.target.value, 10) || 1 })
+                }
                 min={0}
               />
             </div>
@@ -62,7 +64,9 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
               <Input
                 type="number"
                 value={(config.timeoutSeconds as number) || 300}
-                onChange={(e) => setConfig({ ...config, timeoutSeconds: parseInt(e.target.value) || 300 })}
+                onChange={(e) =>
+                  setConfig({ ...config, timeoutSeconds: parseInt(e.target.value, 10) || 300 })
+                }
                 min={10}
               />
             </div>
@@ -77,7 +81,9 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
               <Input
                 type="number"
                 value={(config.maxDownloadHours as number) || 24}
-                onChange={(e) => setConfig({ ...config, maxDownloadHours: parseInt(e.target.value) || 24 })}
+                onChange={(e) =>
+                  setConfig({ ...config, maxDownloadHours: parseInt(e.target.value, 10) || 24 })
+                }
                 min={1}
               />
             </div>
@@ -122,11 +128,13 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
               <Input
                 type="number"
                 value={Number(config.crf || 28)}
-                onChange={(e) => setConfig({ ...config, crf: parseInt(e.target.value) || 28 })}
+                onChange={(e) => setConfig({ ...config, crf: parseInt(e.target.value, 10) || 28 })}
                 min={0}
                 max={51}
               />
-              <p className="text-xs text-white/50 mt-1">Lower = better quality (18-28 recommended)</p>
+              <p className="text-xs text-white/50 mt-1">
+                Lower = better quality (18-28 recommended)
+              </p>
             </div>
 
             <div>
@@ -148,7 +156,12 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
               <Input
                 type="number"
                 value={config.maxBitrate !== undefined ? Number(config.maxBitrate) : ""}
-                onChange={(e) => setConfig({ ...config, maxBitrate: e.target.value ? parseInt(e.target.value) : undefined })}
+                onChange={(e) =>
+                  setConfig({
+                    ...config,
+                    maxBitrate: e.target.value ? parseInt(e.target.value, 10) : undefined,
+                  })
+                }
                 placeholder="Leave empty for no limit"
                 min={0}
               />
@@ -264,10 +277,14 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
               <Input
                 type="number"
                 value={(config.timeoutHours as number) || 24}
-                onChange={(e) => setConfig({ ...config, timeoutHours: parseInt(e.target.value) || 24 })}
+                onChange={(e) =>
+                  setConfig({ ...config, timeoutHours: parseInt(e.target.value, 10) || 24 })
+                }
                 min={1}
               />
-              <p className="text-xs text-white/50 mt-1">Auto-reject if not approved within timeout</p>
+              <p className="text-xs text-white/50 mt-1">
+                Auto-reject if not approved within timeout
+              </p>
             </div>
             <div>
               <Label>Default Action on Timeout</Label>
@@ -315,16 +332,19 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-bold text-white">
-            Configure {nodeData.type} Step
-          </h2>
+          <h2 className="text-xl font-bold text-white">Configure {nodeData.type} Step</h2>
           <button
             onClick={onClose}
             className="text-white/50 hover:text-white transition-colors"
             type="button"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>

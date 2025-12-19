@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Build script for cross-platform encoder binaries
  *
@@ -14,9 +15,9 @@
  * - dist-binaries/manifest.json (with checksums and metadata)
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 const ROOT = path.resolve(__dirname, "..");
@@ -83,7 +84,7 @@ async function buildPlatform(platform) {
     }
   );
 
-  const stdout = await new Response(proc.stdout).text();
+  const _stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();
   const exitCode = await proc.exited;
 

@@ -7,9 +7,9 @@
  * Supports batch requests (up to 200 items) for efficient bulk operations.
  */
 
+import { MediaType, type Prisma } from "@prisma/client";
 import { getConfig } from "../config/index.js";
 import { prisma } from "../db/client.js";
-import { MediaType, Prisma } from "@prisma/client";
 import { getSecretsService } from "./secrets.js";
 
 const MDBLIST_BASE_URL = "https://api.mdblist.com";
@@ -213,7 +213,9 @@ class MDBListService {
   private async fetch<T>(endpoint: string, options: RequestInit = {}, retries = 3): Promise<T> {
     const apiKey = await this.getApiKey();
     if (!apiKey) {
-      throw new Error("MDBList API key not configured. Set MDBLIST_API_KEY in your environment or configure via Settings.");
+      throw new Error(
+        "MDBList API key not configured. Set MDBLIST_API_KEY in your environment or configure via Settings."
+      );
     }
 
     await this.rateLimit();
@@ -239,8 +241,10 @@ class MDBListService {
       if (response.status === 429) {
         if (attempt < retries) {
           // Exponential backoff: 2s, 4s, 8s
-          const backoffMs = Math.pow(2, attempt + 1) * 1000;
-          console.log(`[MDBList] Rate limited (429), backing off ${backoffMs}ms (attempt ${attempt + 1}/${retries})`);
+          const backoffMs = 2 ** (attempt + 1) * 1000;
+          console.log(
+            `[MDBList] Rate limited (429), backing off ${backoffMs}ms (attempt ${attempt + 1}/${retries})`
+          );
           // Also reduce our token rate to avoid future 429s
           tokens = 0;
           await new Promise((resolve) => setTimeout(resolve, backoffMs));
@@ -309,7 +313,10 @@ class MDBListService {
           }
         }
       } catch (error) {
-        console.error(`Failed to batch fetch from MDBList (chunk ${i}-${i + chunk.length}):`, error);
+        console.error(
+          `Failed to batch fetch from MDBList (chunk ${i}-${i + chunk.length}):`,
+          error
+        );
       }
     }
 
@@ -362,7 +369,7 @@ class MDBListService {
           numberOfEpisodes: data.episode_count || null,
           budget: data.budget ? BigInt(data.budget) : null,
           revenue: data.revenue ? BigInt(data.revenue) : null,
-          watchProviders: data.watch_providers as Prisma.InputJsonValue ?? undefined,
+          watchProviders: (data.watch_providers as Prisma.InputJsonValue) ?? undefined,
           mdblistUpdatedAt: new Date(),
           ratings: {
             create: {
@@ -394,7 +401,7 @@ class MDBListService {
           numberOfEpisodes: data.episode_count || undefined,
           budget: data.budget ? BigInt(data.budget) : undefined,
           revenue: data.revenue ? BigInt(data.revenue) : undefined,
-          watchProviders: data.watch_providers as Prisma.InputJsonValue ?? undefined,
+          watchProviders: (data.watch_providers as Prisma.InputJsonValue) ?? undefined,
           mdblistUpdatedAt: new Date(),
           ratings: {
             upsert: {
@@ -534,7 +541,7 @@ class MDBListService {
           numberOfEpisodes: data.episode_count || null,
           budget: data.budget ? BigInt(data.budget) : null,
           revenue: data.revenue ? BigInt(data.revenue) : null,
-          watchProviders: data.watch_providers as Prisma.InputJsonValue ?? undefined,
+          watchProviders: (data.watch_providers as Prisma.InputJsonValue) ?? undefined,
           mdblistUpdatedAt: new Date(),
           ratings: {
             create: {
@@ -566,7 +573,7 @@ class MDBListService {
           numberOfEpisodes: data.episode_count || undefined,
           budget: data.budget ? BigInt(data.budget) : undefined,
           revenue: data.revenue ? BigInt(data.revenue) : undefined,
-          watchProviders: data.watch_providers as Prisma.InputJsonValue ?? undefined,
+          watchProviders: (data.watch_providers as Prisma.InputJsonValue) ?? undefined,
           mdblistUpdatedAt: new Date(),
           ratings: {
             upsert: {
@@ -696,14 +703,16 @@ class MDBListService {
     limit = 20
   ): Promise<Array<{ tmdbId: number; title: string; year: number; score: number }>> {
     try {
-      const response = await this.fetch<Array<{
-        id: number;
-        title: string;
-        year: number;
-        score: number;
-        imdbid?: string;
-        tmdbid?: number;
-      }>>(`/search/${type}?query=${encodeURIComponent(query)}&limit=${limit}`);
+      const response = await this.fetch<
+        Array<{
+          id: number;
+          title: string;
+          year: number;
+          score: number;
+          imdbid?: string;
+          tmdbid?: number;
+        }>
+      >(`/search/${type}?query=${encodeURIComponent(query)}&limit=${limit}`);
 
       return response.map((item) => ({
         tmdbId: item.tmdbid || item.id,

@@ -1,6 +1,6 @@
 import { useState } from "react";
+import { Badge, Button, Card, EmptyState, Input, Label } from "../../components/ui";
 import { trpc } from "../../trpc";
-import { Button, Input, Card, Badge, Label, EmptyState } from "../../components/ui";
 
 export default function Notifications() {
   const [isCreating, setIsCreating] = useState(false);
@@ -102,7 +102,9 @@ export default function Notifications() {
                       </Badge>
                     )}
                     {!config.enabled && (
-                      <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Disabled</Badge>
+                      <Badge className="bg-red-500/20 text-red-400 border-red-500/30">
+                        Disabled
+                      </Badge>
                     )}
                   </div>
 

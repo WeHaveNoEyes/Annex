@@ -4,9 +4,9 @@
  * Generates and optionally installs Windows Service.
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { CliArgs } from "../cli.js";
 
 interface SetupOptions {
@@ -164,10 +164,13 @@ Configuration:
 
     console.log("\n[2/2] Running installation script...");
     try {
-      const proc = Bun.spawn(["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", tempScript], {
-        stdout: "inherit",
-        stderr: "inherit",
-      });
+      const proc = Bun.spawn(
+        ["powershell.exe", "-ExecutionPolicy", "Bypass", "-File", tempScript],
+        {
+          stdout: "inherit",
+          stderr: "inherit",
+        }
+      );
       await proc.exited;
 
       // Clean up temp script

@@ -2,8 +2,7 @@
  * Comprehensive tests for platform detection and setup
  */
 
-
-import { describe, test, expect, mock } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 
 describe("platform - comprehensive testing", () => {
   describe("runSetup platform routing", () => {

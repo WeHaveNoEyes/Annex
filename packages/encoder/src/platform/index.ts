@@ -4,7 +4,7 @@
  * Detects the current platform and dispatches to platform-specific setup.
  */
 
-import * as os from "os";
+import * as os from "node:os";
 import type { CliArgs } from "../cli.js";
 
 export type Platform = "linux" | "windows" | "darwin" | "unknown";

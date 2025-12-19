@@ -5,9 +5,9 @@
  * Supports multi-part RAR archives (.rar, .r00, .r01, etc.)
  */
 
-import { spawn } from "child_process";
-import { existsSync, readdirSync, statSync, mkdirSync } from "fs";
-import { join, basename, dirname } from "path";
+import { spawn } from "node:child_process";
+import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 
 export interface ExtractionResult {
   success: boolean;
@@ -54,7 +54,10 @@ export function detectRarArchive(directory: string): ArchiveInfo {
   for (const file of files) {
     const lower = file.toLowerCase();
     // Match .rar and .r00-.r99 parts
-    if (lower === rarFile.toLowerCase() || lower.match(new RegExp(`^${escapeRegex(baseName.toLowerCase())}\\.r\\d{2}$`))) {
+    if (
+      lower === rarFile.toLowerCase() ||
+      lower.match(new RegExp(`^${escapeRegex(baseName.toLowerCase())}\\.r\\d{2}$`))
+    ) {
       const filePath = join(directory, file);
       try {
         totalSize += statSync(filePath).size;
@@ -122,10 +125,12 @@ export async function extractRar(
         }
 
         // Only log meaningful messages (not progress percentages)
-        if (trimmedLine.startsWith("Extracting") ||
-            trimmedLine.startsWith("...") ||
-            trimmedLine === "All OK" ||
-            trimmedLine.includes("Copyright")) {
+        if (
+          trimmedLine.startsWith("Extracting") ||
+          trimmedLine.startsWith("...") ||
+          trimmedLine === "All OK" ||
+          trimmedLine.includes("Copyright")
+        ) {
           options?.onProgress?.(trimmedLine);
         }
 
@@ -205,10 +210,18 @@ export function isSampleFile(filePath: string): boolean {
 
   // Check for "sample" in filename (but not as part of another word)
   const filename = basename(lower);
-  if (filename.includes("-sample.") || filename.includes(".sample.") || filename.includes("_sample.")) {
+  if (
+    filename.includes("-sample.") ||
+    filename.includes(".sample.") ||
+    filename.includes("_sample.")
+  ) {
     return true;
   }
-  if (filename.startsWith("sample.") || filename.startsWith("sample-") || filename.startsWith("sample_")) {
+  if (
+    filename.startsWith("sample.") ||
+    filename.startsWith("sample-") ||
+    filename.startsWith("sample_")
+  ) {
     return true;
   }
 

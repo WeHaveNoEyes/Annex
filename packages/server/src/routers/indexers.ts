@@ -1,8 +1,9 @@
-import { z } from "zod";
-import { router, publicProcedure } from "../trpc.js";
-import { prisma } from "../db/client.js";
 import { IndexerType } from "@prisma/client";
+import { z } from "zod";
+import { prisma } from "../db/client.js";
+import { getCryptoService } from "../services/crypto.js";
 import { getIndexerService } from "../services/indexer.js";
+import { getRateLimiter } from "../services/rateLimiter.js";
 import {
   getTorrentLeechProvider,
   TORRENTLEECH_CATEGORIES,
@@ -13,8 +14,7 @@ import {
   UNIT3D_CATEGORIES,
   UNIT3D_CATEGORY_GROUPS,
 } from "../services/unit3d.js";
-import { getCryptoService } from "../services/crypto.js";
-import { getRateLimiter } from "../services/rateLimiter.js";
+import { publicProcedure, router } from "../trpc.js";
 
 const indexerInputSchema = z.object({
   name: z.string().min(1),
@@ -165,13 +165,15 @@ export const indexersRouter = router({
       if (updates.url !== undefined) data.url = updates.url;
       // Only update apiKey if a new one was provided (don't overwrite with null/empty)
       if (updates.apiKey) data.apiKey = encryptIfPresent(updates.apiKey);
-      if (updates.categories?.movies !== undefined) data.categoriesMovies = updates.categories.movies;
+      if (updates.categories?.movies !== undefined)
+        data.categoriesMovies = updates.categories.movies;
       if (updates.categories?.tv !== undefined) data.categoriesTv = updates.categories.tv;
       if (updates.priority !== undefined) data.priority = updates.priority;
       if (updates.enabled !== undefined) data.enabled = updates.enabled;
       if (updates.rateLimitEnabled !== undefined) data.rateLimitEnabled = updates.rateLimitEnabled;
       if (updates.rateLimitMax !== undefined) data.rateLimitMax = updates.rateLimitMax;
-      if (updates.rateLimitWindowSecs !== undefined) data.rateLimitWindowSecs = updates.rateLimitWindowSecs;
+      if (updates.rateLimitWindowSecs !== undefined)
+        data.rateLimitWindowSecs = updates.rateLimitWindowSecs;
 
       await prisma.indexer.update({
         where: { id },
@@ -234,7 +236,8 @@ export const indexersRouter = router({
         if (!username || !password) {
           return {
             success: false,
-            message: "Invalid credentials format. Use 'username:password' or 'username:password:alt2FAToken'",
+            message:
+              "Invalid credentials format. Use 'username:password' or 'username:password:alt2FAToken'",
             capabilities: null,
           };
         }
@@ -398,10 +401,8 @@ export const indexersRouter = router({
   /**
    * Get rate limit status for an indexer
    */
-  rateLimitStatus: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
-      const rateLimiter = getRateLimiter();
-      return await rateLimiter.getStatus(input.id);
-    }),
+  rateLimitStatus: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+    const rateLimiter = getRateLimiter();
+    return await rateLimiter.getStatus(input.id);
+  }),
 });

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
-import { NavLink } from "react-router-dom";
 import { createPortal } from "react-dom";
+import { NavLink } from "react-router-dom";
 import { PopcornParticles } from "./PopcornParticles";
 
 interface NavButtonProps {

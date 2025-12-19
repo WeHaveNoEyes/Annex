@@ -1,9 +1,9 @@
+import { MediaType, Prisma, RequestStatus, TvEpisodeStatus } from "@prisma/client";
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc.js";
 import { prisma } from "../db/client.js";
-import { MediaType, RequestStatus, Prisma, TvEpisodeStatus } from "@prisma/client";
 import { getDownloadService } from "../services/download.js";
 import { getPipelineExecutor } from "../services/pipeline/PipelineExecutor.js";
+import { publicProcedure, router } from "../trpc.js";
 
 // =============================================================================
 // Types
@@ -96,7 +96,9 @@ async function getDefaultTemplate(mediaType: "MOVIE" | "TV"): Promise<string> {
   });
 
   if (!template) {
-    throw new Error(`No default pipeline template found for ${mediaType}. Run: bun run scripts/seed-default-pipelines.ts`);
+    throw new Error(
+      `No default pipeline template found for ${mediaType}. Run: bun run scripts/seed-default-pipelines.ts`
+    );
   }
 
   return template.id;
@@ -141,7 +143,7 @@ export const requestsRouter = router({
       });
 
       // Get pipeline template: use provided one or auto-select default
-      const templateId = input.pipelineTemplateId || await getDefaultTemplate("MOVIE");
+      const templateId = input.pipelineTemplateId || (await getDefaultTemplate("MOVIE"));
 
       // Validate template exists
       const template = await prisma.pipelineTemplate.findUnique({
@@ -204,7 +206,7 @@ export const requestsRouter = router({
       });
 
       // Get pipeline template: use provided one or auto-select default
-      const templateId = input.pipelineTemplateId || await getDefaultTemplate("TV");
+      const templateId = input.pipelineTemplateId || (await getDefaultTemplate("TV"));
 
       // Validate template exists
       const template = await prisma.pipelineTemplate.findUnique({
@@ -237,7 +239,17 @@ export const requestsRouter = router({
       z.object({
         limit: z.number().min(1).max(100).default(50),
         status: z
-          .enum(["pending", "searching", "awaiting", "quality_unavailable", "downloading", "encoding", "delivering", "completed", "failed"])
+          .enum([
+            "pending",
+            "searching",
+            "awaiting",
+            "quality_unavailable",
+            "downloading",
+            "encoding",
+            "delivering",
+            "completed",
+            "failed",
+          ])
           .optional(),
       })
     )
@@ -324,7 +336,8 @@ export const requestsRouter = router({
           currentStep: r.currentStep,
           error: r.error,
           requiredResolution: r.requiredResolution,
-          hasAlternatives: r.status === RequestStatus.QUALITY_UNAVAILABLE &&
+          hasAlternatives:
+            r.status === RequestStatus.QUALITY_UNAVAILABLE &&
             Array.isArray(availableReleases) &&
             availableReleases.length > 0,
           createdAt: r.createdAt,
@@ -556,7 +569,7 @@ export const requestsRouter = router({
         if (!availableMap.has(key)) {
           availableMap.set(key, new Set());
         }
-        availableMap.get(key)!.add(ep.serverId);
+        availableMap.get(key)?.add(ep.serverId);
       }
 
       // Get download progress for episodes that are downloading
@@ -605,21 +618,24 @@ export const requestsRouter = router({
       }
 
       // Group by season
-      const seasons: Record<number, {
-        seasonNumber: number;
-        episodes: {
-          id: string;
-          episodeNumber: number;
-          status: string;
-          error: string | null;
-          airDate: Date | null;
-          downloadedAt: Date | null;
-          deliveredAt: Date | null;
-          progress: number | null;
-          speed: number | null;
-          releaseName: string | null;
-        }[];
-      }> = {};
+      const seasons: Record<
+        number,
+        {
+          seasonNumber: number;
+          episodes: {
+            id: string;
+            episodeNumber: number;
+            status: string;
+            error: string | null;
+            airDate: Date | null;
+            downloadedAt: Date | null;
+            deliveredAt: Date | null;
+            progress: number | null;
+            speed: number | null;
+            releaseName: string | null;
+          }[];
+        }
+      > = {};
 
       for (const ep of episodes) {
         if (!seasons[ep.season]) {
@@ -698,41 +714,41 @@ export const requestsRouter = router({
   /**
    * Get alternative releases for a quality-unavailable request
    */
-  getAlternatives: publicProcedure
-    .input(z.object({ id: z.string() }))
-    .query(async ({ input }) => {
-      const request = await prisma.mediaRequest.findUnique({
-        where: { id: input.id },
-        select: {
-          status: true,
-          requiredResolution: true,
-          availableReleases: true,
-          title: true,
-          year: true,
-          type: true,
-        },
-      });
+  getAlternatives: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+    const request = await prisma.mediaRequest.findUnique({
+      where: { id: input.id },
+      select: {
+        status: true,
+        requiredResolution: true,
+        availableReleases: true,
+        title: true,
+        year: true,
+        type: true,
+      },
+    });
 
-      if (!request) return null;
+    if (!request) return null;
 
-      return {
-        status: fromRequestStatus(request.status),
-        requiredResolution: request.requiredResolution,
-        availableReleases: request.availableReleases as unknown[] | null,
-        title: request.title,
-        year: request.year,
-        type: fromMediaType(request.type),
-      };
-    }),
+    return {
+      status: fromRequestStatus(request.status),
+      requiredResolution: request.requiredResolution,
+      availableReleases: request.availableReleases as unknown[] | null,
+      title: request.title,
+      year: request.year,
+      type: fromMediaType(request.type),
+    };
+  }),
 
   /**
    * Accept a lower-quality release for a quality-unavailable request
    */
   acceptLowerQuality: publicProcedure
-    .input(z.object({
-      id: z.string(),
-      releaseIndex: z.number().int().min(0),
-    }))
+    .input(
+      z.object({
+        id: z.string(),
+        releaseIndex: z.number().int().min(0),
+      })
+    )
     .mutation(async ({ input }) => {
       const request = await prisma.mediaRequest.findUnique({
         where: { id: input.id },
@@ -800,8 +816,10 @@ export const requestsRouter = router({
       }
 
       // Only allow refresh from certain states
-      if (request.status !== RequestStatus.QUALITY_UNAVAILABLE &&
-          request.status !== RequestStatus.AWAITING) {
+      if (
+        request.status !== RequestStatus.QUALITY_UNAVAILABLE &&
+        request.status !== RequestStatus.AWAITING
+      ) {
         throw new Error("Request cannot be refreshed from current status");
       }
 

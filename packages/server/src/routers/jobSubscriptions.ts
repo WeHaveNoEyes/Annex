@@ -4,15 +4,15 @@
  * tRPC subscriptions for real-time job updates via WebSocket.
  */
 
-import { router, publicProcedure } from "../trpc.js";
-import { z } from "zod";
 import { observable } from "@trpc/server/observable";
+import { z } from "zod";
 import {
+  type GpuStatusEvent,
   getJobEventService,
   type JobUpdateEvent,
   type WorkerStatusEvent,
-  type GpuStatusEvent,
 } from "../services/jobEvents.js";
+import { publicProcedure, router } from "../trpc.js";
 
 export const jobSubscriptionsRouter = router({
   /**

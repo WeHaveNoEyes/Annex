@@ -1,10 +1,21 @@
 import { useState } from "react";
-import { Routes, Route } from "react-router-dom";
+import { Route, Routes } from "react-router-dom";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Input,
+  Label,
+  Select,
+  SidebarNav,
+  Skeleton,
+  ToggleGroup,
+} from "../components/ui";
 import { trpc } from "../trpc";
-import { Button, Input, Select, Card, Badge, Label, SidebarNav, EmptyState, ToggleGroup } from "../components/ui";
-import Pipelines from "./Settings/Pipelines";
-import PipelineEditor from "./Settings/PipelineEditor";
 import Notifications from "./Settings/Notifications";
+import PipelineEditor from "./Settings/PipelineEditor";
+import Pipelines from "./Settings/Pipelines";
 
 const settingsNavItems = [
   { to: "/settings", label: "General", end: true },
@@ -59,7 +70,7 @@ function SecretInput({
         alert(result.error || "Failed to save");
       }
     } catch (error) {
-      alert("Failed to save: " + (error instanceof Error ? error.message : "Unknown error"));
+      alert(`Failed to save: ${error instanceof Error ? error.message : "Unknown error"}`);
     } finally {
       setIsSaving(false);
     }
@@ -71,7 +82,7 @@ function SecretInput({
       await deleteSecretMutation.mutateAsync({ key: secretKey });
       utils.secrets.list.invalidate();
     } catch (error) {
-      alert("Failed to delete: " + (error instanceof Error ? error.message : "Unknown error"));
+      alert(`Failed to delete: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   };
 
@@ -82,7 +93,10 @@ function SecretInput({
       const result = await testConnectionMutation.mutateAsync({ service: testService });
       setTestResult({ success: result.success, message: result.message || result.error });
     } catch (error) {
-      setTestResult({ success: false, message: error instanceof Error ? error.message : "Unknown error" });
+      setTestResult({
+        success: false,
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   };
 
@@ -91,12 +105,8 @@ function SecretInput({
       <div className="flex items-center justify-between">
         <Label hint={description}>{label}</Label>
         <div className="flex items-center gap-2">
-          {hasValue && (
-            <Badge variant="success">Configured</Badge>
-          )}
-          {!hasValue && (
-            <Badge variant="default">Not set</Badge>
-          )}
+          {hasValue && <Badge variant="success">Configured</Badge>}
+          {!hasValue && <Badge variant="default">Not set</Badge>}
         </div>
       </div>
 
@@ -112,7 +122,14 @@ function SecretInput({
           <Button onClick={handleSave} disabled={isSaving || !value.trim()} size="sm">
             {isSaving ? "Saving..." : "Save"}
           </Button>
-          <Button variant="ghost" onClick={() => { setIsEditing(false); setValue(""); }} size="sm">
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setIsEditing(false);
+              setValue("");
+            }}
+            size="sm"
+          >
             Cancel
           </Button>
         </div>
@@ -169,14 +186,19 @@ function GeneralSettings() {
   const secrets = secretsQuery.data || [];
 
   // Group secrets by category
-  const secretsByGroup = secrets.reduce((acc, s) => {
-    if (!acc[s.group]) acc[s.group] = [];
-    acc[s.group].push(s);
-    return acc;
-  }, {} as Record<string, typeof secrets>);
+  const secretsByGroup = secrets.reduce(
+    (acc, s) => {
+      if (!acc[s.group]) acc[s.group] = [];
+      acc[s.group].push(s);
+      return acc;
+    },
+    {} as Record<string, typeof secrets>
+  );
 
   // Fetch current retry interval setting
-  const retryIntervalQuery = trpc.system.settings.get.useQuery({ key: "search.retryIntervalHours" });
+  const retryIntervalQuery = trpc.system.settings.get.useQuery({
+    key: "search.retryIntervalHours",
+  });
   const [retryInterval, setRetryInterval] = useState<string>("6");
   const [retryIntervalSaved, setRetryIntervalSaved] = useState(false);
 
@@ -213,10 +235,10 @@ function GeneralSettings() {
       <h2 className="text-xl font-semibold">General Settings</h2>
 
       {/* Metadata APIs */}
-      {secretsByGroup["metadata"] && (
+      {secretsByGroup.metadata && (
         <Card className="space-y-5">
           <h3 className="text-lg font-medium">Metadata APIs</h3>
-          {secretsByGroup["metadata"].map((secret) => (
+          {secretsByGroup.metadata.map((secret) => (
             <SecretInput
               key={secret.key}
               secretKey={secret.key}
@@ -233,10 +255,10 @@ function GeneralSettings() {
       )}
 
       {/* Download Client */}
-      {secretsByGroup["downloads"] && (
+      {secretsByGroup.downloads && (
         <Card className="space-y-5">
           <h3 className="text-lg font-medium">Download Client</h3>
-          {secretsByGroup["downloads"].map((secret) => (
+          {secretsByGroup.downloads.map((secret) => (
             <SecretInput
               key={secret.key}
               secretKey={secret.key}
@@ -278,7 +300,8 @@ function GeneralSettings() {
             </Button>
           </div>
           <p className="text-xs text-surface-500 mt-1">
-            When no releases are found for a request, it will be retried every {retryInterval} hour{retryInterval !== "1" ? "s" : ""}
+            When no releases are found for a request, it will be retried every {retryInterval} hour
+            {retryInterval !== "1" ? "s" : ""}
           </p>
         </div>
       </Card>
@@ -375,7 +398,7 @@ function ServerForm({
       if (form.mediaServer) {
         setForm((prev) => ({
           ...prev,
-          mediaServer: { ...prev.mediaServer!, type },
+          mediaServer: { ...prev.mediaServer, type } as ServerFormData["mediaServer"],
         }));
       }
     }
@@ -417,7 +440,7 @@ function ServerForm({
             <Input
               type="number"
               value={form.port}
-              onChange={(e) => updateForm("port", parseInt(e.target.value) || 22)}
+              onChange={(e) => updateForm("port", parseInt(e.target.value, 10) || 22)}
               required
             />
           </div>
@@ -493,7 +516,9 @@ function ServerForm({
           <Label>Media Server Type</Label>
           <Select
             value={mediaServerType}
-            onChange={(e) => handleMediaServerTypeChange(e.target.value as "none" | "plex" | "emby")}
+            onChange={(e) =>
+              handleMediaServerTypeChange(e.target.value as "none" | "plex" | "emby")
+            }
           >
             <option value="none">None</option>
             <option value="emby">Emby</option>
@@ -509,15 +534,20 @@ function ServerForm({
                 type="url"
                 value={form.mediaServer?.url ?? ""}
                 onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    mediaServer: {
-                      ...prev.mediaServer!,
-                      url: e.target.value,
-                    },
-                  }))
+                  setForm(
+                    (prev) =>
+                      ({
+                        ...prev,
+                        mediaServer: {
+                          ...prev.mediaServer,
+                          url: e.target.value,
+                        },
+                      }) as ServerFormData
+                  )
                 }
-                placeholder={mediaServerType === "plex" ? "http://localhost:32400" : "http://localhost:8096"}
+                placeholder={
+                  mediaServerType === "plex" ? "http://localhost:32400" : "http://localhost:8096"
+                }
                 required
               />
             </div>
@@ -528,15 +558,22 @@ function ServerForm({
                 type="password"
                 value={form.mediaServer?.apiKey ?? ""}
                 onChange={(e) =>
-                  setForm((prev) => ({
-                    ...prev,
-                    mediaServer: {
-                      ...prev.mediaServer!,
-                      apiKey: e.target.value,
-                    },
-                  }))
+                  setForm(
+                    (prev) =>
+                      ({
+                        ...prev,
+                        mediaServer: {
+                          ...prev.mediaServer,
+                          apiKey: e.target.value,
+                        },
+                      }) as ServerFormData
+                  )
                 }
-                placeholder={form.mediaServer?.hasApiKey ? "Leave blank to keep current" : "Enter API key or token"}
+                placeholder={
+                  form.mediaServer?.hasApiKey
+                    ? "Leave blank to keep current"
+                    : "Enter API key or token"
+                }
                 required={!form.mediaServer?.hasApiKey}
               />
               {form.mediaServer?.hasApiKey && !form.mediaServer.apiKey && (
@@ -550,16 +587,22 @@ function ServerForm({
                 <Input
                   value={form.mediaServer?.libraryIds.movies.join(", ") ?? ""}
                   onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      mediaServer: {
-                        ...prev.mediaServer!,
-                        libraryIds: {
-                          ...prev.mediaServer!.libraryIds,
-                          movies: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
-                        },
-                      },
-                    }))
+                    setForm(
+                      (prev) =>
+                        ({
+                          ...prev,
+                          mediaServer: {
+                            ...prev.mediaServer,
+                            libraryIds: {
+                              ...prev.mediaServer?.libraryIds,
+                              movies: e.target.value
+                                .split(",")
+                                .map((s) => s.trim())
+                                .filter(Boolean),
+                            },
+                          },
+                        }) as ServerFormData
+                    )
                   }
                   placeholder="e.g., 1, 5"
                 />
@@ -569,16 +612,22 @@ function ServerForm({
                 <Input
                   value={form.mediaServer?.libraryIds.tv.join(", ") ?? ""}
                   onChange={(e) =>
-                    setForm((prev) => ({
-                      ...prev,
-                      mediaServer: {
-                        ...prev.mediaServer!,
-                        libraryIds: {
-                          ...prev.mediaServer!.libraryIds,
-                          tv: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
-                        },
-                      },
-                    }))
+                    setForm(
+                      (prev) =>
+                        ({
+                          ...prev,
+                          mediaServer: {
+                            ...prev.mediaServer,
+                            libraryIds: {
+                              ...prev.mediaServer?.libraryIds,
+                              tv: e.target.value
+                                .split(",")
+                                .map((s) => s.trim())
+                                .filter(Boolean),
+                            },
+                          },
+                        }) as ServerFormData
+                    )
                   }
                   placeholder="e.g., 2, 6"
                 />
@@ -694,10 +743,7 @@ function ServerCard({
   const libraryStatus = trpc.servers.libraryStatus.useQuery({ id: server.id });
 
   // Get sync status for this server
-  const syncStatus = trpc.servers.syncStatus.useQuery(
-    { id: server.id },
-    { refetchInterval: 3000 }
-  );
+  const syncStatus = trpc.servers.syncStatus.useQuery({ id: server.id }, { refetchInterval: 3000 });
 
   // Mutations
   const triggerSync = trpc.servers.triggerSync.useMutation({
@@ -733,7 +779,7 @@ function ServerCard({
   };
 
   const handleIntervalChange = () => {
-    const minutes = parseInt(intervalInput);
+    const minutes = parseInt(intervalInput, 10);
     if (minutes >= 1 && minutes <= 1440) {
       updateSyncSettings.mutate({ id: server.id, intervalMinutes: minutes });
     }
@@ -794,9 +840,7 @@ function ServerCard({
                   <span className="font-medium text-sm">
                     {server.mediaServer.type === "plex" ? "Plex" : "Emby"}
                   </span>
-                  {syncStatus.data?.currentlySyncing && (
-                    <Badge variant="info">Syncing...</Badge>
-                  )}
+                  {syncStatus.data?.currentlySyncing && <Badge variant="info">Syncing...</Badge>}
                 </div>
                 <p className="text-xs text-white/40">{server.mediaServer.url}</p>
               </div>
@@ -911,17 +955,17 @@ function ServerCard({
           {triggerSync.data?.alreadyRunning && (
             <p className="text-yellow-400/80 text-xs">Sync already in progress</p>
           )}
-          {triggerSync.data?.isIncremental === false && !triggerSync.data?.alreadyRunning && triggerSync.isSuccess && (
-            <p className="text-blue-400/80 text-xs">Running full library sync</p>
-          )}
+          {triggerSync.data?.isIncremental === false &&
+            !triggerSync.data?.alreadyRunning &&
+            triggerSync.isSuccess && (
+              <p className="text-blue-400/80 text-xs">Running full library sync</p>
+            )}
         </div>
       )}
 
       {/* No Media Server */}
       {!server.mediaServer && (
-        <div className="text-sm text-white/40 italic">
-          No media server configured
-        </div>
+        <div className="text-sm text-white/40 italic">No media server configured</div>
       )}
     </Card>
   );
@@ -1067,9 +1111,7 @@ function ServersSettings() {
 
       {servers.isLoading && (
         <div className="space-y-4">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="h-24 bg-white/5 rounded animate-pulse" />
-          ))}
+          <Skeleton count={2} className="h-24" />
         </div>
       )}
 
@@ -1131,7 +1173,11 @@ const defaultIndexerForm: IndexerFormData = {
 };
 
 const indexerTypeOptions = [
-  { value: "torznab", label: "Torznab", description: "Standard torrent indexer protocol (Prowlarr, Jackett)" },
+  {
+    value: "torznab",
+    label: "Torznab",
+    description: "Standard torrent indexer protocol (Prowlarr, Jackett)",
+  },
   { value: "newznab", label: "Newznab", description: "Usenet indexer protocol" },
   { value: "torrentleech", label: "TorrentLeech", description: "TorrentLeech private tracker" },
   { value: "unit3d", label: "UNIT3D", description: "UNIT3D-based private tracker (YUSCENE, etc.)" },
@@ -1234,17 +1280,33 @@ function IndexerForm({
         </div>
 
         <div>
-          <Label>{isTorrentLeech ? "TorrentLeech URL" : isUnit3d ? "Tracker URL" : "Indexer URL"}</Label>
+          <Label>
+            {isTorrentLeech ? "TorrentLeech URL" : isUnit3d ? "Tracker URL" : "Indexer URL"}
+          </Label>
           <Input
             value={form.url}
             onChange={(e) => updateForm("url", e.target.value)}
-            placeholder={isTorrentLeech ? "https://www.torrentleech.org" : isUnit3d ? "https://yu-scene.net" : "https://indexer.example.com"}
+            placeholder={
+              isTorrentLeech
+                ? "https://www.torrentleech.org"
+                : isUnit3d
+                  ? "https://yu-scene.net"
+                  : "https://indexer.example.com"
+            }
             required
           />
         </div>
 
         <div>
-          <Label hint={isTorrentLeech ? "Format: username:password:alt2FAToken" : isUnit3d ? "From your profile settings" : undefined}>
+          <Label
+            hint={
+              isTorrentLeech
+                ? "Format: username:password:alt2FAToken"
+                : isUnit3d
+                  ? "From your profile settings"
+                  : undefined
+            }
+          >
             {isTorrentLeech ? "Credentials" : isUnit3d ? "API Token" : "API Key"}
           </Label>
           <Input
@@ -1269,15 +1331,15 @@ function IndexerForm({
           )}
           {isTorrentLeech && !form.hasApiKey && (
             <p className="text-xs text-white/40 mt-1">
-              Enter your TorrentLeech username and password separated by colons.
-              If you have 2FA enabled, add your alt2FAToken (MD5 hash from your TL profile).
-              Format: <code className="text-white/60">username:password:alt2FAToken</code>
+              Enter your TorrentLeech username and password separated by colons. If you have 2FA
+              enabled, add your alt2FAToken (MD5 hash from your TL profile). Format:{" "}
+              <code className="text-white/60">username:password:alt2FAToken</code>
             </p>
           )}
           {isUnit3d && !form.hasApiKey && (
             <p className="text-xs text-white/40 mt-1">
-              Find your API token in your profile settings on the tracker.
-              Go to Settings &gt; Security &gt; API Token.
+              Find your API token in your profile settings on the tracker. Go to Settings &gt;
+              Security &gt; API Token.
             </p>
           )}
         </div>
@@ -1290,7 +1352,7 @@ function IndexerForm({
               min={1}
               max={100}
               value={form.priority}
-              onChange={(e) => updateForm("priority", parseInt(e.target.value) || 50)}
+              onChange={(e) => updateForm("priority", parseInt(e.target.value, 10) || 50)}
             />
           </div>
           <div className="flex items-end pb-1">
@@ -1326,8 +1388,8 @@ function IndexerForm({
                     ...form.categories,
                     movies: e.target.value
                       .split(",")
-                      .map((s) => parseInt(s.trim()))
-                      .filter((n) => !isNaN(n)),
+                      .map((s) => parseInt(s.trim(), 10))
+                      .filter((n) => !Number.isNaN(n)),
                   })
                 }
                 placeholder="2000,2010,2020,2030,2040,2045,2050,2060"
@@ -1343,8 +1405,8 @@ function IndexerForm({
                     ...form.categories,
                     tv: e.target.value
                       .split(",")
-                      .map((s) => parseInt(s.trim()))
-                      .filter((n) => !isNaN(n)),
+                      .map((s) => parseInt(s.trim(), 10))
+                      .filter((n) => !Number.isNaN(n)),
                   })
                 }
                 placeholder="5000,5010,5020,5030,5040,5045,5050,5060"
@@ -1356,8 +1418,13 @@ function IndexerForm({
         {isTorrentLeech && (
           <div className="text-sm text-white/60 bg-white/5 rounded p-3">
             <p className="font-medium mb-2">TorrentLeech Categories:</p>
-            <p><strong>Movies:</strong> CAM, TS/TC, DVDRip, WEB-DL, WEBRip, HDRip, BluRay, BD Remux, 4K, Boxsets, Documentaries</p>
-            <p><strong>TV:</strong> Episodes HD/SD/4K, Boxsets HD/4K</p>
+            <p>
+              <strong>Movies:</strong> CAM, TS/TC, DVDRip, WEB-DL, WEBRip, HDRip, BluRay, BD Remux,
+              4K, Boxsets, Documentaries
+            </p>
+            <p>
+              <strong>TV:</strong> Episodes HD/SD/4K, Boxsets HD/4K
+            </p>
           </div>
         )}
       </Card>
@@ -1365,7 +1432,8 @@ function IndexerForm({
       <Card className="p-5 space-y-4">
         <h3 className="font-medium text-lg">Rate Limiting</h3>
         <p className="text-sm text-white/50">
-          Limit API requests to this indexer to avoid hitting rate limits. Useful for indexers with strict API quotas.
+          Limit API requests to this indexer to avoid hitting rate limits. Useful for indexers with
+          strict API quotas.
         </p>
 
         <div className="flex items-center gap-2">
@@ -1388,7 +1456,9 @@ function IndexerForm({
                 type="number"
                 min={1}
                 value={form.rateLimitMax || ""}
-                onChange={(e) => updateForm("rateLimitMax", parseInt(e.target.value) || undefined)}
+                onChange={(e) =>
+                  updateForm("rateLimitMax", parseInt(e.target.value, 10) || undefined)
+                }
                 placeholder="90"
               />
             </div>
@@ -1398,7 +1468,9 @@ function IndexerForm({
                 type="number"
                 min={1}
                 value={form.rateLimitWindowSecs || ""}
-                onChange={(e) => updateForm("rateLimitWindowSecs", parseInt(e.target.value) || undefined)}
+                onChange={(e) =>
+                  updateForm("rateLimitWindowSecs", parseInt(e.target.value, 10) || undefined)
+                }
                 placeholder="60"
               />
             </div>
@@ -1407,8 +1479,8 @@ function IndexerForm({
 
         {form.rateLimitEnabled && form.rateLimitMax && form.rateLimitWindowSecs && (
           <div className="text-sm text-white/60 bg-white/5 rounded p-3">
-            Limit: {form.rateLimitMax} requests per {form.rateLimitWindowSecs} seconds
-            ({(form.rateLimitMax / (form.rateLimitWindowSecs / 60)).toFixed(1)} requests/minute)
+            Limit: {form.rateLimitMax} requests per {form.rateLimitWindowSecs} seconds (
+            {(form.rateLimitMax / (form.rateLimitWindowSecs / 60)).toFixed(1)} requests/minute)
           </div>
         )}
       </Card>
@@ -1574,9 +1646,7 @@ function IndexersSettings() {
 
       {indexers.isLoading && (
         <div className="space-y-4">
-          {Array.from({ length: 2 }).map((_, i) => (
-            <div key={i} className="h-20 bg-white/5 rounded animate-pulse" />
-          ))}
+          <Skeleton count={2} className="h-20" />
         </div>
       )}
 
@@ -1630,10 +1700,16 @@ function IndexersSettings() {
   );
 }
 
-
 // EncodingSettings component removed - encoding profiles are now configured in pipeline templates
 
-type JobStatusFilter = "all" | "pending" | "running" | "paused" | "completed" | "failed" | "cancelled";
+type JobStatusFilter =
+  | "all"
+  | "pending"
+  | "running"
+  | "paused"
+  | "completed"
+  | "failed"
+  | "cancelled";
 
 const statusFilterOptions = [
   { value: "all", label: "All" },
@@ -1766,7 +1842,9 @@ function JobsSettings() {
       case "running":
         return <Badge variant="info">Running</Badge>;
       case "paused":
-        return <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">Paused</Badge>;
+        return (
+          <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">Paused</Badge>
+        );
       case "pending":
         return <Badge variant="warning">Pending</Badge>;
       case "completed":
@@ -1810,33 +1888,23 @@ function JobsSettings() {
       {/* Stats Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <Card className="p-4 text-center">
-          <div className="text-3xl font-bold text-blue-400">
-            {stats.data?.running ?? 0}
-          </div>
+          <div className="text-3xl font-bold text-blue-400">{stats.data?.running ?? 0}</div>
           <div className="text-sm text-white/50 mt-1">Running</div>
         </Card>
         <Card className="p-4 text-center">
-          <div className="text-3xl font-bold text-orange-400">
-            {stats.data?.paused ?? 0}
-          </div>
+          <div className="text-3xl font-bold text-orange-400">{stats.data?.paused ?? 0}</div>
           <div className="text-sm text-white/50 mt-1">Paused</div>
         </Card>
         <Card className="p-4 text-center">
-          <div className="text-3xl font-bold text-yellow-400">
-            {stats.data?.pending ?? 0}
-          </div>
+          <div className="text-3xl font-bold text-yellow-400">{stats.data?.pending ?? 0}</div>
           <div className="text-sm text-white/50 mt-1">Pending</div>
         </Card>
         <Card className="p-4 text-center">
-          <div className="text-3xl font-bold text-green-400">
-            {stats.data?.completed ?? 0}
-          </div>
+          <div className="text-3xl font-bold text-green-400">{stats.data?.completed ?? 0}</div>
           <div className="text-sm text-white/50 mt-1">Completed</div>
         </Card>
         <Card className="p-4 text-center">
-          <div className="text-3xl font-bold text-red-400">
-            {stats.data?.failed ?? 0}
-          </div>
+          <div className="text-3xl font-bold text-red-400">{stats.data?.failed ?? 0}</div>
           <div className="text-sm text-white/50 mt-1">Failed</div>
         </Card>
       </div>
@@ -1868,16 +1936,16 @@ function JobsSettings() {
           {/* Jobs List */}
           {jobs.isLoading && (
             <div className="space-y-3">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <div key={i} className="h-24 bg-white/5 rounded animate-pulse" />
-              ))}
+              <Skeleton count={3} className="h-24" />
             </div>
           )}
 
           {jobs.data?.jobs.length === 0 && (
             <EmptyState
               title="No jobs found"
-              description={statusFilter === "all" ? "The job queue is empty" : `No ${statusFilter} jobs`}
+              description={
+                statusFilter === "all" ? "The job queue is empty" : `No ${statusFilter} jobs`
+              }
             />
           )}
 
@@ -1892,9 +1960,9 @@ function JobsSettings() {
                           {jobTypeLabels[job.type] ?? job.type}
                         </h3>
                         {getStatusBadge(job.status)}
-                        {job.status === "running" && (
+                        {job.status === "running" && job.startedAt && (
                           <span className="text-xs text-white/40">
-                            {formatDuration(job.startedAt!)}
+                            {formatDuration(job.startedAt)}
                           </span>
                         )}
                       </div>
@@ -1903,7 +1971,9 @@ function JobsSettings() {
                         <div className="flex items-center gap-4">
                           <span>ID: {job.id.slice(0, 8)}...</span>
                           <span>Priority: {job.priority}</span>
-                          <span>Attempts: {job.attempts}/{job.maxAttempts}</span>
+                          <span>
+                            Attempts: {job.attempts}/{job.maxAttempts}
+                          </span>
                         </div>
 
                         {job.status === "running" && (
@@ -1913,7 +1983,9 @@ function JobsSettings() {
                                 <div className="flex items-center justify-between text-xs text-white/50 mb-1">
                                   <span>Progress</span>
                                   <span>
-                                    {job.progressCurrent?.toLocaleString() ?? 0} / {job.progressTotal.toLocaleString()} ({job.progress?.toFixed(1)}%)
+                                    {job.progressCurrent?.toLocaleString() ?? 0} /{" "}
+                                    {job.progressTotal.toLocaleString()} ({job.progress?.toFixed(1)}
+                                    %)
                                   </span>
                                 </div>
                                 <div className="h-2 bg-white/10 rounded overflow-hidden">
@@ -1934,7 +2006,8 @@ function JobsSettings() {
 
                         {job.status === "completed" && job.startedAt && job.completedAt && (
                           <div className="text-green-400/70">
-                            Completed in {formatDuration(job.startedAt, job.completedAt)} ({formatTimeAgo(job.completedAt)})
+                            Completed in {formatDuration(job.startedAt, job.completedAt)} (
+                            {formatTimeAgo(job.completedAt)})
                           </div>
                         )}
 
@@ -1960,7 +2033,9 @@ function JobsSettings() {
                                 <div className="flex items-center justify-between text-xs text-white/50 mb-1">
                                   <span>Progress (paused)</span>
                                   <span>
-                                    {job.progressCurrent?.toLocaleString() ?? 0} / {job.progressTotal.toLocaleString()} ({job.progress?.toFixed(1)}%)
+                                    {job.progressCurrent?.toLocaleString() ?? 0} /{" "}
+                                    {job.progressTotal.toLocaleString()} ({job.progress?.toFixed(1)}
+                                    %)
                                   </span>
                                 </div>
                                 <div className="h-2 bg-white/10 rounded overflow-hidden">
@@ -2070,7 +2145,9 @@ function JobsSettings() {
           {jobs.data && jobs.data.totalCount > 0 && (
             <div className="flex items-center justify-between">
               <div className="text-sm text-white/40">
-                Showing {page * JOBS_PER_PAGE + 1}-{Math.min((page + 1) * JOBS_PER_PAGE, jobs.data.totalCount)} of {jobs.data.totalCount} jobs
+                Showing {page * JOBS_PER_PAGE + 1}-
+                {Math.min((page + 1) * JOBS_PER_PAGE, jobs.data.totalCount)} of{" "}
+                {jobs.data.totalCount} jobs
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -2108,7 +2185,10 @@ function JobsSettings() {
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-white/50">Worker ID:</span>
-                  <p className="font-mono text-xs mt-1 truncate" title={currentWorker.data.workerId}>
+                  <p
+                    className="font-mono text-xs mt-1 truncate"
+                    title={currentWorker.data.workerId}
+                  >
                     {currentWorker.data.workerId}
                   </p>
                 </div>
@@ -2150,9 +2230,7 @@ function JobsSettings() {
           </div>
           {workers.isLoading && (
             <div className="space-y-3">
-              {Array.from({ length: 2 }).map((_, i) => (
-                <div key={i} className="h-20 bg-white/5 rounded animate-pulse" />
-              ))}
+              <Skeleton count={2} className="h-20" />
             </div>
           )}
 
@@ -2188,7 +2266,6 @@ function JobsSettings() {
           )}
         </div>
       )}
-
     </div>
   );
 }
@@ -2232,10 +2309,7 @@ function EncodersSettings() {
   const assignments = trpc.encoders.assignments.useQuery(undefined, {
     refetchInterval: 2000, // Refresh every 2 seconds for live progress
   });
-  const history = trpc.encoders.assignmentHistory.useQuery(
-    { limit: 20 },
-    { enabled: showHistory }
-  );
+  const history = trpc.encoders.assignmentHistory.useQuery({ limit: 20 }, { enabled: showHistory });
 
   // Mutations
   const updateName = trpc.encoders.updateName.useMutation({
@@ -2289,7 +2363,6 @@ function EncodersSettings() {
         return <Badge variant="info">Encoding</Badge>;
       case "ERROR":
         return <Badge variant="danger">Error</Badge>;
-      case "OFFLINE":
       default:
         return <Badge variant="default">Offline</Badge>;
     }
@@ -2328,9 +2401,7 @@ function EncodersSettings() {
 
         {encoders.isLoading && (
           <div className="space-y-3">
-            {Array.from({ length: 2 }).map((_, i) => (
-              <div key={i} className="h-28 bg-white/5 rounded animate-pulse" />
-            ))}
+            <Skeleton count={2} className="h-28" />
           </div>
         )}
 
@@ -2368,19 +2439,13 @@ function EncodersSettings() {
                           >
                             Save
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => setEditingEncoder(null)}
-                          >
+                          <Button size="sm" variant="ghost" onClick={() => setEditingEncoder(null)}>
                             Cancel
                           </Button>
                         </div>
                       ) : (
                         <>
-                          <h4 className="font-semibold">
-                            {encoder.name || encoder.encoderId}
-                          </h4>
+                          <h4 className="font-semibold">{encoder.name || encoder.encoderId}</h4>
                           {getStatusBadge(encoder.status)}
                         </>
                       )}
@@ -2399,56 +2464,80 @@ function EncodersSettings() {
                           Completed: {encoder.totalJobsCompleted}
                         </span>
                         {encoder.totalJobsFailed > 0 && (
-                          <span className="text-red-400">
-                            Failed: {encoder.totalJobsFailed}
-                          </span>
+                          <span className="text-red-400">Failed: {encoder.totalJobsFailed}</span>
                         )}
                       </div>
 
                       {/* Capabilities */}
                       {encoder.capabilities && (
                         <div className="mt-3 pt-3 border-t border-white/10">
-                          <div className="text-xs font-semibold text-white/60 mb-2 uppercase tracking-wide">Capabilities</div>
+                          <div className="text-xs font-semibold text-white/60 mb-2 uppercase tracking-wide">
+                            Capabilities
+                          </div>
                           <div className="space-y-2.5 text-xs">
                             {/* Video Encoders */}
                             {Object.keys(encoder.capabilities.videoEncoders || {}).length > 0 && (
                               <div>
                                 <div className="text-white/50 font-medium mb-1">Video:</div>
                                 <div className="pl-3 space-y-1">
-                                  {Object.entries(encoder.capabilities.videoEncoders).map(([codec, encoders]) => {
-                                    const hw = encoders.hardware || [];
-                                    const sw = encoders.software || [];
-                                    if (hw.length === 0 && sw.length === 0) return null;
-                                    return (
-                                      <div key={codec} className="flex items-start gap-2">
-                                        <span className="text-annex-400 font-semibold uppercase min-w-[45px]">{codec}</span>
-                                        <span className="text-white/40 leading-relaxed">
-                                          ({hw.length > 0 && <><span className="text-green-400">HW:</span> {hw.join(", ")}</>}
-                                          {hw.length > 0 && sw.length > 0 && <span className="text-white/30"> | </span>}
-                                          {sw.length > 0 && <><span className="text-blue-400">SW:</span> {sw.join(", ")}</>})
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
+                                  {Object.entries(encoder.capabilities.videoEncoders).map(
+                                    ([codec, encoders]) => {
+                                      const hw = encoders.hardware || [];
+                                      const sw = encoders.software || [];
+                                      if (hw.length === 0 && sw.length === 0) return null;
+                                      return (
+                                        <div key={codec} className="flex items-start gap-2">
+                                          <span className="text-annex-400 font-semibold uppercase min-w-[45px]">
+                                            {codec}
+                                          </span>
+                                          <span className="text-white/40 leading-relaxed">
+                                            (
+                                            {hw.length > 0 && (
+                                              <>
+                                                <span className="text-green-400">HW:</span>{" "}
+                                                {hw.join(", ")}
+                                              </>
+                                            )}
+                                            {hw.length > 0 && sw.length > 0 && (
+                                              <span className="text-white/30"> | </span>
+                                            )}
+                                            {sw.length > 0 && (
+                                              <>
+                                                <span className="text-blue-400">SW:</span>{" "}
+                                                {sw.join(", ")}
+                                              </>
+                                            )}
+                                            )
+                                          </span>
+                                        </div>
+                                      );
+                                    }
+                                  )}
                                 </div>
                               </div>
                             )}
 
                             {/* Hardware Acceleration */}
-                            {encoder.capabilities.hwaccel && encoder.capabilities.hwaccel.length > 0 && (
-                              <div>
-                                <span className="text-white/50 font-medium">HW Accel: </span>
-                                <span className="text-white/40">{encoder.capabilities.hwaccel.join(", ")}</span>
-                              </div>
-                            )}
+                            {encoder.capabilities.hwaccel &&
+                              encoder.capabilities.hwaccel.length > 0 && (
+                                <div>
+                                  <span className="text-white/50 font-medium">HW Accel: </span>
+                                  <span className="text-white/40">
+                                    {encoder.capabilities.hwaccel.join(", ")}
+                                  </span>
+                                </div>
+                              )}
 
                             {/* Audio Encoders */}
-                            {encoder.capabilities.audioEncoders && encoder.capabilities.audioEncoders.length > 0 && (
-                              <div>
-                                <span className="text-white/50 font-medium">Audio: </span>
-                                <span className="text-white/40">{encoder.capabilities.audioEncoders.join(", ")}</span>
-                              </div>
-                            )}
+                            {encoder.capabilities.audioEncoders &&
+                              encoder.capabilities.audioEncoders.length > 0 && (
+                                <div>
+                                  <span className="text-white/50 font-medium">Audio: </span>
+                                  <span className="text-white/40">
+                                    {encoder.capabilities.audioEncoders.join(", ")}
+                                  </span>
+                                </div>
+                              )}
 
                             {/* GPU Info */}
                             {encoder.capabilities.gpu && (
@@ -2457,7 +2546,10 @@ function EncodersSettings() {
                                 <span className="text-white/40">
                                   {encoder.capabilities.gpu.device}
                                   {encoder.capabilities.gpu.driver && (
-                                    <span className="text-white/30"> ({encoder.capabilities.gpu.driver})</span>
+                                    <span className="text-white/30">
+                                      {" "}
+                                      ({encoder.capabilities.gpu.driver})
+                                    </span>
                                   )}
                                   {!encoder.capabilities.gpu.accessible && (
                                     <span className="text-red-400"> - Not Accessible</span>
@@ -2471,9 +2563,13 @@ function EncodersSettings() {
                               <div>
                                 <span className="text-white/50 font-medium">System: </span>
                                 <span className="text-white/40">
-                                  {encoder.capabilities.system.cpuCores && `${encoder.capabilities.system.cpuCores} cores`}
-                                  {encoder.capabilities.system.cpuCores && encoder.capabilities.system.totalMemory && " | "}
-                                  {encoder.capabilities.system.totalMemory && `${Math.round(encoder.capabilities.system.totalMemory / 1024)} GB RAM`}
+                                  {encoder.capabilities.system.cpuCores &&
+                                    `${encoder.capabilities.system.cpuCores} cores`}
+                                  {encoder.capabilities.system.cpuCores &&
+                                    encoder.capabilities.system.totalMemory &&
+                                    " | "}
+                                  {encoder.capabilities.system.totalMemory &&
+                                    `${Math.round(encoder.capabilities.system.totalMemory / 1024)} GB RAM`}
                                 </span>
                               </div>
                             )}
@@ -2509,7 +2605,8 @@ function EncodersSettings() {
                 {encoder.currentJobs > 0 && (
                   <div className="mt-3 pt-3 border-t border-white/10">
                     <span className="text-sm text-white/70">
-                      Currently encoding {encoder.currentJobs} job{encoder.currentJobs > 1 ? "s" : ""}
+                      Currently encoding {encoder.currentJobs} job
+                      {encoder.currentJobs > 1 ? "s" : ""}
                     </span>
                   </div>
                 )}
@@ -2523,14 +2620,10 @@ function EncodersSettings() {
       <div className="space-y-4">
         <h3 className="text-lg font-medium">Active Encoding Jobs</h3>
 
-        {assignments.isLoading && (
-          <div className="h-24 bg-white/5 rounded animate-pulse" />
-        )}
+        {assignments.isLoading && <div className="h-24 bg-white/5 rounded animate-pulse" />}
 
         {assignments.data?.length === 0 && (
-          <Card className="p-4 text-center text-white/50">
-            No active encoding jobs
-          </Card>
+          <Card className="p-4 text-center text-white/50">No active encoding jobs</Card>
         )}
 
         {assignments.data && assignments.data.length > 0 && (
@@ -2540,9 +2633,7 @@ function EncodersSettings() {
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="font-medium truncate">
-                        {job.inputPath.split("/").pop()}
-                      </span>
+                      <span className="font-medium truncate">{job.inputPath.split("/").pop()}</span>
                       {getAssignmentStatusBadge(job.status)}
                     </div>
 
@@ -2565,7 +2656,9 @@ function EncodersSettings() {
                         <span>ETA: {formatEncodeDuration(job.eta)}</span>
                       )}
                       <span>Encoder: {job.encoderId}</span>
-                      <span>Attempt: {job.attempt}/{job.maxAttempts}</span>
+                      <span>
+                        Attempt: {job.attempt}/{job.maxAttempts}
+                      </span>
                     </div>
                   </div>
 
@@ -2600,16 +2693,12 @@ function EncodersSettings() {
           <>
             {history.isLoading && (
               <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, i) => (
-                  <div key={i} className="h-16 bg-white/5 rounded animate-pulse" />
-                ))}
+                <Skeleton count={3} className="h-16" />
               </div>
             )}
 
             {history.data?.length === 0 && (
-              <Card className="p-4 text-center text-white/50">
-                No encoding history yet
-              </Card>
+              <Card className="p-4 text-center text-white/50">No encoding history yet</Card>
             )}
 
             {history.data && history.data.length > 0 && (
@@ -2625,17 +2714,11 @@ function EncodersSettings() {
                           {getAssignmentStatusBadge(job.status)}
                         </div>
                         <div className="text-xs text-white/40 mt-1">
-                          {job.completedAt && (
-                            <span>{formatEncoderTimeAgo(job.completedAt)}</span>
-                          )}
-                          {job.error && (
-                            <span className="text-red-400 ml-2">{job.error}</span>
-                          )}
+                          {job.completedAt && <span>{formatEncoderTimeAgo(job.completedAt)}</span>}
+                          {job.error && <span className="text-red-400 ml-2">{job.error}</span>}
                         </div>
                       </div>
-                      <div className="text-xs text-white/50">
-                        {job.encoderId}
-                      </div>
+                      <div className="text-xs text-white/50">{job.encoderId}</div>
                     </div>
                   </Card>
                 ))}
@@ -2655,21 +2738,30 @@ function EncodersSettings() {
           <div>
             <p className="text-xs text-white/40 mb-1">Linux:</p>
             <code className="block text-xs bg-black/30 p-3 rounded overflow-x-auto">
-              curl -L https://github.com/WeHaveNoEyes/Annex/releases/latest/download/annex-encoder-linux-x64 -o annex-encoder<br />
-              chmod +x annex-encoder<br />
-              sudo ./annex-encoder --setup --install<br />
+              curl -L
+              https://github.com/WeHaveNoEyes/Annex/releases/latest/download/annex-encoder-linux-x64
+              -o annex-encoder
+              <br />
+              chmod +x annex-encoder
+              <br />
+              sudo ./annex-encoder --setup --install
+              <br />
               sudo nano /etc/annex-encoder.env
             </code>
           </div>
           <div>
             <p className="text-xs text-white/40 mb-1">Windows:</p>
             <code className="block text-xs bg-black/30 p-3 rounded overflow-x-auto">
-              Invoke-WebRequest -Uri "https://github.com/WeHaveNoEyes/Annex/releases/latest/download/annex-encoder-windows-x64.exe" -OutFile "annex-encoder.exe"<br />
+              Invoke-WebRequest -Uri
+              "https://github.com/WeHaveNoEyes/Annex/releases/latest/download/annex-encoder-windows-x64.exe"
+              -OutFile "annex-encoder.exe"
+              <br />
               .\annex-encoder.exe --setup --install
             </code>
           </div>
           <p className="text-xs text-white/40 mt-2">
-            Configure ANNEX_SERVER_URL and ANNEX_ENCODER_ID in the environment file after installation.
+            Configure ANNEX_SERVER_URL and ANNEX_ENCODER_ID in the environment file after
+            installation.
           </p>
         </div>
       </Card>
@@ -2742,7 +2834,9 @@ function SchedulerSettings() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="bg-white/5 rounded p-3">
             <div className="text-xs text-white/50 uppercase">Status</div>
-            <div className={`text-lg font-medium ${health.isRunning ? "text-green-400" : "text-red-400"}`}>
+            <div
+              className={`text-lg font-medium ${health.isRunning ? "text-green-400" : "text-red-400"}`}
+            >
               {health.isRunning ? "Running" : "Stopped"}
             </div>
           </div>
@@ -2756,7 +2850,9 @@ function SchedulerSettings() {
           </div>
           <div className="bg-white/5 rounded p-3">
             <div className="text-xs text-white/50 uppercase">Loop Delay</div>
-            <div className={`text-lg font-medium ${health.loopDelayMs > 100 ? "text-yellow-400" : ""}`}>
+            <div
+              className={`text-lg font-medium ${health.loopDelayMs > 100 ? "text-yellow-400" : ""}`}
+            >
               {formatDuration(health.loopDelayMs)}
             </div>
           </div>
@@ -2784,10 +2880,14 @@ function SchedulerSettings() {
                   <div className="flex items-center gap-2">
                     <span className="font-medium">{task.name}</span>
                     {task.isRunning && (
-                      <Badge variant="info" className="text-xs">Running</Badge>
+                      <Badge variant="info" className="text-xs">
+                        Running
+                      </Badge>
                     )}
                     {task.lastError && (
-                      <Badge variant="danger" className="text-xs">Error</Badge>
+                      <Badge variant="danger" className="text-xs">
+                        Error
+                      </Badge>
                     )}
                   </div>
                   <div className="text-xs text-white/50 flex gap-3 mt-1">
@@ -2814,7 +2914,9 @@ function SchedulerSettings() {
                   <Button
                     size="sm"
                     variant={task.enabled ? "secondary" : "primary"}
-                    onClick={() => toggleTaskMutation.mutate({ taskId: task.id, enabled: !task.enabled })}
+                    onClick={() =>
+                      toggleTaskMutation.mutate({ taskId: task.id, enabled: !task.enabled })
+                    }
                     disabled={toggleTaskMutation.isLoading}
                   >
                     {task.enabled ? "Disable" : "Enable"}

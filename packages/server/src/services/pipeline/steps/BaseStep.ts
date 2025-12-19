@@ -1,8 +1,8 @@
 // BaseStep - Abstract base class for all pipeline steps
 // Each step type (SEARCH, DOWNLOAD, ENCODE, etc.) extends this class
 
-import type { StepType } from '@prisma/client';
-import type { PipelineContext, ConditionRule, StepOutput } from '../PipelineContext';
+import type { StepType } from "@prisma/client";
+import type { ConditionRule, PipelineContext, StepOutput } from "../PipelineContext";
 
 // Re-export StepOutput for convenience
 export type { StepOutput };
@@ -41,7 +41,7 @@ export abstract class BaseStep {
     if (condition.conditions && condition.conditions.length > 0) {
       const results = condition.conditions.map((c) => this.evaluateCondition(context, c));
 
-      if (condition.logicalOp === 'OR') {
+      if (condition.logicalOp === "OR") {
         return results.some((r) => r);
       } else {
         // Default to AND
@@ -55,38 +55,50 @@ export abstract class BaseStep {
 
     // Evaluate based on operator
     switch (condition.operator) {
-      case '==':
+      case "==":
         return contextValue === expectedValue;
-      case '!=':
+      case "!=":
         return contextValue !== expectedValue;
-      case '>':
-        return typeof contextValue === 'number' &&
-               typeof expectedValue === 'number' &&
-               contextValue > expectedValue;
-      case '<':
-        return typeof contextValue === 'number' &&
-               typeof expectedValue === 'number' &&
-               contextValue < expectedValue;
-      case '>=':
-        return typeof contextValue === 'number' &&
-               typeof expectedValue === 'number' &&
-               contextValue >= expectedValue;
-      case '<=':
-        return typeof contextValue === 'number' &&
-               typeof expectedValue === 'number' &&
-               contextValue <= expectedValue;
-      case 'in':
+      case ">":
+        return (
+          typeof contextValue === "number" &&
+          typeof expectedValue === "number" &&
+          contextValue > expectedValue
+        );
+      case "<":
+        return (
+          typeof contextValue === "number" &&
+          typeof expectedValue === "number" &&
+          contextValue < expectedValue
+        );
+      case ">=":
+        return (
+          typeof contextValue === "number" &&
+          typeof expectedValue === "number" &&
+          contextValue >= expectedValue
+        );
+      case "<=":
+        return (
+          typeof contextValue === "number" &&
+          typeof expectedValue === "number" &&
+          contextValue <= expectedValue
+        );
+      case "in":
         return Array.isArray(expectedValue) && expectedValue.includes(contextValue);
-      case 'not_in':
+      case "not_in":
         return Array.isArray(expectedValue) && !expectedValue.includes(contextValue);
-      case 'contains':
-        return typeof contextValue === 'string' &&
-               typeof expectedValue === 'string' &&
-               contextValue.includes(expectedValue);
-      case 'matches':
-        return typeof contextValue === 'string' &&
-               typeof expectedValue === 'string' &&
-               new RegExp(expectedValue).test(contextValue);
+      case "contains":
+        return (
+          typeof contextValue === "string" &&
+          typeof expectedValue === "string" &&
+          contextValue.includes(expectedValue)
+        );
+      case "matches":
+        return (
+          typeof contextValue === "string" &&
+          typeof expectedValue === "string" &&
+          new RegExp(expectedValue).test(contextValue)
+        );
       default:
         return false;
     }
@@ -94,7 +106,7 @@ export abstract class BaseStep {
 
   // Get value from context using dot notation (e.g., "search.selectedRelease.quality")
   private getContextValue(context: PipelineContext, path: string): unknown {
-    const parts = path.split('.');
+    const parts = path.split(".");
     let value: unknown = context;
 
     for (const part of parts) {

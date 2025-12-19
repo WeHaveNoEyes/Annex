@@ -1,8 +1,8 @@
 // ApprovalService - Manages approval requests for pipeline steps
 // Handles approval creation, processing, and timeout checks
 
+import { ActivityType, ApprovalStatus } from "@prisma/client";
 import { prisma } from "../../db/client.js";
-import { ApprovalStatus, ActivityType } from "@prisma/client";
 
 export interface CreateApprovalOptions {
   requestId: string;
@@ -67,7 +67,8 @@ export class ApprovalService {
       throw new Error(`Approval already ${approval.status.toLowerCase()}`);
     }
 
-    const newStatus = options.action === "approve" ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED;
+    const newStatus =
+      options.action === "approve" ? ApprovalStatus.APPROVED : ApprovalStatus.REJECTED;
 
     await prisma.approvalQueue.update({
       where: { id: options.approvalId },
@@ -98,13 +99,15 @@ export class ApprovalService {
     const now = new Date();
 
     // Find pending approvals that have exceeded their timeout
-    const timedOutApprovals = await prisma.$queryRaw<Array<{
-      id: string;
-      requestId: string;
-      autoAction: string | null;
-      timeoutHours: number;
-      createdAt: Date;
-    }>>`
+    const timedOutApprovals = await prisma.$queryRaw<
+      Array<{
+        id: string;
+        requestId: string;
+        autoAction: string | null;
+        timeoutHours: number;
+        createdAt: Date;
+      }>
+    >`
       SELECT id, "requestId", "autoAction", "timeoutHours", "createdAt"
       FROM "ApprovalQueue"
       WHERE status = 'PENDING'
@@ -193,7 +196,7 @@ export class ApprovalService {
     }
   }
 
-  async getPendingApprovals(userId?: string, role?: string) {
+  async getPendingApprovals(_userId?: string, role?: string) {
     const where: {
       status: ApprovalStatus;
       requiredRole?: string | { in: string[] };
@@ -225,7 +228,12 @@ export class ApprovalService {
     });
   }
 
-  private async logActivity(requestId: string, type: ActivityType, message: string, details?: object): Promise<void> {
+  private async logActivity(
+    requestId: string,
+    type: ActivityType,
+    message: string,
+    details?: object
+  ): Promise<void> {
     await prisma.activityLog.create({
       data: {
         requestId,

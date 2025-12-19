@@ -1,11 +1,17 @@
-import { BaseStep, type StepOutput } from "./BaseStep.js";
-import type { PipelineContext } from "../PipelineContext.js";
-import { StepType, RequestStatus, ActivityType, MediaType, DownloadStatus } from "@prisma/client";
+import {
+  ActivityType,
+  DownloadStatus,
+  type MediaType,
+  RequestStatus,
+  StepType,
+} from "@prisma/client";
 import { prisma } from "../../../db/client.js";
+import { detectRarArchive, extractRar, isSampleFile } from "../../archive.js";
 import { getDownloadService } from "../../download.js";
 import { downloadManager } from "../../downloadManager.js";
-import { detectRarArchive, extractRar, isSampleFile } from "../../archive.js";
 import type { Release } from "../../indexer.js";
+import type { PipelineContext } from "../PipelineContext.js";
+import { BaseStep, type StepOutput } from "./BaseStep.js";
 
 interface DownloadStepConfig {
   pollInterval?: number;
@@ -101,7 +107,9 @@ export class DownloadStep extends BaseStep {
         requestId,
         mediaType: mediaType as MediaType,
         release: selectedRelease as unknown as Release,
-        alternativeReleases: (context.search?.alternativeReleases as unknown[]) as Release[] | undefined,
+        alternativeReleases: context.search?.alternativeReleases as unknown[] as
+          | Release[]
+          | undefined,
       });
 
       if (!download) {
@@ -141,7 +149,11 @@ export class DownloadStep extends BaseStep {
       throw new Error(`Download not found: ${downloadId}`);
     }
 
-    await this.logActivity(requestId, ActivityType.INFO, `Monitoring download: ${download.torrentName}`);
+    await this.logActivity(
+      requestId,
+      ActivityType.INFO,
+      `Monitoring download: ${download.torrentName}`
+    );
 
     const qb = getDownloadService();
 
@@ -164,7 +176,7 @@ export class DownloadStep extends BaseStep {
 
         const overallProgress = 20 + progress.progress * 0.3;
         const eta = progress.eta > 0 ? `ETA: ${this.formatDuration(progress.eta)}` : "";
-        const speed = this.formatBytes(progress.downloadSpeed) + "/s";
+        const speed = `${this.formatBytes(progress.downloadSpeed)}/s`;
 
         await prisma.mediaRequest.update({
           where: { id: requestId },
@@ -177,7 +189,10 @@ export class DownloadStep extends BaseStep {
     });
 
     if (!downloadResult.success) {
-      await downloadManager.handleStalledDownload(downloadId, downloadResult.error || "Download failed");
+      await downloadManager.handleStalledDownload(
+        downloadId,
+        downloadResult.error || "Download failed"
+      );
 
       return {
         success: false,
@@ -199,10 +214,15 @@ export class DownloadStep extends BaseStep {
       },
     });
 
-    await this.logActivity(requestId, ActivityType.SUCCESS, `Download complete: ${download.torrentName}`);
+    await this.logActivity(
+      requestId,
+      ActivityType.SUCCESS,
+      `Download complete: ${download.torrentName}`
+    );
 
     // Extract RAR archives if present
-    const contentPath = downloadResult.progress?.contentPath || downloadResult.progress?.savePath || "";
+    const contentPath =
+      downloadResult.progress?.contentPath || downloadResult.progress?.savePath || "";
     const archiveInfo = detectRarArchive(contentPath);
 
     if (archiveInfo.hasArchive && archiveInfo.archivePath) {
@@ -218,7 +238,11 @@ export class DownloadStep extends BaseStep {
       const extractResult = await extractRar(archiveInfo.archivePath, contentPath);
 
       if (!extractResult.success) {
-        await this.logActivity(requestId, ActivityType.ERROR, `Failed to extract archive: ${extractResult.error}`);
+        await this.logActivity(
+          requestId,
+          ActivityType.ERROR,
+          `Failed to extract archive: ${extractResult.error}`
+        );
       } else {
         await this.logActivity(
           requestId,
@@ -237,7 +261,11 @@ export class DownloadStep extends BaseStep {
         const extractedVideoFile = await this.scanForVideoFile(contentPath);
 
         if (extractedVideoFile) {
-          await this.logActivity(requestId, ActivityType.SUCCESS, `Video file: ${this.formatBytes(extractedVideoFile.size)}`);
+          await this.logActivity(
+            requestId,
+            ActivityType.SUCCESS,
+            `Video file: ${this.formatBytes(extractedVideoFile.size)}`
+          );
 
           await prisma.mediaRequest.update({
             where: { id: requestId },
@@ -276,7 +304,11 @@ export class DownloadStep extends BaseStep {
       };
     }
 
-    await this.logActivity(requestId, ActivityType.SUCCESS, `Video file: ${this.formatBytes(videoFile.size)}`);
+    await this.logActivity(
+      requestId,
+      ActivityType.SUCCESS,
+      `Video file: ${this.formatBytes(videoFile.size)}`
+    );
 
     await prisma.mediaRequest.update({
       where: { id: requestId },
@@ -301,8 +333,8 @@ export class DownloadStep extends BaseStep {
   private async scanForVideoFile(
     contentPath: string
   ): Promise<{ path: string; size: number } | null> {
-    const { readdirSync, statSync } = await import("fs");
-    const { join } = await import("path");
+    const { readdirSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
     const videoExtensions = [".mkv", ".mp4", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v"];
     const minSizeBytes = 100 * 1024 * 1024; // 100MB
 
@@ -316,7 +348,10 @@ export class DownloadStep extends BaseStep {
           const filePath = join(contentPath, filename);
           try {
             const stat = statSync(filePath);
-            if (stat.size >= minSizeBytes && (!extractedVideoFile || stat.size > extractedVideoFile.size)) {
+            if (
+              stat.size >= minSizeBytes &&
+              (!extractedVideoFile || stat.size > extractedVideoFile.size)
+            ) {
               extractedVideoFile = { path: filePath, size: stat.size };
             }
           } catch {
@@ -331,7 +366,12 @@ export class DownloadStep extends BaseStep {
     return extractedVideoFile;
   }
 
-  private async logActivity(requestId: string, type: ActivityType, message: string, details?: object): Promise<void> {
+  private async logActivity(
+    requestId: string,
+    type: ActivityType,
+    message: string,
+    details?: object
+  ): Promise<void> {
     await prisma.activityLog.create({
       data: {
         requestId,
@@ -347,7 +387,7 @@ export class DownloadStep extends BaseStep {
     const k = 1024;
     const sizes = ["B", "KB", "MB", "GB", "TB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+    return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`;
   }
 
   private formatDuration(seconds: number): string {

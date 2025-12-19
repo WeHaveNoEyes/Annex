@@ -8,11 +8,11 @@
  * - Network connectivity to server
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
-import { getConfig } from "./config.js";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { EncoderCapabilities } from "@annex/shared";
+import { getConfig } from "./config.js";
 
 export interface ValidationResult {
   valid: boolean;
@@ -76,13 +76,17 @@ export async function validateEnvironment(): Promise<ValidationResult> {
   // 2. Validate GPU device (optional - for hardware encoding)
   console.log(`\n[Validation] GPU Device: ${config.gpuDevice}`);
   if (!fs.existsSync(config.gpuDevice)) {
-    warnings.push(`GPU device not found: ${config.gpuDevice} - hardware encoding will not be available`);
+    warnings.push(
+      `GPU device not found: ${config.gpuDevice} - hardware encoding will not be available`
+    );
   } else {
     try {
       fs.accessSync(config.gpuDevice, fs.constants.R_OK | fs.constants.W_OK);
       console.log("  ✓ GPU device is accessible");
     } catch (_e) {
-      warnings.push(`Cannot access GPU device: ${config.gpuDevice} - hardware encoding will not be available`);
+      warnings.push(
+        `Cannot access GPU device: ${config.gpuDevice} - hardware encoding will not be available`
+      );
     }
   }
 
@@ -105,7 +109,9 @@ export async function validateEnvironment(): Promise<ValidationResult> {
       if (hasVaapi) {
         console.log("  ✓ VAAPI hardware acceleration available");
       } else {
-        warnings.push("FFmpeg does not have VAAPI support - hardware encoding will not be available");
+        warnings.push(
+          "FFmpeg does not have VAAPI support - hardware encoding will not be available"
+        );
       }
 
       // Check for available video encoders
@@ -146,14 +152,16 @@ export async function validateEnvironment(): Promise<ValidationResult> {
       if (encoders.libx264) console.log("  ✓ H.264 (software): libx264");
 
       // Check if any video encoder is available
-      const hasAnyEncoder = Object.values(encoders).some(e => e);
+      const hasAnyEncoder = Object.values(encoders).some((e) => e);
 
       if (!hasAnyEncoder) {
         errors.push("No video encoders available - FFmpeg cannot encode video");
       } else {
         // Provide helpful recommendations
         if (!encoders.av1_vaapi && !encoders.libsvtav1 && !encoders.libaom) {
-          warnings.push("No AV1 encoders available - profiles using AV1 will fail (HEVC/H.264 profiles will work)");
+          warnings.push(
+            "No AV1 encoders available - profiles using AV1 will fail (HEVC/H.264 profiles will work)"
+          );
         }
         if (!encoders.av1_vaapi && !encoders.hevc_vaapi && !encoders.h264_vaapi) {
           warnings.push("No hardware encoders available - encoding will use CPU (slower)");
@@ -210,14 +218,18 @@ export async function validateEnvironment(): Promise<ValidationResult> {
   console.log(`  Encoder ID: ${config.encoderId}`);
   console.log(`  Max Concurrent: ${config.maxConcurrent}`);
   console.log(`  Heartbeat Interval: ${config.heartbeatInterval}ms`);
-  console.log(`  Reconnect Interval: ${config.reconnectInterval}ms - ${config.maxReconnectInterval}ms`);
+  console.log(
+    `  Reconnect Interval: ${config.reconnectInterval}ms - ${config.maxReconnectInterval}ms`
+  );
 
   if (config.maxConcurrent < 1 || config.maxConcurrent > 8) {
     warnings.push(`Unusual maxConcurrent value: ${config.maxConcurrent} (recommended: 1-8)`);
   }
 
   if (config.heartbeatInterval < 5000) {
-    warnings.push(`Very short heartbeat interval: ${config.heartbeatInterval}ms (may cause excessive traffic)`);
+    warnings.push(
+      `Very short heartbeat interval: ${config.heartbeatInterval}ms (may cause excessive traffic)`
+    );
   }
 
   // Summary
@@ -227,12 +239,16 @@ export async function validateEnvironment(): Promise<ValidationResult> {
 
   if (errors.length > 0) {
     console.error("❌ Validation failed with errors:");
-    errors.forEach((error) => console.error(`   - ${error}`));
+    errors.forEach((error) => {
+      console.error(`   - ${error}`);
+    });
   }
 
   if (warnings.length > 0) {
     console.warn("⚠️  Validation warnings:");
-    warnings.forEach((warning) => console.warn(`   - ${warning}`));
+    warnings.forEach((warning) => {
+      console.warn(`   - ${warning}`);
+    });
   }
 
   if (errors.length === 0 && warnings.length === 0) {
@@ -256,11 +272,7 @@ export async function validateEnvironment(): Promise<ValidationResult> {
  */
 async function testHardwareEncoder(encoder: string, gpuDevice?: string): Promise<boolean> {
   try {
-    const args = [
-      "-f", "lavfi",
-      "-i", "color=c=black:s=64x64:d=0.1",
-      "-frames:v", "1",
-    ];
+    const args = ["-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.1", "-frames:v", "1"];
 
     // Add hardware acceleration setup based on encoder type
     if (encoder.includes("vaapi") && gpuDevice) {
@@ -311,8 +323,8 @@ export async function detectCapabilities(): Promise<EncoderCapabilities> {
     const hwaccels = hwaccelOutput
       .split("\n")
       .slice(1)
-      .map(line => line.trim())
-      .filter(line => line.length > 0);
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0);
 
     capabilities.hwaccel = hwaccels;
 

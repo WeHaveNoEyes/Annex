@@ -9,12 +9,12 @@
  * - Edge cases
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
-import { SecretsService, resetSecretsService } from "../../services/secrets.js";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { CryptoService, resetCryptoService } from "../../services/crypto.js";
-import { join } from "path";
-import { mkdtempSync, rmSync, existsSync } from "fs";
-import { tmpdir } from "os";
+import { resetSecretsService, SecretsService } from "../../services/secrets.js";
 import { createMockPrisma } from "../setup.js";
 
 describe("SecretsService", () => {
@@ -378,9 +378,7 @@ describe("SecretsService", () => {
       }));
 
       // Set all concurrently
-      await Promise.all(
-        operations.map((op) => secretsService.setSecret(op.key, op.value))
-      );
+      await Promise.all(operations.map((op) => secretsService.setSecret(op.key, op.value)));
 
       // Verify all values
       secretsService.clearCache();
@@ -398,7 +396,7 @@ describe("SecretsService", () => {
 
       secretsService.clearCache();
       const retrieved = await secretsService.getSecret("json.key");
-      expect(JSON.parse(retrieved!)).toEqual(jsonValue);
+      expect(JSON.parse(retrieved ?? "")).toEqual(jsonValue);
     });
 
     it("handles JSON with special characters", async () => {
@@ -407,7 +405,7 @@ describe("SecretsService", () => {
 
       secretsService.clearCache();
       const retrieved = await secretsService.getSecret("json.special");
-      expect(JSON.parse(retrieved!)).toEqual(jsonValue);
+      expect(JSON.parse(retrieved ?? "")).toEqual(jsonValue);
     });
   });
 });

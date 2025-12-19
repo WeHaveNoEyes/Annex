@@ -1,20 +1,20 @@
-import { BaseStep, type StepOutput } from "./BaseStep.js";
-import type { PipelineContext } from "../PipelineContext.js";
-import { StepType, RequestStatus, ActivityType, MediaType, Prisma } from "@prisma/client";
+import { ActivityType, MediaType, type Prisma, RequestStatus, StepType } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
-import { getIndexerService } from "../../indexer.js";
-import { getTraktService } from "../../trakt.js";
 import { downloadManager } from "../../downloadManager.js";
+import { getIndexerService } from "../../indexer.js";
 import {
   deriveRequiredResolution,
   filterReleasesByQuality,
-  rankReleasesWithQualityFilter,
-  releasesToStorageFormat,
   getBestAvailableResolution,
   getResolutionLabel,
-  resolutionMeetsRequirement,
   type RequestTarget,
+  rankReleasesWithQualityFilter,
+  releasesToStorageFormat,
+  resolutionMeetsRequirement,
 } from "../../qualityService.js";
+import { getTraktService } from "../../trakt.js";
+import type { PipelineContext } from "../PipelineContext.js";
+import { BaseStep, type StepOutput } from "./BaseStep.js";
 
 interface SearchStepConfig {
   checkExistingDownloads?: boolean;
@@ -187,7 +187,11 @@ export class SearchStep extends BaseStep {
           error: null,
         },
       });
-      await this.logActivity(requestId, ActivityType.WARNING, "No releases found - will retry automatically");
+      await this.logActivity(
+        requestId,
+        ActivityType.WARNING,
+        "No releases found - will retry automatically"
+      );
 
       return {
         success: false,
@@ -197,7 +201,10 @@ export class SearchStep extends BaseStep {
       };
     }
 
-    const { matching, belowQuality } = filterReleasesByQuality(searchResult.releases, requiredResolution);
+    const { matching, belowQuality } = filterReleasesByQuality(
+      searchResult.releases,
+      requiredResolution
+    );
 
     await this.logActivity(
       requestId,
@@ -257,7 +264,11 @@ export class SearchStep extends BaseStep {
 
     // Rank matching releases
     const maxResults = cfg.maxResults || 5;
-    const { matching: rankedMatching } = rankReleasesWithQualityFilter(matching, requiredResolution, maxResults);
+    const { matching: rankedMatching } = rankReleasesWithQualityFilter(
+      matching,
+      requiredResolution,
+      maxResults
+    );
 
     if (rankedMatching.length === 0) {
       return {
@@ -271,17 +282,22 @@ export class SearchStep extends BaseStep {
     const bestRelease = rankedMatching[0].release;
     const alternatives = rankedMatching.slice(1).map((r) => r.release);
 
-    await this.logActivity(requestId, ActivityType.SUCCESS, `Selected release: ${bestRelease.title}`, {
-      release: {
-        title: bestRelease.title,
-        resolution: bestRelease.resolution,
-        source: bestRelease.source,
-        codec: bestRelease.codec,
-        size: bestRelease.size,
-        seeders: bestRelease.seeders,
-        score: rankedMatching[0].score,
-      },
-    });
+    await this.logActivity(
+      requestId,
+      ActivityType.SUCCESS,
+      `Selected release: ${bestRelease.title}`,
+      {
+        release: {
+          title: bestRelease.title,
+          resolution: bestRelease.resolution,
+          source: bestRelease.source,
+          codec: bestRelease.codec,
+          size: bestRelease.size,
+          seeders: bestRelease.seeders,
+          score: rankedMatching[0].score,
+        },
+      }
+    );
 
     // Save selected release to request
     await prisma.mediaRequest.update({
@@ -305,7 +321,12 @@ export class SearchStep extends BaseStep {
     };
   }
 
-  private async logActivity(requestId: string, type: ActivityType, message: string, details?: object): Promise<void> {
+  private async logActivity(
+    requestId: string,
+    type: ActivityType,
+    message: string,
+    details?: object
+  ): Promise<void> {
     await prisma.activityLog.create({
       data: {
         requestId,

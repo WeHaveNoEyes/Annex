@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
+import { Badge, Button, Card, EmptyState } from "../../components/ui";
 import { trpc } from "../../trpc";
-import { Button, Card, Badge, EmptyState } from "../../components/ui";
 
 export default function Pipelines() {
   const navigate = useNavigate();
@@ -63,9 +63,7 @@ export default function Pipelines() {
                       </Badge>
                     )}
                     {!pipeline.isPublic && (
-                      <Badge className="bg-white/20 text-white/70 border-white/30">
-                        Private
-                      </Badge>
+                      <Badge className="bg-white/20 text-white/70 border-white/30">Private</Badge>
                     )}
                   </div>
 
@@ -104,7 +102,9 @@ export default function Pipelines() {
             icon="⚙"
             title="No pipeline templates"
             description="Create a pipeline template to customize your media request workflow"
-            action={<Button onClick={() => navigate("/settings/pipelines/new")}>Create Template</Button>}
+            action={
+              <Button onClick={() => navigate("/settings/pipelines/new")}>Create Template</Button>
+            }
           />
         )}
       </div>

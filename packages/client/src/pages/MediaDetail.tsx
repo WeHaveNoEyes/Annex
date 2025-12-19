@@ -1,7 +1,7 @@
-import { useParams, useNavigate, useLocation, useSearchParams } from "react-router-dom";
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { Badge, Button, RequestDialog, Tooltip } from "../components/ui";
 import { trpc } from "../trpc";
-import { Button, Badge, Tooltip, RequestDialog } from "../components/ui";
 
 // Chevron icon for expandable sections
 function ChevronIcon({ expanded }: { expanded: boolean }) {
@@ -114,7 +114,9 @@ export default function MediaDetailPage() {
   if (error) {
     return (
       <div className="text-center py-24">
-        <p className="text-red-400 text-lg">Failed to load {type === "movie" ? "movie" : "TV show"}</p>
+        <p className="text-red-400 text-lg">
+          Failed to load {type === "movie" ? "movie" : "TV show"}
+        </p>
         <p className="text-sm mt-2 text-white/30">{error.message}</p>
         <Button variant="secondary" className="mt-6" onClick={() => navigate("/")}>
           Back to Discover
@@ -177,7 +179,12 @@ export default function MediaDetailPage() {
 
   // Trailer key is now provided directly instead of videos array
   const trailerKey = data.trailerKey;
-  const cast = (data.cast || []) as Array<{ id: number; name: string; character: string; profilePath: string | null }>;
+  const cast = (data.cast || []) as Array<{
+    id: number;
+    name: string;
+    character: string;
+    profilePath: string | null;
+  }>;
   const crew = (data.crew || []) as Array<{ id: number; name: string; job: string }>;
   const displayCast = showAllCast ? cast : cast.slice(0, 12);
 
@@ -188,11 +195,7 @@ export default function MediaDetailPage() {
         {/* Backdrop Image */}
         {backdropUrl ? (
           <div className="h-[60vh] relative overflow-hidden">
-            <img
-              src={backdropUrl}
-              alt=""
-              className="w-full h-full object-cover"
-            />
+            <img src={backdropUrl} alt="" className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black via-black/60 to-black/30" />
             <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-transparent to-transparent" />
           </div>
@@ -248,8 +251,8 @@ export default function MediaDetailPage() {
                         tvData.status === "Returning Series"
                           ? "success"
                           : tvData.status === "Ended"
-                          ? "default"
-                          : "warning"
+                            ? "default"
+                            : "warning"
                       }
                     >
                       {tvData.status}
@@ -272,7 +275,9 @@ export default function MediaDetailPage() {
                   {ratingsData.imdbScore !== null && (
                     <Tooltip content="IMDb (Internet Movie Database)">
                       <div className="flex items-center gap-1.5 px-2.5 py-1 bg-yellow-500/10 border border-yellow-500/30 rounded text-sm cursor-default">
-                        <span className="font-bold text-yellow-400">{ratingsData.imdbScore.toFixed(1)}</span>
+                        <span className="font-bold text-yellow-400">
+                          {ratingsData.imdbScore.toFixed(1)}
+                        </span>
                         <span className="text-white/50">IMDb</span>
                       </div>
                     </Tooltip>
@@ -288,7 +293,9 @@ export default function MediaDetailPage() {
                   {ratingsData.metacriticScore !== null && (
                     <Tooltip content="Metacritic">
                       <div className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/10 border border-green-500/30 rounded text-sm cursor-default">
-                        <span className="font-bold text-green-400">{ratingsData.metacriticScore}</span>
+                        <span className="font-bold text-green-400">
+                          {ratingsData.metacriticScore}
+                        </span>
                         <span className="text-white/50">MC</span>
                       </div>
                     </Tooltip>
@@ -304,7 +311,9 @@ export default function MediaDetailPage() {
                   {ratingsData.letterboxdScore !== null && (
                     <Tooltip content="Letterboxd">
                       <div className="flex items-center gap-1.5 px-2.5 py-1 bg-orange-500/10 border border-orange-500/30 rounded text-sm cursor-default">
-                        <span className="font-bold text-orange-400">{ratingsData.letterboxdScore.toFixed(1)}</span>
+                        <span className="font-bold text-orange-400">
+                          {ratingsData.letterboxdScore.toFixed(1)}
+                        </span>
                         <span className="text-white/50">LB</span>
                       </div>
                     </Tooltip>
@@ -312,7 +321,9 @@ export default function MediaDetailPage() {
                   {ratingsData.tmdbScore !== null && (
                     <Tooltip content="The Movie Database">
                       <div className="flex items-center gap-1.5 px-2.5 py-1 bg-sky-500/10 border border-sky-500/30 rounded text-sm cursor-default">
-                        <span className="font-bold text-sky-400">{ratingsData.tmdbScore.toFixed(1)}</span>
+                        <span className="font-bold text-sky-400">
+                          {ratingsData.tmdbScore.toFixed(1)}
+                        </span>
                         <span className="text-white/50">TMDB</span>
                       </div>
                     </Tooltip>
@@ -335,29 +346,31 @@ export default function MediaDetailPage() {
               )}
 
               {/* Movie Library Availability */}
-              {!isTvShow && movieAvailability?.inLibrary && movieAvailability.servers.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-white/50 text-sm">In Library:</span>
-                  {movieAvailability.servers.map((server) => (
-                    <span
-                      key={server.serverId}
-                      className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded text-sm"
-                    >
-                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          fillRule="evenodd"
-                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      {server.serverName}
-                      {server.quality && (
-                        <span className="text-green-400/70">{server.quality}</span>
-                      )}
-                    </span>
-                  ))}
-                </div>
-              )}
+              {!isTvShow &&
+                movieAvailability?.inLibrary &&
+                movieAvailability.servers.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-white/50 text-sm">In Library:</span>
+                    {movieAvailability.servers.map((server) => (
+                      <span
+                        key={server.serverId}
+                        className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded text-sm"
+                      >
+                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                          <path
+                            fillRule="evenodd"
+                            d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                            clipRule="evenodd"
+                          />
+                        </svg>
+                        {server.serverName}
+                        {server.quality && (
+                          <span className="text-green-400/70">{server.quality}</span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
 
               {/* TV Show Library Summary */}
               {isTvShow && tvAvailability?.hasAnyEpisodes && (
@@ -572,7 +585,11 @@ export default function MediaDetailPage() {
                                     {/* Availability indicator overlay */}
                                     {isAvailable && (
                                       <div className="absolute top-1 right-1 bg-green-500 rounded-full p-0.5">
-                                        <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                        <svg
+                                          className="w-3 h-3 text-white"
+                                          fill="currentColor"
+                                          viewBox="0 0 20 20"
+                                        >
                                           <path
                                             fillRule="evenodd"
                                             d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -613,9 +630,7 @@ export default function MediaDetailPage() {
                                           {episode.airDate && (
                                             <span>{formatAirDate(episode.airDate)}</span>
                                           )}
-                                          {episode.runtime && (
-                                            <span>{episode.runtime}m</span>
-                                          )}
+                                          {episode.runtime && <span>{episode.runtime}m</span>}
                                         </div>
                                       </div>
                                     </div>
@@ -643,7 +658,6 @@ export default function MediaDetailPage() {
                 </div>
               </div>
             )}
-
           </div>
 
           {/* Right: Details Sidebar */}
@@ -660,7 +674,9 @@ export default function MediaDetailPage() {
 
               {tvData?.createdBy && tvData.createdBy.length > 0 && (
                 <div>
-                  <div className="text-xs text-white/40 uppercase tracking-wide mb-1">Created By</div>
+                  <div className="text-xs text-white/40 uppercase tracking-wide mb-1">
+                    Created By
+                  </div>
                   <div className="text-white/90">{tvData.createdBy.join(", ")}</div>
                 </div>
               )}
@@ -668,7 +684,9 @@ export default function MediaDetailPage() {
               {tvData?.networks && (tvData.networks as Array<{ name: string }>).length > 0 && (
                 <div>
                   <div className="text-xs text-white/40 uppercase tracking-wide mb-1">Network</div>
-                  <div className="text-white/90">{(tvData.networks as Array<{ name: string }>).map((n) => n.name).join(", ")}</div>
+                  <div className="text-white/90">
+                    {(tvData.networks as Array<{ name: string }>).map((n) => n.name).join(", ")}
+                  </div>
                 </div>
               )}
 
@@ -705,7 +723,12 @@ export default function MediaDetailPage() {
                 >
                   <span className="font-semibold">IMDb</span>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                    />
                   </svg>
                 </a>
               )}
@@ -717,11 +740,15 @@ export default function MediaDetailPage() {
               >
                 <span className="font-semibold">TMDB</span>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                  />
                 </svg>
               </a>
             </div>
-
           </div>
         </div>
 
@@ -740,7 +767,11 @@ export default function MediaDetailPage() {
                     />
                   ) : (
                     <div className="w-full aspect-[2/3] bg-white/5 rounded border border-white/10 flex items-center justify-center">
-                      <svg className="w-8 h-8 text-white/20" fill="currentColor" viewBox="0 0 24 24">
+                      <svg
+                        className="w-8 h-8 text-white/20"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
                         <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
                       </svg>
                     </div>

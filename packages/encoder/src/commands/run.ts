@@ -4,10 +4,10 @@
  * Starts the encoder service (main encoder logic).
  */
 
-import { initConfig } from "../config.js";
 import { EncoderClient } from "../client.js";
-import { testGpuEncoding, isGpuAvailable } from "../gpu.js";
-import { VERSION, BUILD_DATE } from "../version.js";
+import { initConfig } from "../config.js";
+import { isGpuAvailable, testGpuEncoding } from "../gpu.js";
+import { BUILD_DATE, VERSION } from "../version.js";
 
 export async function run(): Promise<void> {
   // Initialize configuration

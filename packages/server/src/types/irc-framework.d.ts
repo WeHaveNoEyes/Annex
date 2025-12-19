@@ -4,7 +4,7 @@
  */
 
 declare module "irc-framework" {
-  import { EventEmitter } from "events";
+  import { EventEmitter } from "node:events";
 
   interface ConnectionOptions {
     host: string;

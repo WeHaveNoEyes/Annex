@@ -1,8 +1,8 @@
 // Generic webhook notification provider
 
+import { NotificationProvider } from "@prisma/client";
 import type { BaseNotificationProvider } from "../NotificationDispatcher.js";
 import type { NotificationPayload, NotificationResult } from "../types.js";
-import { NotificationProvider } from "@prisma/client";
 
 interface WebhookConfig {
   url: string;
@@ -14,7 +14,10 @@ interface WebhookConfig {
 }
 
 export class WebhookProvider implements BaseNotificationProvider {
-  async send(payload: NotificationPayload, config: Record<string, unknown>): Promise<NotificationResult> {
+  async send(
+    payload: NotificationPayload,
+    config: Record<string, unknown>
+  ): Promise<NotificationResult> {
     const cfg = config as unknown as WebhookConfig;
 
     if (!cfg.url) {
@@ -61,7 +64,7 @@ export class WebhookProvider implements BaseNotificationProvider {
       const contentType = response.headers.get("content-type");
       if (contentType?.includes("application/json")) {
         try {
-          const body = await response.json() as Record<string, unknown>;
+          const body = (await response.json()) as Record<string, unknown>;
           deliveryId = (body.id || body.messageId || body.deliveryId) as string | undefined;
         } catch {
           // Ignore JSON parse errors

@@ -7,14 +7,13 @@
  * - Edge cases
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { randomBytes } from "node:crypto";
+import { chmodSync, existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { access, readFile, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { CryptoService, resetCryptoService } from "../../services/crypto.js";
-import { writeFileSync, chmodSync, existsSync, statSync } from "fs";
-import { access, stat, readFile } from "fs/promises";
-import { randomBytes } from "crypto";
-import { join } from "path";
-import { mkdtempSync, rmSync } from "fs";
-import { tmpdir } from "os";
 
 describe("CryptoService", () => {
   let tempDir: string;

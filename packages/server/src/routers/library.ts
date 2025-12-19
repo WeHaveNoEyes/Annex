@@ -1,8 +1,8 @@
+import { MediaType } from "@prisma/client";
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc.js";
 import { prisma } from "../db/client.js";
 import { TMDBService } from "../services/tmdb.js";
-import { MediaType } from "@prisma/client";
+import { publicProcedure, router } from "../trpc.js";
 
 export const libraryRouter = router({
   /**
@@ -45,7 +45,6 @@ export const libraryRouter = router({
           // This requires joining with ratings, handled separately
           orderBy.updatedAt = input.sortOrder;
           break;
-        case "addedAt":
         default:
           orderBy.createdAt = input.sortOrder;
           break;
@@ -262,14 +261,16 @@ export const libraryRouter = router({
           });
         }
 
-        const server = serverMap.get(item.serverId)!;
-        if (!server.seasons.has(item.season)) {
-          server.seasons.set(item.season, []);
+        const server = serverMap.get(item.serverId);
+        if (server) {
+          if (!server.seasons.has(item.season)) {
+            server.seasons.set(item.season, []);
+          }
+          server.seasons.get(item.season)?.push({
+            episode: item.episode,
+            quality: item.quality,
+          });
         }
-        server.seasons.get(item.season)!.push({
-          episode: item.episode,
-          quality: item.quality,
-        });
       }
 
       // Convert to serializable format

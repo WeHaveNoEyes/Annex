@@ -109,10 +109,7 @@ const loggingSchema = z.object({
 // Authentication configuration
 const authSchema = z.object({
   // Session settings
-  sessionSecret: z
-    .string()
-    .min(32)
-    .default("change-me-in-production-32-char-min"), // Used for signing session tokens
+  sessionSecret: z.string().min(32).default("change-me-in-production-32-char-min"), // Used for signing session tokens
   sessionMaxAge: z.coerce
     .number()
     .int()

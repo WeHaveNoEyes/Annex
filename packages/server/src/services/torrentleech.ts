@@ -159,7 +159,10 @@ class TorrentLeechProvider {
     // Ensure https
     baseUrl = baseUrl.replace(/^http:/, "https:");
     // Ensure www subdomain for torrentleech domains (both .org and .me)
-    if ((baseUrl.includes("torrentleech.org") || baseUrl.includes("torrentleech.me")) && !baseUrl.includes("www.")) {
+    if (
+      (baseUrl.includes("torrentleech.org") || baseUrl.includes("torrentleech.me")) &&
+      !baseUrl.includes("www.")
+    ) {
       baseUrl = baseUrl.replace("://", "://www.");
     }
     this.baseUrl = baseUrl;
@@ -197,33 +200,33 @@ class TorrentLeechProvider {
 
       const loginPageResponse = await fetch(loginPageUrl, {
         headers: {
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         },
         redirect: "follow",
       });
 
-
       // Collect any initial cookies
       let initialCookies: string[] = [];
       if (typeof loginPageResponse.headers.getSetCookie === "function") {
-        initialCookies = loginPageResponse.headers.getSetCookie().map(c => c.split(";")[0]);
+        initialCookies = loginPageResponse.headers.getSetCookie().map((c) => c.split(";")[0]);
       }
 
       const response = await fetch(loginPageUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
           "Accept-Language": "en-US,en;q=0.5",
-          "Origin": this.baseUrl,
-          "Referer": loginPageUrl,
-          ...(initialCookies.length > 0 && { "Cookie": initialCookies.join("; ") }),
+          Origin: this.baseUrl,
+          Referer: loginPageUrl,
+          ...(initialCookies.length > 0 && { Cookie: initialCookies.join("; ") }),
         },
         body: new URLSearchParams(formData).toString(),
         redirect: "manual", // Don't follow redirects to capture cookies
       });
-
 
       // Check redirect and verify login status
       let confirmedLoggedIn = false;
@@ -231,26 +234,34 @@ class TorrentLeechProvider {
       if (response.status === 302) {
         const redirectUrl = response.headers.get("location");
         if (redirectUrl) {
-
           // Get cookies from the 302 response first
           let responseCookies: string[] = [];
           if (typeof response.headers.getSetCookie === "function") {
-            responseCookies = response.headers.getSetCookie().map(c => c.split(";")[0]);
+            responseCookies = response.headers.getSetCookie().map((c) => c.split(";")[0]);
           }
           const allCookiesForCheck = [...initialCookies, ...responseCookies].join("; ");
 
           // Follow the redirect to check if we're actually logged in
-          const checkResponse = await fetch(redirectUrl.startsWith("http") ? redirectUrl : `${this.baseUrl}${redirectUrl}`, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-              "Cookie": allCookiesForCheck,
-            },
-          });
+          const checkResponse = await fetch(
+            redirectUrl.startsWith("http") ? redirectUrl : `${this.baseUrl}${redirectUrl}`,
+            {
+              headers: {
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                Cookie: allCookiesForCheck,
+              },
+            }
+          );
           const pageBody = await checkResponse.text();
 
           // Check if we're actually logged in despite the redirect
           // TorrentLeech shows "loggedin" class in navbar when authenticated
-          if (pageBody.includes("loggedin") || pageBody.includes("logged-in") || pageBody.includes(">Logout<") || pageBody.includes(">logout<")) {
+          if (
+            pageBody.includes("loggedin") ||
+            pageBody.includes("logged-in") ||
+            pageBody.includes(">Logout<") ||
+            pageBody.includes(">logout<")
+          ) {
             confirmedLoggedIn = true;
           } else {
             // Look for common error patterns
@@ -258,11 +269,20 @@ class TorrentLeechProvider {
               console.error("[TorrentLeech] Invalid username or password");
               return false;
             }
-            if (pageBody.includes("Captcha") || pageBody.includes("captcha") || pageBody.includes("CAPTCHA")) {
+            if (
+              pageBody.includes("Captcha") ||
+              pageBody.includes("captcha") ||
+              pageBody.includes("CAPTCHA")
+            ) {
               console.error("[TorrentLeech] CAPTCHA required - too many failed attempts?");
               return false;
             }
-            if (pageBody.includes("banned") || pageBody.includes("Banned") || pageBody.includes("disabled") || pageBody.includes("Disabled")) {
+            if (
+              pageBody.includes("banned") ||
+              pageBody.includes("Banned") ||
+              pageBody.includes("disabled") ||
+              pageBody.includes("Disabled")
+            ) {
               console.error("[TorrentLeech] Account may be banned or disabled");
               return false;
             }
@@ -304,12 +324,11 @@ class TorrentLeechProvider {
         }
       }
 
-
       // Parse cookies from login response
       const loginCookies: string[] = [];
       for (const header of setCookieHeaders) {
         const cookie = header.split(";")[0].trim();
-        if (cookie && cookie.includes("=")) {
+        if (cookie?.includes("=")) {
           loginCookies.push(cookie);
         }
       }
@@ -344,13 +363,13 @@ class TorrentLeechProvider {
 
       // Check for session-related cookies that indicate successful login
       // TorrentLeech typically sets PHPSESSID and/or member cookies on login
-      const hasSessionCookie = cookieNames.some(name =>
-        name.toLowerCase().includes("sess") ||
-        name.toLowerCase().includes("member") ||
-        name.toLowerCase().includes("auth") ||
-        name.toLowerCase().includes("tl")
+      const hasSessionCookie = cookieNames.some(
+        (name) =>
+          name.toLowerCase().includes("sess") ||
+          name.toLowerCase().includes("member") ||
+          name.toLowerCase().includes("auth") ||
+          name.toLowerCase().includes("tl")
       );
-
 
       this.cookies = allCookies.join("; ");
 
@@ -361,7 +380,8 @@ class TorrentLeechProvider {
           const verifyResponse = await fetch(`${this.baseUrl}/torrents/browse/list/page/1`, {
             headers: {
               Cookie: this.cookies,
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
               Accept: "application/json, text/javascript, */*; q=0.01",
               "X-Requested-With": "XMLHttpRequest",
             },
@@ -406,8 +426,10 @@ class TorrentLeechProvider {
 
     const response = await fetch(url, {
       headers: {
+        // biome-ignore lint/style/noNonNullAssertion: cookies is guaranteed after successful authentication
         Cookie: this.cookies!,
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         Accept: "application/json, text/javascript, */*; q=0.01",
         "X-Requested-With": "XMLHttpRequest",
       },
@@ -428,8 +450,10 @@ class TorrentLeechProvider {
         if (reauth) {
           const retryResponse = await fetch(url, {
             headers: {
+              // biome-ignore lint/style/noNonNullAssertion: cookies is guaranteed after successful re-authentication
               Cookie: this.cookies!,
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
               Accept: "application/json, text/javascript, */*; q=0.01",
               "X-Requested-With": "XMLHttpRequest",
             },
@@ -463,8 +487,10 @@ class TorrentLeechProvider {
           // Retry the request with fresh cookies
           const retryResponse = await fetch(url, {
             headers: {
+              // biome-ignore lint/style/noNonNullAssertion: cookies is guaranteed after successful re-authentication
               Cookie: this.cookies!,
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
               Accept: "application/json, text/javascript, */*; q=0.01",
               "X-Requested-With": "XMLHttpRequest",
             },
@@ -479,7 +505,9 @@ class TorrentLeechProvider {
 
           // Still not JSON after re-auth - credentials may be wrong
           const retryText = await retryResponse.text();
-          console.error(`[TorrentLeech] Retry failed - status: ${retryResponse.status}, content-type: ${retryContentType}`);
+          console.error(
+            `[TorrentLeech] Retry failed - status: ${retryResponse.status}, content-type: ${retryContentType}`
+          );
           console.error(`[TorrentLeech] Retry body: ${retryText.substring(0, 500)}`);
           throw new Error("Re-authentication failed - check credentials or 2FA token");
         }
@@ -531,9 +559,7 @@ class TorrentLeechProvider {
       return [];
     }
 
-    return response.torrentList.map((torrent) =>
-      this.mapToRelease(torrent)
-    );
+    return response.torrentList.map((torrent) => this.mapToRelease(torrent));
   }
 
   /**
@@ -557,9 +583,7 @@ class TorrentLeechProvider {
 
       // Try to access a simple endpoint to verify session
       // Note: page/0 doesn't work on TL, must use page/1 or omit page
-      const response = await this.request<TorrentLeechResponse>(
-        "/torrents/browse/list/page/1"
-      );
+      const response = await this.request<TorrentLeechResponse>("/torrents/browse/list/page/1");
 
       console.log(`[TorrentLeech] Browse response: ${JSON.stringify(response).substring(0, 200)}`);
 
@@ -619,7 +643,7 @@ class TorrentLeechProvider {
       leechers: torrent.leechers,
       downloadUrl: this.getDownloadUrl(torrent.fid, torrent.filename),
       infoUrl: `${this.baseUrl}/torrent/${torrent.fid}`,
-      publishDate: new Date(parseInt(torrent.addedTimestamp) * 1000),
+      publishDate: new Date(parseInt(torrent.addedTimestamp, 10) * 1000),
       score,
       categories: [torrent.categoryID],
     };
@@ -643,7 +667,8 @@ class TorrentLeechProvider {
   private extractSource(title: string): string {
     const upper = title.toUpperCase();
     if (upper.includes("REMUX")) return "REMUX";
-    if (upper.includes("BLURAY") || upper.includes("BLU-RAY") || upper.includes("BDRIP")) return "BLURAY";
+    if (upper.includes("BLURAY") || upper.includes("BLU-RAY") || upper.includes("BDRIP"))
+      return "BLURAY";
     if (upper.includes("WEB-DL") || upper.includes("WEBDL")) return "WEB-DL";
     if (upper.includes("WEBRIP") || upper.includes("WEB-RIP")) return "WEBRIP";
     if (upper.includes("HDTV")) return "HDTV";
@@ -658,8 +683,20 @@ class TorrentLeechProvider {
   private extractCodec(title: string): string {
     const upper = title.toUpperCase();
     if (upper.includes("AV1")) return "AV1";
-    if (upper.includes("HEVC") || upper.includes("H.265") || upper.includes("H265") || upper.includes("X265")) return "HEVC";
-    if (upper.includes("H.264") || upper.includes("H264") || upper.includes("X264") || upper.includes("AVC")) return "H264";
+    if (
+      upper.includes("HEVC") ||
+      upper.includes("H.265") ||
+      upper.includes("H265") ||
+      upper.includes("X265")
+    )
+      return "HEVC";
+    if (
+      upper.includes("H.264") ||
+      upper.includes("H264") ||
+      upper.includes("X264") ||
+      upper.includes("AVC")
+    )
+      return "H264";
     return "UNKNOWN";
   }
 

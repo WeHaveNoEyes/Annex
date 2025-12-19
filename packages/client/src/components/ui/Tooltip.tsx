@@ -1,11 +1,11 @@
 import {
-  useState,
-  useRef,
-  useLayoutEffect,
-  ReactElement,
-  useCallback,
   cloneElement,
   isValidElement,
+  type ReactElement,
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
 } from "react";
 import { createPortal } from "react-dom";
 

@@ -5,10 +5,7 @@ interface DiscoveryModeTabsProps {
   onModeChange: (mode: DiscoveryMode) => void;
 }
 
-export function DiscoveryModeTabs({
-  mode,
-  onModeChange,
-}: DiscoveryModeTabsProps) {
+export function DiscoveryModeTabs({ mode, onModeChange }: DiscoveryModeTabsProps) {
   return (
     <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-thin scrollbar-thumb-white/10">
       {DISCOVERY_MODES.map((m) => (

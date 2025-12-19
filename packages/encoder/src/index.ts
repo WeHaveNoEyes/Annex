@@ -7,10 +7,10 @@
 
 import { parseArgs } from "./cli.js";
 import { help } from "./commands/help.js";
-import { version } from "./commands/version.js";
 import { run } from "./commands/run.js";
 import { setup } from "./commands/setup.js";
 import { update } from "./commands/update.js";
+import { version } from "./commands/version.js";
 
 async function main(): Promise<void> {
   // Parse command-line arguments (skip first two: node/bun and script path)
@@ -40,8 +40,6 @@ async function main(): Promise<void> {
     case "setup":
       await setup(args);
       break;
-
-    case "run":
     default:
       await run();
       break;

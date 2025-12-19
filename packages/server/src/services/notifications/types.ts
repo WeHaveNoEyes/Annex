@@ -1,6 +1,6 @@
 // Notification types and interfaces
 
-import type { NotificationProvider, MediaType } from "@prisma/client";
+import type { MediaType, NotificationProvider } from "@prisma/client";
 
 export interface NotificationPayload {
   event: string;

@@ -165,7 +165,10 @@ class Unit3dProvider {
   /**
    * Make an authenticated request to the UNIT3D API
    */
-  private async request<T>(path: string, params?: Record<string, string | number | boolean | number[] | undefined>): Promise<T> {
+  private async request<T>(
+    path: string,
+    params?: Record<string, string | number | boolean | number[] | undefined>
+  ): Promise<T> {
     const url = new URL(`${this.baseUrl}${path}`);
 
     // Add API token
@@ -245,7 +248,7 @@ class Unit3dProvider {
       const imdbNum = options.imdbId.replace(/^tt/, "");
       const parsed = parseInt(imdbNum, 10);
       // Only add if it's a valid number
-      if (!isNaN(parsed) && parsed > 0) {
+      if (!Number.isNaN(parsed) && parsed > 0) {
         params.imdbId = parsed;
       }
     }
@@ -309,7 +312,7 @@ class Unit3dProvider {
       // Try to get user info
       const user = await this.request<Unit3dUserResponse>("/api/user");
 
-      if (user && user.username) {
+      if (user?.username) {
         return {
           success: true,
           message: `Connected as ${user.username} (${user.group})`,
@@ -407,7 +410,8 @@ class Unit3dProvider {
   private extractSource(title: string): string {
     const upper = title.toUpperCase();
     if (upper.includes("REMUX")) return "REMUX";
-    if (upper.includes("BLURAY") || upper.includes("BLU-RAY") || upper.includes("BDRIP")) return "BLURAY";
+    if (upper.includes("BLURAY") || upper.includes("BLU-RAY") || upper.includes("BDRIP"))
+      return "BLURAY";
     if (upper.includes("WEB-DL") || upper.includes("WEBDL")) return "WEB-DL";
     if (upper.includes("WEBRIP") || upper.includes("WEB-RIP")) return "WEBRIP";
     if (upper.includes("HDTV")) return "HDTV";
@@ -422,8 +426,20 @@ class Unit3dProvider {
   private extractCodec(title: string): string {
     const upper = title.toUpperCase();
     if (upper.includes("AV1")) return "AV1";
-    if (upper.includes("HEVC") || upper.includes("H.265") || upper.includes("H265") || upper.includes("X265")) return "HEVC";
-    if (upper.includes("H.264") || upper.includes("H264") || upper.includes("X264") || upper.includes("AVC")) return "H264";
+    if (
+      upper.includes("HEVC") ||
+      upper.includes("H.265") ||
+      upper.includes("H265") ||
+      upper.includes("X265")
+    )
+      return "HEVC";
+    if (
+      upper.includes("H.264") ||
+      upper.includes("H264") ||
+      upper.includes("X264") ||
+      upper.includes("AVC")
+    )
+      return "H264";
     return "UNKNOWN";
   }
 

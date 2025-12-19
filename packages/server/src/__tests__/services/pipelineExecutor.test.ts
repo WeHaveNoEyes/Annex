@@ -9,10 +9,10 @@
  * - Context merging across branches
  */
 
-import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
-import { createMockPrisma } from "../setup.js";
-import type { PipelineContext, StepOutput } from "../../services/pipeline/PipelineContext.js";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import type { StepType } from "@prisma/client";
+import type { PipelineContext, StepOutput } from "../../services/pipeline/PipelineContext.js";
+import { createMockPrisma } from "../setup.js";
 
 // Mock the db/client module
 const mockPrisma = createMockPrisma();
@@ -29,22 +29,27 @@ import { BaseStep } from "../../services/pipeline/steps/BaseStep.js";
 class MockStep extends BaseStep {
   static executionLog: Array<{ name: string; timestamp: number }> = [];
   static resetLog() {
-    this.executionLog = [];
+    MockStep.executionLog = [];
   }
 
   constructor(public readonly type: StepType) {
     super();
   }
 
-  async execute(context: PipelineContext, config: unknown): Promise<StepOutput> {
-    const cfg = config as { name: string; delay?: number; shouldFail?: boolean; data?: Record<string, unknown> };
+  async execute(_context: PipelineContext, config: unknown): Promise<StepOutput> {
+    const cfg = config as {
+      name: string;
+      delay?: number;
+      shouldFail?: boolean;
+      data?: Record<string, unknown>;
+    };
 
     // Log execution with timestamp
     MockStep.executionLog.push({ name: cfg.name, timestamp: Date.now() });
 
     // Simulate async work
     if (cfg.delay) {
-      await new Promise(resolve => setTimeout(resolve, cfg.delay));
+      await new Promise((resolve) => setTimeout(resolve, cfg.delay));
     }
 
     // Simulate failure if configured
@@ -63,8 +68,8 @@ class MockStep extends BaseStep {
 
   validateConfig(config: unknown): void {
     const cfg = config as { name?: string };
-    if (!cfg || typeof cfg.name !== 'string') {
-      throw new Error('MockStep requires config with name');
+    if (!cfg || typeof cfg.name !== "string") {
+      throw new Error("MockStep requires config with name");
     }
   }
 }
@@ -85,28 +90,52 @@ describe("PipelineExecutor - Parallel Execution", () => {
     StepRegistry.reset();
 
     // Create factory classes for each step type
-    class SearchStep extends MockStep { constructor() { super('SEARCH' as StepType); } }
-    class DownloadStep extends MockStep { constructor() { super('DOWNLOAD' as StepType); } }
-    class EncodeStep extends MockStep { constructor() { super('ENCODE' as StepType); } }
-    class DeliverStep extends MockStep { constructor() { super('DELIVER' as StepType); } }
-    class NotificationStep extends MockStep { constructor() { super('NOTIFICATION' as StepType); } }
-    class ApprovalStep extends MockStep { constructor() { super('APPROVAL' as StepType); } }
+    class SearchStep extends MockStep {
+      constructor() {
+        super("SEARCH" as StepType);
+      }
+    }
+    class DownloadStep extends MockStep {
+      constructor() {
+        super("DOWNLOAD" as StepType);
+      }
+    }
+    class EncodeStep extends MockStep {
+      constructor() {
+        super("ENCODE" as StepType);
+      }
+    }
+    class DeliverStep extends MockStep {
+      constructor() {
+        super("DELIVER" as StepType);
+      }
+    }
+    class NotificationStep extends MockStep {
+      constructor() {
+        super("NOTIFICATION" as StepType);
+      }
+    }
+    class ApprovalStep extends MockStep {
+      constructor() {
+        super("APPROVAL" as StepType);
+      }
+    }
 
-    StepRegistry.register('SEARCH' as StepType, SearchStep);
-    StepRegistry.register('DOWNLOAD' as StepType, DownloadStep);
-    StepRegistry.register('ENCODE' as StepType, EncodeStep);
-    StepRegistry.register('DELIVER' as StepType, DeliverStep);
-    StepRegistry.register('NOTIFICATION' as StepType, NotificationStep);
-    StepRegistry.register('APPROVAL' as StepType, ApprovalStep);
+    StepRegistry.register("SEARCH" as StepType, SearchStep);
+    StepRegistry.register("DOWNLOAD" as StepType, DownloadStep);
+    StepRegistry.register("ENCODE" as StepType, EncodeStep);
+    StepRegistry.register("DELIVER" as StepType, DeliverStep);
+    StepRegistry.register("NOTIFICATION" as StepType, NotificationStep);
+    StepRegistry.register("APPROVAL" as StepType, ApprovalStep);
 
     // Create test request using mock
     const request = await mockPrisma.mediaRequest.create({
       data: {
-        type: 'MOVIE',
+        type: "MOVIE",
         tmdbId: 12345,
-        title: 'Test Movie',
+        title: "Test Movie",
         year: 2024,
-        status: 'PENDING',
+        status: "PENDING",
         targets: [],
       },
     });
@@ -124,30 +153,30 @@ describe("PipelineExecutor - Parallel Execution", () => {
       const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Sequential Test",
-          mediaType: 'MOVIE',
+          mediaType: "MOVIE",
           isPublic: true,
           isDefault: false,
           steps: [
             {
-              type: 'SEARCH',
-              name: 'Search',
-              config: { name: 'search', delay: 10 },
+              type: "SEARCH",
+              name: "Search",
+              config: { name: "search", delay: 10 },
               required: true,
               retryable: true,
               continueOnError: false,
               children: [
                 {
-                  type: 'DOWNLOAD',
-                  name: 'Download',
-                  config: { name: 'download', delay: 10 },
+                  type: "DOWNLOAD",
+                  name: "Download",
+                  config: { name: "download", delay: 10 },
                   required: true,
                   retryable: true,
                   continueOnError: false,
                   children: [
                     {
-                      type: 'ENCODE',
-                      name: 'Encode',
-                      config: { name: 'encode', delay: 10 },
+                      type: "ENCODE",
+                      name: "Encode",
+                      config: { name: "encode", delay: 10 },
                       required: true,
                       retryable: true,
                       continueOnError: false,
@@ -165,19 +194,23 @@ describe("PipelineExecutor - Parallel Execution", () => {
 
       // Verify execution order
       expect(MockStep.executionLog.length).toBe(3);
-      expect(MockStep.executionLog[0].name).toBe('search');
-      expect(MockStep.executionLog[1].name).toBe('download');
-      expect(MockStep.executionLog[2].name).toBe('encode');
+      expect(MockStep.executionLog[0].name).toBe("search");
+      expect(MockStep.executionLog[1].name).toBe("download");
+      expect(MockStep.executionLog[2].name).toBe("encode");
 
       // Verify sequential execution (each step waits for previous)
-      expect(MockStep.executionLog[1].timestamp).toBeGreaterThan(MockStep.executionLog[0].timestamp);
-      expect(MockStep.executionLog[2].timestamp).toBeGreaterThan(MockStep.executionLog[1].timestamp);
+      expect(MockStep.executionLog[1].timestamp).toBeGreaterThan(
+        MockStep.executionLog[0].timestamp
+      );
+      expect(MockStep.executionLog[2].timestamp).toBeGreaterThan(
+        MockStep.executionLog[1].timestamp
+      );
 
       // Verify execution completed
       const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: mockRequestId },
       });
-      expect(execution?.status).toBe('COMPLETED');
+      expect(execution?.status).toBe("COMPLETED");
     });
   });
 
@@ -187,30 +220,30 @@ describe("PipelineExecutor - Parallel Execution", () => {
       const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Parallel Test",
-          mediaType: 'MOVIE',
+          mediaType: "MOVIE",
           isPublic: true,
           isDefault: false,
           steps: [
             {
-              type: 'SEARCH',
-              name: 'Branch A',
-              config: { name: 'branch_a', delay: 50 },
+              type: "SEARCH",
+              name: "Branch A",
+              config: { name: "branch_a", delay: 50 },
               required: true,
               retryable: true,
               continueOnError: false,
             },
             {
-              type: 'NOTIFICATION',
-              name: 'Branch B',
-              config: { name: 'branch_b', delay: 30 },
+              type: "NOTIFICATION",
+              name: "Branch B",
+              config: { name: "branch_b", delay: 30 },
               required: true,
               retryable: true,
               continueOnError: false,
             },
             {
-              type: 'APPROVAL',
-              name: 'Branch C',
-              config: { name: 'branch_c', delay: 20 },
+              type: "APPROVAL",
+              name: "Branch C",
+              config: { name: "branch_c", delay: 20 },
               required: true,
               retryable: true,
               continueOnError: false,
@@ -232,13 +265,13 @@ describe("PipelineExecutor - Parallel Execution", () => {
       expect(totalTime).toBeLessThan(80); // Some margin for overhead
 
       // Verify branches started around the same time
-      const timestamps = MockStep.executionLog.map(log => log.timestamp);
+      const timestamps = MockStep.executionLog.map((log) => log.timestamp);
       const timeDiffs = [
         timestamps[1] - timestamps[0],
         timestamps[2] - timestamps[0],
         timestamps[2] - timestamps[1],
       ];
-      timeDiffs.forEach(diff => {
+      timeDiffs.forEach((diff) => {
         expect(Math.abs(diff)).toBeLessThan(15); // Started within 15ms of each other
       });
     });
@@ -248,30 +281,30 @@ describe("PipelineExecutor - Parallel Execution", () => {
       const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Nested Parallel Test",
-          mediaType: 'MOVIE',
+          mediaType: "MOVIE",
           isPublic: true,
           isDefault: false,
           steps: [
             {
-              type: 'SEARCH',
-              name: 'Search',
-              config: { name: 'search', delay: 10 },
+              type: "SEARCH",
+              name: "Search",
+              config: { name: "search", delay: 10 },
               required: true,
               retryable: true,
               continueOnError: false,
               children: [
                 {
-                  type: 'DOWNLOAD',
-                  name: 'Download A',
-                  config: { name: 'download_a', delay: 20 },
+                  type: "DOWNLOAD",
+                  name: "Download A",
+                  config: { name: "download_a", delay: 20 },
                   required: true,
                   retryable: true,
                   continueOnError: false,
                 },
                 {
-                  type: 'NOTIFICATION',
-                  name: 'Notify',
-                  config: { name: 'notify', delay: 10 },
+                  type: "NOTIFICATION",
+                  name: "Notify",
+                  config: { name: "notify", delay: 10 },
                   required: true,
                   retryable: true,
                   continueOnError: false,
@@ -287,16 +320,21 @@ describe("PipelineExecutor - Parallel Execution", () => {
 
       // Verify execution
       expect(MockStep.executionLog.length).toBe(3);
-      expect(MockStep.executionLog[0].name).toBe('search');
+      expect(MockStep.executionLog[0].name).toBe("search");
 
       // The two children should start after search but around the same time as each other
       const searchTime = MockStep.executionLog[0].timestamp;
-      const downloadTime = MockStep.executionLog.find(l => l.name === 'download_a')!.timestamp;
-      const notifyTime = MockStep.executionLog.find(l => l.name === 'notify')!.timestamp;
+      const downloadTime = MockStep.executionLog.find((l) => l.name === "download_a")?.timestamp;
+      const notifyTime = MockStep.executionLog.find((l) => l.name === "notify")?.timestamp;
 
-      expect(downloadTime).toBeGreaterThan(searchTime);
-      expect(notifyTime).toBeGreaterThan(searchTime);
-      expect(Math.abs(downloadTime - notifyTime)).toBeLessThan(15); // Started in parallel
+      expect(downloadTime).toBeDefined();
+      expect(notifyTime).toBeDefined();
+      // biome-ignore lint/style/noNonNullAssertion: Checked with toBeDefined above
+      expect(downloadTime!).toBeGreaterThan(searchTime);
+      // biome-ignore lint/style/noNonNullAssertion: Checked with toBeDefined above
+      expect(notifyTime!).toBeGreaterThan(searchTime);
+      // biome-ignore lint/style/noNonNullAssertion: Checked with toBeDefined above
+      expect(Math.abs(downloadTime! - notifyTime!)).toBeLessThan(15); // Started in parallel
     });
   });
 
@@ -305,14 +343,14 @@ describe("PipelineExecutor - Parallel Execution", () => {
       const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Error Test - Required Fail",
-          mediaType: 'MOVIE',
+          mediaType: "MOVIE",
           isPublic: true,
           isDefault: false,
           steps: [
             {
-              type: 'SEARCH',
-              name: 'Failing Step',
-              config: { name: 'failing', shouldFail: true },
+              type: "SEARCH",
+              name: "Failing Step",
+              config: { name: "failing", shouldFail: true },
               required: true,
               retryable: true,
               continueOnError: false,
@@ -327,29 +365,29 @@ describe("PipelineExecutor - Parallel Execution", () => {
       const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: mockRequestId },
       });
-      expect(execution?.status).toBe('FAILED');
+      expect(execution?.status).toBe("FAILED");
     });
 
     it("continues when optional step fails", async () => {
       const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Error Test - Optional Fail",
-          mediaType: 'MOVIE',
+          mediaType: "MOVIE",
           isPublic: true,
           isDefault: false,
           steps: [
             {
-              type: 'SEARCH',
-              name: 'Optional Failing Step',
-              config: { name: 'optional_fail', shouldFail: true },
+              type: "SEARCH",
+              name: "Optional Failing Step",
+              config: { name: "optional_fail", shouldFail: true },
               required: false,
               retryable: true,
               continueOnError: false,
             },
             {
-              type: 'NOTIFICATION',
-              name: 'Success Step',
-              config: { name: 'success' },
+              type: "NOTIFICATION",
+              name: "Success Step",
+              config: { name: "success" },
               required: true,
               retryable: true,
               continueOnError: false,
@@ -367,37 +405,37 @@ describe("PipelineExecutor - Parallel Execution", () => {
       const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: mockRequestId },
       });
-      expect(execution?.status).toBe('COMPLETED');
+      expect(execution?.status).toBe("COMPLETED");
     });
 
     it("continues when continueOnError is true", async () => {
       const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Error Test - Continue On Error",
-          mediaType: 'MOVIE',
+          mediaType: "MOVIE",
           isPublic: true,
           isDefault: false,
           steps: [
             {
-              type: 'SEARCH',
-              name: 'Search',
-              config: { name: 'search' },
+              type: "SEARCH",
+              name: "Search",
+              config: { name: "search" },
               required: true,
               retryable: true,
               continueOnError: false,
               children: [
                 {
-                  type: 'DOWNLOAD',
-                  name: 'Failing Download',
-                  config: { name: 'failing_download', shouldFail: true },
+                  type: "DOWNLOAD",
+                  name: "Failing Download",
+                  config: { name: "failing_download", shouldFail: true },
                   required: true,
                   retryable: true,
                   continueOnError: true,
                 },
                 {
-                  type: 'NOTIFICATION',
-                  name: 'Notification',
-                  config: { name: 'notification' },
+                  type: "NOTIFICATION",
+                  name: "Notification",
+                  config: { name: "notification" },
                   required: true,
                   retryable: true,
                   continueOnError: false,
@@ -417,7 +455,7 @@ describe("PipelineExecutor - Parallel Execution", () => {
       const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: mockRequestId },
       });
-      expect(execution?.status).toBe('COMPLETED');
+      expect(execution?.status).toBe("COMPLETED");
     });
   });
 
@@ -426,22 +464,22 @@ describe("PipelineExecutor - Parallel Execution", () => {
       const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Context Merge Test",
-          mediaType: 'MOVIE',
+          mediaType: "MOVIE",
           isPublic: true,
           isDefault: false,
           steps: [
             {
-              type: 'SEARCH',
-              name: 'Branch A',
-              config: { name: 'branch_a', data: { resultA: 'value_a' } },
+              type: "SEARCH",
+              name: "Branch A",
+              config: { name: "branch_a", data: { resultA: "value_a" } },
               required: true,
               retryable: true,
               continueOnError: false,
             },
             {
-              type: 'NOTIFICATION',
-              name: 'Branch B',
-              config: { name: 'branch_b', data: { resultB: 'value_b' } },
+              type: "NOTIFICATION",
+              name: "Branch B",
+              config: { name: "branch_b", data: { resultB: "value_b" } },
               required: true,
               retryable: true,
               continueOnError: false,
@@ -458,8 +496,8 @@ describe("PipelineExecutor - Parallel Execution", () => {
       });
 
       const context = execution?.context as Record<string, unknown>;
-      expect(context.resultA).toBe('value_a');
-      expect(context.resultB).toBe('value_b');
+      expect(context.resultA).toBe("value_a");
+      expect(context.resultB).toBe("value_b");
     });
   });
 });

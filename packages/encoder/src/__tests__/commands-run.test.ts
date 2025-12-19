@@ -2,8 +2,7 @@
  * Tests for run command
  */
 
-
-import { describe, test, expect, mock, spyOn, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 
 describe("commands/run", () => {
   let originalExit: typeof process.exit;
@@ -119,7 +118,7 @@ describe("commands/run", () => {
         // Expected
       }
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(output).toContain("Annex Remote Encoder");
       expect(output).toContain("Version:");
       expect(output).toContain("Encoder ID:");
@@ -247,7 +246,7 @@ describe("commands/run", () => {
 
       expect(exitCode).toBe(1);
       expect(consoleErrorSpy).toHaveBeenCalled();
-      const errorOutput = consoleErrorSpy.mock.calls.map(call => call[0]).join("\n");
+      const errorOutput = consoleErrorSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(errorOutput).toContain("GPU device not accessible");
 
       consoleErrorSpy.mockRestore();
@@ -285,7 +284,7 @@ describe("commands/run", () => {
 
       expect(exitCode).toBe(1);
       expect(consoleErrorSpy).toHaveBeenCalled();
-      const errorOutput = consoleErrorSpy.mock.calls.map(call => call[0]).join("\n");
+      const errorOutput = consoleErrorSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(errorOutput).toContain("failed AV1 encoding test");
 
       consoleErrorSpy.mockRestore();
@@ -322,7 +321,7 @@ describe("commands/run", () => {
       }
 
       expect(consoleErrorSpy).toHaveBeenCalled();
-      const errorOutput = consoleErrorSpy.mock.calls.map(call => call[0]).join("\n");
+      const errorOutput = consoleErrorSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(errorOutput).toContain("/dev/dri/renderD999");
       expect(errorOutput).toContain("permissions");
 
@@ -360,7 +359,7 @@ describe("commands/run", () => {
       }
 
       expect(consoleErrorSpy).toHaveBeenCalled();
-      const errorOutput = consoleErrorSpy.mock.calls.map(call => call[0]).join("\n");
+      const errorOutput = consoleErrorSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(errorOutput).toContain("Check FFmpeg VAAPI support");
 
       consoleErrorSpy.mockRestore();
@@ -405,7 +404,7 @@ describe("commands/run", () => {
         // Expected
       }
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(output).toContain("Checking GPU:");
       expect(output).toContain("Testing AV1 encoding capability");
 
@@ -449,7 +448,7 @@ describe("commands/run", () => {
         // Expected
       }
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(output).toContain("GPU AV1 encoding test passed");
 
       consoleSpy.mockRestore();

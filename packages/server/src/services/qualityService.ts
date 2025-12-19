@@ -5,20 +5,17 @@
  * filtering releases by quality thresholds.
  */
 
-import { prisma } from "../db/client.js";
 import type { Resolution as PrismaResolution } from "@prisma/client";
-import type { Release } from "./indexer.js";
+import { prisma } from "../db/client.js";
 import type {
-  Resolution,
-  QualityProfileConfig,
   IndexerRelease,
+  QualityProfileConfig,
+  Resolution,
   ScoredRelease,
 } from "../types/download.js";
-import {
-  RESOLUTION_RANK,
-  DEFAULT_QUALITY_PROFILES,
-} from "../types/download.js";
+import { DEFAULT_QUALITY_PROFILES, RESOLUTION_RANK } from "../types/download.js";
 import { scoreRelease } from "./downloadManager.js";
+import type { Release } from "./indexer.js";
 
 // =============================================================================
 // Resolution Utilities
@@ -43,11 +40,7 @@ export function parseResolution(str: string | undefined | null): Resolution | nu
 
   const normalized = str.toLowerCase();
 
-  if (
-    normalized.includes("2160") ||
-    normalized.includes("4k") ||
-    normalized.includes("uhd")
-  ) {
+  if (normalized.includes("2160") || normalized.includes("4k") || normalized.includes("uhd")) {
     return "2160p";
   }
   if (normalized.includes("1080")) {
@@ -113,9 +106,7 @@ export interface RequestTarget {
  * we need the source quality to be at least as high as the highest target
  * output - we can't upscale 1080p to 4K meaningfully.
  */
-export async function deriveRequiredResolution(
-  targets: RequestTarget[]
-): Promise<Resolution> {
+export async function deriveRequiredResolution(targets: RequestTarget[]): Promise<Resolution> {
   const serverIds = targets.map((t) => t.serverId);
 
   const servers = await prisma.storageServer.findMany({
@@ -263,9 +254,7 @@ export function rankReleasesWithQualityFilter(
  * - Prefers resolutions at or above the required resolution
  * - Uses sensible defaults for other settings
  */
-export function buildQualityProfile(
-  requiredResolution: Resolution
-): QualityProfileConfig {
+export function buildQualityProfile(requiredResolution: Resolution): QualityProfileConfig {
   // For 4K, use the 4k-ultra profile as base
   if (requiredResolution === "2160p") {
     const base = DEFAULT_QUALITY_PROFILES.find((p) => p.id === "4k-ultra");
@@ -280,14 +269,13 @@ export function buildQualityProfile(
   }
 
   // For other resolutions, start with hd-1080p and adjust
+  // biome-ignore lint/style/noNonNullAssertion: hd-1080p profile is guaranteed to exist in defaults
   const base = DEFAULT_QUALITY_PROFILES.find((p) => p.id === "hd-1080p")!;
 
   // Build preferred resolutions - all resolutions at or above required
   const allResolutions: Resolution[] = ["2160p", "1080p", "720p", "480p"];
   const reqRank = RESOLUTION_RANK[requiredResolution];
-  const preferredResolutions = allResolutions.filter(
-    (r) => RESOLUTION_RANK[r] >= reqRank
-  );
+  const preferredResolutions = allResolutions.filter((r) => RESOLUTION_RANK[r] >= reqRank);
 
   return {
     ...base,
@@ -311,6 +299,7 @@ export async function getQualityProfileForRequest(
   const requiredRes = await getRequiredResolutionForRequest(requestId);
   if (!requiredRes) {
     // Fallback to default
+    // biome-ignore lint/style/noNonNullAssertion: hd-1080p profile is guaranteed to exist in defaults
     return DEFAULT_QUALITY_PROFILES.find((p) => p.id === "hd-1080p")!;
   }
   return buildQualityProfile(requiredRes);
@@ -341,9 +330,7 @@ export interface StoredRelease {
 /**
  * Convert Release array to format suitable for storing in availableReleases JSON field
  */
-export function releasesToStorageFormat(
-  releases: Release[] | ScoredRelease[]
-): StoredRelease[] {
+export function releasesToStorageFormat(releases: Release[] | ScoredRelease[]): StoredRelease[] {
   return releases.map((r) => {
     const release = "release" in r ? r.release : r;
     const score = "score" in r ? r.score : 0;

@@ -1,6 +1,6 @@
 import { useState } from "react";
+import { Badge, Button, Card, EmptyState } from "../components/ui";
 import { trpc } from "../trpc";
-import { Button, Card, Badge, EmptyState } from "../components/ui";
 
 export default function Approvals() {
   const [filter, setFilter] = useState<"PENDING" | "ALL">("PENDING");
@@ -40,11 +40,15 @@ export default function Approvals() {
       case "PENDING":
         return <Badge className="bg-gold-500/20 text-gold-400 border-gold-500/30">Pending</Badge>;
       case "APPROVED":
-        return <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Approved</Badge>;
+        return (
+          <Badge className="bg-green-500/20 text-green-400 border-green-500/30">Approved</Badge>
+        );
       case "REJECTED":
         return <Badge className="bg-red-500/20 text-red-400 border-red-500/30">Rejected</Badge>;
       case "TIMEOUT":
-        return <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">Timed Out</Badge>;
+        return (
+          <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30">Timed Out</Badge>
+        );
       default:
         return <Badge className="bg-white/20 text-white/70 border-white/30">{status}</Badge>;
     }
@@ -170,48 +174,45 @@ export default function Approvals() {
                 </div>
 
                 <div className="flex gap-2">
-                  {approval.status === "PENDING" && (
-                    <>
-                      {processingId === approval.id ? (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={() => handleProcess(approval.id, "approve")}
-                            disabled={processMutation.isPending}
-                            className="bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/30"
-                          >
-                            Confirm Approve
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => handleProcess(approval.id, "reject")}
-                            disabled={processMutation.isPending}
-                            className="bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
-                          >
-                            Confirm Reject
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => {
-                              setProcessingId(null);
-                              setComment("");
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                        </>
-                      ) : (
+                  {approval.status === "PENDING" &&
+                    (processingId === approval.id ? (
+                      <>
                         <Button
-                          variant="primary"
                           size="sm"
-                          onClick={() => setProcessingId(approval.id)}
+                          onClick={() => handleProcess(approval.id, "approve")}
+                          disabled={processMutation.isPending}
+                          className="bg-green-500/20 text-green-400 border-green-500/30 hover:bg-green-500/30"
                         >
-                          Process
+                          Confirm Approve
                         </Button>
-                      )}
-                    </>
-                  )}
+                        <Button
+                          size="sm"
+                          onClick={() => handleProcess(approval.id, "reject")}
+                          disabled={processMutation.isPending}
+                          className="bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30"
+                        >
+                          Confirm Reject
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setProcessingId(null);
+                            setComment("");
+                          }}
+                        >
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => setProcessingId(approval.id)}
+                      >
+                        Process
+                      </Button>
+                    ))}
                 </div>
               </div>
             </Card>

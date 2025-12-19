@@ -1,9 +1,9 @@
+import { type ActivityType, type JobStatus, RequestStatus } from "@prisma/client";
 import { z } from "zod";
-import { router, publicProcedure } from "../trpc.js";
 import { prisma } from "../db/client.js";
-import { RequestStatus, ActivityType, JobStatus } from "@prisma/client";
 import { getJobQueueService } from "../services/jobQueue.js";
 import { getSchedulerService } from "../services/scheduler.js";
+import { publicProcedure, router } from "../trpc.js";
 
 function fromActivityType(value: ActivityType): string {
   return value.toLowerCase();
@@ -192,16 +192,17 @@ export const systemRouter = router({
     list: publicProcedure
       .input(
         z.object({
-          status: z.enum(["pending", "running", "paused", "completed", "failed", "cancelled", "all"]).default("all"),
+          status: z
+            .enum(["pending", "running", "paused", "completed", "failed", "cancelled", "all"])
+            .default("all"),
           type: z.string().optional(),
           limit: z.number().min(1).max(100).default(50),
           offset: z.number().min(0).default(0),
         })
       )
       .query(async ({ input }) => {
-        const statusFilter = input.status === "all"
-          ? undefined
-          : { status: input.status.toUpperCase() as JobStatus };
+        const statusFilter =
+          input.status === "all" ? undefined : { status: input.status.toUpperCase() as JobStatus };
 
         const typeFilter = input.type ? { type: input.type } : {};
 
@@ -264,49 +265,45 @@ export const systemRouter = router({
     /**
      * Get a single job by ID
      */
-    get: publicProcedure
-      .input(z.object({ id: z.string() }))
-      .query(async ({ input }) => {
-        const job = await prisma.job.findUnique({
-          where: { id: input.id },
-        });
+    get: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+      const job = await prisma.job.findUnique({
+        where: { id: input.id },
+      });
 
-        if (!job) {
-          return null;
-        }
+      if (!job) {
+        return null;
+      }
 
-        return {
-          id: job.id,
-          type: job.type,
-          status: fromJobStatus(job.status),
-          priority: job.priority,
-          attempts: job.attempts,
-          maxAttempts: job.maxAttempts,
-          progress: job.progress,
-          progressTotal: job.progressTotal,
-          progressCurrent: job.progressCurrent,
-          error: job.error,
-          result: job.result,
-          payload: sanitizePayloadForClient(job.payload),
-          lockedBy: job.lockedBy,
-          scheduledFor: job.scheduledFor,
-          startedAt: job.startedAt,
-          completedAt: job.completedAt,
-          createdAt: job.createdAt,
-          updatedAt: job.updatedAt,
-        };
-      }),
+      return {
+        id: job.id,
+        type: job.type,
+        status: fromJobStatus(job.status),
+        priority: job.priority,
+        attempts: job.attempts,
+        maxAttempts: job.maxAttempts,
+        progress: job.progress,
+        progressTotal: job.progressTotal,
+        progressCurrent: job.progressCurrent,
+        error: job.error,
+        result: job.result,
+        payload: sanitizePayloadForClient(job.payload),
+        lockedBy: job.lockedBy,
+        scheduledFor: job.scheduledFor,
+        startedAt: job.startedAt,
+        completedAt: job.completedAt,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+      };
+    }),
 
     /**
      * Cancel a pending job
      */
-    cancel: publicProcedure
-      .input(z.object({ id: z.string() }))
-      .mutation(async ({ input }) => {
-        const jobQueue = getJobQueueService();
-        const success = await jobQueue.cancelJob(input.id);
-        return { success };
-      }),
+    cancel: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+      const jobQueue = getJobQueueService();
+      const success = await jobQueue.cancelJob(input.id);
+      return { success };
+    }),
 
     /**
      * Request cancellation of a running job
@@ -324,54 +321,48 @@ export const systemRouter = router({
      * Pause a pending or running job
      * The job will stop at the next checkpoint and can be resumed later
      */
-    pause: publicProcedure
-      .input(z.object({ id: z.string() }))
-      .mutation(async ({ input }) => {
-        const jobQueue = getJobQueueService();
-        const success = await jobQueue.pauseJob(input.id);
-        return { success };
-      }),
+    pause: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+      const jobQueue = getJobQueueService();
+      const success = await jobQueue.pauseJob(input.id);
+      return { success };
+    }),
 
     /**
      * Resume a paused job
      * The job will be re-queued and continue from where it left off
      */
-    resume: publicProcedure
-      .input(z.object({ id: z.string() }))
-      .mutation(async ({ input }) => {
-        const jobQueue = getJobQueueService();
-        const success = await jobQueue.resumeJob(input.id);
-        return { success };
-      }),
+    resume: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+      const jobQueue = getJobQueueService();
+      const success = await jobQueue.resumeJob(input.id);
+      return { success };
+    }),
 
     /**
      * Retry a failed job
      */
-    retry: publicProcedure
-      .input(z.object({ id: z.string() }))
-      .mutation(async ({ input }) => {
-        const job = await prisma.job.findUnique({
-          where: { id: input.id },
-        });
+    retry: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+      const job = await prisma.job.findUnique({
+        where: { id: input.id },
+      });
 
-        if (!job || job.status !== "FAILED") {
-          return { success: false, error: "Job not found or not in failed state" };
-        }
+      if (!job || job.status !== "FAILED") {
+        return { success: false, error: "Job not found or not in failed state" };
+      }
 
-        await prisma.job.update({
-          where: { id: input.id },
-          data: {
-            status: "PENDING",
-            error: null,
-            attempts: 0,
-            lockedAt: null,
-            lockedBy: null,
-            scheduledFor: new Date(),
-          },
-        });
+      await prisma.job.update({
+        where: { id: input.id },
+        data: {
+          status: "PENDING",
+          error: null,
+          attempts: 0,
+          lockedAt: null,
+          lockedBy: null,
+          scheduledFor: new Date(),
+        },
+      });
 
-        return { success: true };
-      }),
+      return { success: true };
+    }),
 
     /**
      * Clean up old completed/failed jobs
@@ -513,9 +504,11 @@ export const systemRouter = router({
      */
     cleanup: publicProcedure
       .input(
-        z.object({
-          olderThanMinutes: z.number().min(1).default(60),
-        }).default({})
+        z
+          .object({
+            olderThanMinutes: z.number().min(1).default(60),
+          })
+          .default({})
       )
       .mutation(async ({ input }) => {
         const threshold = new Date(Date.now() - input.olderThanMinutes * 60 * 1000);
@@ -535,18 +528,16 @@ export const systemRouter = router({
     /**
      * Delete a specific worker by ID
      */
-    delete: publicProcedure
-      .input(z.object({ id: z.string() }))
-      .mutation(async ({ input }) => {
-        try {
-          await prisma.worker.delete({
-            where: { id: input.id },
-          });
-          return { success: true };
-        } catch {
-          return { success: false, error: "Worker not found" };
-        }
-      }),
+    delete: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+      try {
+        await prisma.worker.delete({
+          where: { id: input.id },
+        });
+        return { success: true };
+      } catch {
+        return { success: false, error: "Worker not found" };
+      }
+    }),
   }),
 
   /**

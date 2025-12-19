@@ -4,9 +4,9 @@
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { describe, test, expect, mock, spyOn, beforeEach, afterEach } from "bun:test";
-import * as fs from "fs";
-import * as os from "os";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import * as fs from "node:fs";
+import * as os from "node:os";
 
 describe("platform/linux", () => {
   let originalExit: typeof process.exit;
@@ -60,7 +60,7 @@ describe("platform/linux", () => {
         expect(writeFileSyncSpy).toHaveBeenCalled();
         expect(consoleSpy).toHaveBeenCalled();
 
-        const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+        const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(output).toContain("Linux systemd Setup");
         expect(output).toContain("annex-encoder.service");
         expect(output).toContain("annex-encoder.env");
@@ -87,7 +87,7 @@ describe("platform/linux", () => {
           // Expected
         }
 
-        const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+        const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(output).toContain("Service User:   annex");
         expect(output).toContain("Working Dir:    /opt/annex-encoder");
         expect(output).toContain("Install:        No");
@@ -117,13 +117,13 @@ describe("platform/linux", () => {
           // Expected
         }
 
-        const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+        const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(output).toContain("Service User:   custom-user");
         expect(output).toContain("Working Dir:    /custom/path");
 
         // Check service file content
-        const serviceContent = writeFileSyncSpy.mock.calls.find(
-          call => call[0].toString().includes("annex-encoder.service")
+        const serviceContent = writeFileSyncSpy.mock.calls.find((call) =>
+          call[0].toString().includes("annex-encoder.service")
         )?.[1] as string;
         expect(serviceContent).toContain("User=custom-user");
         expect(serviceContent).toContain("WorkingDirectory=/custom/path");
@@ -147,8 +147,8 @@ describe("platform/linux", () => {
           // Expected
         }
 
-        const serviceContent = writeFileSyncSpy.mock.calls.find(
-          call => call[0].toString().includes("annex-encoder.service")
+        const serviceContent = writeFileSyncSpy.mock.calls.find((call) =>
+          call[0].toString().includes("annex-encoder.service")
         )?.[1] as string;
 
         expect(serviceContent).toContain("[Unit]");
@@ -176,8 +176,8 @@ describe("platform/linux", () => {
           // Expected
         }
 
-        const envContent = writeFileSyncSpy.mock.calls.find(
-          call => call[0].toString().includes("annex-encoder.env")
+        const envContent = writeFileSyncSpy.mock.calls.find((call) =>
+          call[0].toString().includes("annex-encoder.env")
         )?.[1] as string;
 
         expect(envContent).toContain("ANNEX_SERVER_URL=");
@@ -207,8 +207,8 @@ describe("platform/linux", () => {
           // Expected
         }
 
-        const envContent = writeFileSyncSpy.mock.calls.find(
-          call => call[0].toString().includes("annex-encoder.env")
+        const envContent = writeFileSyncSpy.mock.calls.find((call) =>
+          call[0].toString().includes("annex-encoder.env")
         )?.[1] as string;
 
         expect(envContent).toContain(`encoder-${hostnameSpyResult}`);
@@ -253,7 +253,7 @@ describe("platform/linux", () => {
 
         expect(exitCode).toBe(1);
         expect(consoleErrorSpy).toHaveBeenCalled();
-        const errorOutput = consoleErrorSpy.mock.calls.map(call => call[0]).join("\n");
+        const errorOutput = consoleErrorSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(errorOutput).toContain("requires root privileges");
 
         Bun.spawn = originalSpawn;
@@ -264,7 +264,7 @@ describe("platform/linux", () => {
         process.getuid = mock(() => 0); // Root
 
         // Mock fs.existsSync to simulate systemctl not found
-        const fs = await import("fs");
+        const fs = await import("node:fs");
         const originalExistsSync = fs.existsSync.bind(fs);
         const existsSyncSpy = spyOn(fs, "existsSync").mockImplementation((path: any) => {
           // Return false for systemctl paths
@@ -291,7 +291,7 @@ describe("platform/linux", () => {
 
         expect(exitCode).toBe(1);
         expect(consoleErrorSpy).toHaveBeenCalled();
-        const errorOutput = consoleErrorSpy.mock.calls.map(call => call[0]).join("\n");
+        const errorOutput = consoleErrorSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(errorOutput).toContain("systemctl not found");
 
         existsSyncSpy.mockRestore();
@@ -324,8 +324,8 @@ describe("platform/linux", () => {
           // Expected
         }
 
-        const serviceContent = writeFileSyncSpy.mock.calls.find(
-          call => call[0].toString().includes("annex-encoder.service")
+        const serviceContent = writeFileSyncSpy.mock.calls.find((call) =>
+          call[0].toString().includes("annex-encoder.service")
         )?.[1] as string;
 
         expect(serviceContent).toContain("NoNewPrivileges=true");
@@ -351,8 +351,8 @@ describe("platform/linux", () => {
           // Expected
         }
 
-        const serviceContent = writeFileSyncSpy.mock.calls.find(
-          call => call[0].toString().includes("annex-encoder.service")
+        const serviceContent = writeFileSyncSpy.mock.calls.find((call) =>
+          call[0].toString().includes("annex-encoder.service")
         )?.[1] as string;
 
         expect(serviceContent).toContain("SupplementaryGroups=video render");
@@ -375,8 +375,8 @@ describe("platform/linux", () => {
           // Expected
         }
 
-        const serviceContent = writeFileSyncSpy.mock.calls.find(
-          call => call[0].toString().includes("annex-encoder.service")
+        const serviceContent = writeFileSyncSpy.mock.calls.find((call) =>
+          call[0].toString().includes("annex-encoder.service")
         )?.[1] as string;
 
         expect(serviceContent).toContain("After=network-online.target nfs-client.target");

@@ -17,7 +17,6 @@ export interface RateLimitStatus {
 }
 
 class RateLimiter {
-
   async checkRateLimit(indexerId: string): Promise<RateLimitCheckResult> {
     const indexer = await prisma.indexer.findUnique({
       where: { id: indexerId },
@@ -28,7 +27,12 @@ class RateLimiter {
       },
     });
 
-    if (!indexer || !indexer.rateLimitEnabled || !indexer.rateLimitMax || !indexer.rateLimitWindowSecs) {
+    if (
+      !indexer ||
+      !indexer.rateLimitEnabled ||
+      !indexer.rateLimitMax ||
+      !indexer.rateLimitWindowSecs
+    ) {
       return { allowed: true };
     }
 
@@ -86,6 +90,7 @@ class RateLimiter {
         return true;
       }
 
+      // biome-ignore lint/style/noNonNullAssertion: retryAfterMs is guaranteed when allowed is false
       const waitMs = check.retryAfterMs! * Math.min(2 ** attempts, 8);
       const waitSecs = (waitMs / 1000).toFixed(1);
 
@@ -144,7 +149,12 @@ class RateLimiter {
       },
     });
 
-    if (!indexer || !indexer.rateLimitEnabled || !indexer.rateLimitMax || !indexer.rateLimitWindowSecs) {
+    if (
+      !indexer ||
+      !indexer.rateLimitEnabled ||
+      !indexer.rateLimitMax ||
+      !indexer.rateLimitWindowSecs
+    ) {
       return {
         enabled: false,
         currentCount: 0,

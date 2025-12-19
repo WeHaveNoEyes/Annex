@@ -105,9 +105,14 @@ export function SlideOutPanel({
 
   const positionClasses = side === "right" ? "right-0 border-l" : "left-0 border-r";
 
-  const panelTransform = side === "right"
-    ? isAnimating ? "translate-x-0" : "translate-x-full"
-    : isAnimating ? "translate-x-0" : "-translate-x-full";
+  const panelTransform =
+    side === "right"
+      ? isAnimating
+        ? "translate-x-0"
+        : "translate-x-full"
+      : isAnimating
+        ? "translate-x-0"
+        : "-translate-x-full";
 
   return (
     <div className="fixed inset-0 z-50">
@@ -138,12 +143,7 @@ export function SlideOutPanel({
             className="p-1.5 text-white/60 hover:text-white hover:bg-white/10 rounded transition-colors"
             aria-label="Close panel"
           >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"

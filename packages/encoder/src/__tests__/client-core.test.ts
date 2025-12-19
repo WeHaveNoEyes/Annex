@@ -14,8 +14,7 @@
  * manual testing rather than unit tests with complex mocking.
  */
 
-
-import { describe, test, expect } from "bun:test";
+import { describe, expect, test } from "bun:test";
 
 describe("client - core functionality", () => {
   test("placeholder for removed tests", () => {

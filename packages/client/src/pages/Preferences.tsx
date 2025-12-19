@@ -4,9 +4,9 @@
  * Allows users to view/edit profile and link/unlink accounts
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Badge, Button, Card, Input, Label } from "../components/ui";
 import { trpc } from "../trpc";
-import { Button, Card, Input, Label, Badge } from "../components/ui";
 
 // Plex logo SVG
 function PlexLogo({ className }: { className?: string }) {
@@ -217,11 +217,7 @@ export default function PreferencesPage() {
   }
 
   if (!profile) {
-    return (
-      <div className="text-center py-12 text-white/60">
-        Failed to load profile
-      </div>
-    );
+    return <div className="text-center py-12 text-white/60">Failed to load profile</div>;
   }
 
   return (
@@ -238,11 +234,7 @@ export default function PreferencesPage() {
         <form onSubmit={handleSaveProfile} className="space-y-4">
           <div className="flex items-center gap-4 mb-6">
             {profile.avatar ? (
-              <img
-                src={profile.avatar}
-                alt={profile.username}
-                className="w-16 h-16 rounded-full"
-              />
+              <img src={profile.avatar} alt={profile.username} className="w-16 h-16 rounded-full" />
             ) : (
               <div className="w-16 h-16 rounded-full bg-annex-500/20 flex items-center justify-center text-annex-400 text-2xl font-medium">
                 {profile.username.charAt(0).toUpperCase()}
@@ -254,7 +246,9 @@ export default function PreferencesPage() {
                 Member since {new Date(profile.createdAt).toLocaleDateString()}
               </p>
               {profile.isAdmin && (
-                <Badge variant="info" className="mt-1">Administrator</Badge>
+                <Badge variant="info" className="mt-1">
+                  Administrator
+                </Badge>
               )}
             </div>
           </div>
@@ -366,9 +360,7 @@ export default function PreferencesPage() {
                   <div>
                     <p className="text-white font-medium">Emby</p>
                     {profile.embyAccount ? (
-                      <p className="text-white/50 text-sm">
-                        {profile.embyAccount.embyUsername}
-                      </p>
+                      <p className="text-white/50 text-sm">{profile.embyAccount.embyUsername}</p>
                     ) : (
                       <p className="text-white/40 text-sm">Not linked</p>
                     )}
@@ -389,7 +381,10 @@ export default function PreferencesPage() {
 
               {/* Emby linking form */}
               {!profile.embyAccount && (
-                <form onSubmit={handleLinkEmby} className="mt-4 pt-4 border-t border-white/10 space-y-3">
+                <form
+                  onSubmit={handleLinkEmby}
+                  className="mt-4 pt-4 border-t border-white/10 space-y-3"
+                >
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label>Username</Label>
@@ -428,7 +423,8 @@ export default function PreferencesPage() {
 
         {/* Help text */}
         <p className="text-white/40 text-xs mt-4">
-          You must have at least one linked account to sign in. Unlink is only available when you have multiple accounts linked.
+          You must have at least one linked account to sign in. Unlink is only available when you
+          have multiple accounts linked.
         </p>
       </Card>
     </div>

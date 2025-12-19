@@ -2,8 +2,7 @@
  * Advanced tests for FFmpeg encoder service
  */
 
-
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 describe("encoder - advanced functionality", () => {
   let originalSpawn: typeof Bun.spawn;

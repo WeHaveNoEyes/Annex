@@ -1,18 +1,18 @@
 import { router } from "../trpc.js";
+import { approvalsRouter } from "./approvals.js";
 import { authRouter } from "./auth.js";
 import { discoveryRouter } from "./discovery.js";
-import { requestsRouter } from "./requests.js";
-import { serversRouter } from "./servers.js";
-import { indexersRouter } from "./indexers.js";
-import { libraryRouter } from "./library.js";
-import { systemRouter } from "./system.js";
-import { syncRouter } from "./sync.js";
-import { jobSubscriptionsRouter } from "./jobSubscriptions.js";
 import { encodersRouter } from "./encoders.js";
-import { secretsRouter } from "./secrets.js";
-import { pipelinesRouter } from "./pipelines.js";
-import { approvalsRouter } from "./approvals.js";
+import { indexersRouter } from "./indexers.js";
+import { jobSubscriptionsRouter } from "./jobSubscriptions.js";
+import { libraryRouter } from "./library.js";
 import { notificationsRouter } from "./notifications.js";
+import { pipelinesRouter } from "./pipelines.js";
+import { requestsRouter } from "./requests.js";
+import { secretsRouter } from "./secrets.js";
+import { serversRouter } from "./servers.js";
+import { syncRouter } from "./sync.js";
+import { systemRouter } from "./system.js";
 
 export const appRouter = router({
   auth: authRouter,

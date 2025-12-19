@@ -166,7 +166,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
           "Minimum quantization matrix flatness. Lower = more aggressive QM. Only used if enable-qm is true.",
         ffmpegArg: "svtav1-params",
       } as NumberFlag,
-      "keyint": {
+      keyint: {
         type: "number",
         min: -1,
         max: 999,
@@ -175,14 +175,14 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
           "Keyframe interval in frames. -1 = auto (5 seconds), -2 = scene-based only. Shorter = better seeking, larger file.",
         ffmpegArg: "svtav1-params",
       } as NumberFlag,
-      "scd": {
+      scd: {
         type: "boolean",
         default: true,
         description:
           "Scene change detection. Inserts keyframes at scene changes for better seeking and quality.",
         ffmpegArg: "svtav1-params",
       } as BooleanFlag,
-      "lookahead": {
+      lookahead: {
         type: "number",
         min: -1,
         max: 120,
@@ -214,15 +214,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
     flags: {
       preset: {
         type: "enum",
-        values: [
-          "veryfast",
-          "faster",
-          "fast",
-          "medium",
-          "slow",
-          "slower",
-          "veryslow",
-        ] as const,
+        values: ["veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"] as const,
         default: "medium",
         description:
           "Encoding speed preset. Slower presets produce better quality at the same bitrate.",
@@ -255,8 +247,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
       extbrc: {
         type: "boolean",
         default: true,
-        description:
-          "Extended bitrate control. Improves quality consistency across the video.",
+        description: "Extended bitrate control. Improves quality consistency across the video.",
         ffmpegTrue: "1",
         ffmpegFalse: "0",
       } as BooleanFlag,
@@ -271,8 +262,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
       adaptive_b: {
         type: "boolean",
         default: true,
-        description:
-          "Adaptive B-frame placement. Optimizes B-frame usage based on content.",
+        description: "Adaptive B-frame placement. Optimizes B-frame usage based on content.",
         ffmpegTrue: "1",
         ffmpegFalse: "0",
       } as BooleanFlag,
@@ -333,8 +323,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         type: "enum",
         values: ["p1", "p2", "p3", "p4", "p5", "p6", "p7"] as const,
         default: "p4",
-        description:
-          "Encoding preset. Higher numbers = slower but better quality.",
+        description: "Encoding preset. Higher numbers = slower but better quality.",
         valueDescriptions: {
           p1: "Fastest (lowest quality)",
           p2: "Faster",
@@ -372,8 +361,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         type: "enum",
         values: ["disabled", "qres", "fullres"] as const,
         default: "fullres",
-        description:
-          "Multi-pass encoding for better rate control and quality.",
+        description: "Multi-pass encoding for better rate control and quality.",
         valueDescriptions: {
           disabled: "Single pass only",
           qres: "Two-pass with quarter resolution first pass",
@@ -385,8 +373,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         min: 0,
         max: 100000,
         default: 0,
-        description:
-          "Target bitrate in kbps. 0 = use CQ mode. Set this for VBR/CBR modes.",
+        description: "Target bitrate in kbps. 0 = use CQ mode. Set this for VBR/CBR modes.",
         unit: "kbps",
         ffmpegArg: "b:v",
       } as NumberFlag,
@@ -395,16 +382,14 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         min: 0,
         max: 200000,
         default: 0,
-        description:
-          "Maximum bitrate in kbps. Useful to cap VBR. 0 = no limit.",
+        description: "Maximum bitrate in kbps. Useful to cap VBR. 0 = no limit.",
         unit: "kbps",
         ffmpegArg: "maxrate:v",
       } as NumberFlag,
       "spatial-aq": {
         type: "boolean",
         default: true,
-        description:
-          "Spatial adaptive quantization. Allocates more bits to complex regions.",
+        description: "Spatial adaptive quantization. Allocates more bits to complex regions.",
         ffmpegArg: "spatial_aq",
         ffmpegTrue: "1",
         ffmpegFalse: "0",
@@ -412,8 +397,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
       "temporal-aq": {
         type: "boolean",
         default: true,
-        description:
-          "Temporal adaptive quantization. Allocates bits based on motion complexity.",
+        description: "Temporal adaptive quantization. Allocates bits based on motion complexity.",
         ffmpegArg: "temporal_aq",
         ffmpegTrue: "1",
         ffmpegFalse: "0",
@@ -426,16 +410,15 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         description: "Adaptive quantization strength. Higher = more aggressive.",
         ffmpegArg: "aq-strength",
       } as NumberFlag,
-      "lookahead": {
+      lookahead: {
         type: "number",
         min: 0,
         max: 32,
         default: 16,
-        description:
-          "Number of frames to look ahead for rate control. 0 = disabled.",
+        description: "Number of frames to look ahead for rate control. 0 = disabled.",
         ffmpegArg: "rc-lookahead",
       } as NumberFlag,
-      "bf": {
+      bf: {
         type: "number",
         min: 0,
         max: 4,
@@ -471,7 +454,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         default: 8,
         description: "Compression level. Higher = slower but better compression.",
       } as NumberFlag,
-      "rc_mode": {
+      rc_mode: {
         type: "enum",
         values: ["CQP", "VBR", "CBR", "ICQ"] as const,
         default: "CQP",
@@ -479,11 +462,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         ffmpegArg: "rc_mode",
       } as EnumFlag,
     },
-    notes: [
-      "Linux only",
-      "Driver support varies",
-      "Intel Arc and AMD RDNA2+ recommended",
-    ],
+    notes: ["Linux only", "Driver support varies", "Intel Arc and AMD RDNA2+ recommended"],
   },
 
   av1_amf: {
@@ -516,10 +495,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         description: "Rate control mode.",
       } as EnumFlag,
     },
-    notes: [
-      "Requires AMD RX 7000 series or newer",
-      "Windows and Linux support",
-    ],
+    notes: ["Requires AMD RX 7000 series or newer", "Windows and Linux support"],
   },
 
   // ---------------------------------------------------------------------------
@@ -569,14 +545,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
       } as EnumFlag,
       tune: {
         type: "enum",
-        values: [
-          "psnr",
-          "ssim",
-          "grain",
-          "fastdecode",
-          "zerolatency",
-          "animation",
-        ] as const,
+        values: ["psnr", "ssim", "grain", "fastdecode", "zerolatency", "animation"] as const,
         default: "ssim",
         description: "Tune for specific content or metric.",
         valueDescriptions: {
@@ -597,8 +566,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
       "x265-params": {
         type: "string",
         default: "",
-        description:
-          "Additional x265 parameters. Format: param1=value1:param2=value2",
+        description: "Additional x265 parameters. Format: param1=value1:param2=value2",
         placeholder: "sao=0:bframes=8:ref=6",
         ffmpegArg: "x265-params",
       } as StringFlag,
@@ -619,20 +587,11 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
     qualityMode: "global_quality",
     qualityRange: [1, 51] as const,
     qualityDefault: 23,
-    qualityDescription:
-      "Global quality level. Lower = better quality. 18-23 for high quality.",
+    qualityDescription: "Global quality level. Lower = better quality. 18-23 for high quality.",
     flags: {
       preset: {
         type: "enum",
-        values: [
-          "veryfast",
-          "faster",
-          "fast",
-          "medium",
-          "slow",
-          "slower",
-          "veryslow",
-        ] as const,
+        values: ["veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"] as const,
         default: "medium",
         description: "Encoding speed preset.",
       } as EnumFlag,
@@ -673,8 +632,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
 
   hevc_nvenc: {
     name: "HEVC (NVIDIA NVENC)",
-    description:
-      "NVIDIA hardware HEVC encoder. Available on GTX 900 series and newer.",
+    description: "NVIDIA hardware HEVC encoder. Available on GTX 900 series and newer.",
     codec: "hevc",
     hwAccel: "nvenc",
     qualityMode: "cq",
@@ -734,7 +692,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         ffmpegTrue: "1",
         ffmpegFalse: "0",
       } as BooleanFlag,
-      "lookahead": {
+      lookahead: {
         type: "number",
         min: 0,
         max: 32,
@@ -742,7 +700,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         description: "Look-ahead frames.",
         ffmpegArg: "rc-lookahead",
       } as NumberFlag,
-      "bf": {
+      bf: {
         type: "number",
         min: 0,
         max: 4,
@@ -796,12 +754,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
       } as EnumFlag,
       usage: {
         type: "enum",
-        values: [
-          "transcoding",
-          "ultralowlatency",
-          "lowlatency",
-          "webcam",
-        ] as const,
+        values: ["transcoding", "ultralowlatency", "lowlatency", "webcam"] as const,
         default: "transcoding",
         description: "Usage profile.",
       } as EnumFlag,
@@ -853,11 +806,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         ffmpegFalse: "0",
       } as BooleanFlag,
     },
-    notes: [
-      "macOS only",
-      "Requires Apple Silicon or T2 chip",
-      "Very power efficient",
-    ],
+    notes: ["macOS only", "Requires Apple Silicon or T2 chip", "Very power efficient"],
   },
 
   // ---------------------------------------------------------------------------
@@ -866,8 +815,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
 
   libx264: {
     name: "x264 (Software)",
-    description:
-      "The standard software H.264 encoder. Excellent compatibility and quality.",
+    description: "The standard software H.264 encoder. Excellent compatibility and quality.",
     codec: "h264",
     hwAccel: "none",
     qualityMode: "crf",
@@ -958,11 +906,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         ffmpegArg: "x264-params",
       } as StringFlag,
     },
-    notes: [
-      "Universal compatibility",
-      "Slower than hardware encoders",
-      "Best quality for H.264",
-    ],
+    notes: ["Universal compatibility", "Slower than hardware encoders", "Best quality for H.264"],
   },
 
   h264_qsv: {
@@ -977,15 +921,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
     flags: {
       preset: {
         type: "enum",
-        values: [
-          "veryfast",
-          "faster",
-          "fast",
-          "medium",
-          "slow",
-          "slower",
-          "veryslow",
-        ] as const,
+        values: ["veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"] as const,
         default: "medium",
         description: "Encoding speed preset.",
       } as EnumFlag,
@@ -1056,7 +992,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         ffmpegTrue: "1",
         ffmpegFalse: "0",
       } as BooleanFlag,
-      "lookahead": {
+      lookahead: {
         type: "number",
         min: 0,
         max: 32,
@@ -1112,12 +1048,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
       } as EnumFlag,
       usage: {
         type: "enum",
-        values: [
-          "transcoding",
-          "ultralowlatency",
-          "lowlatency",
-          "webcam",
-        ] as const,
+        values: ["transcoding", "ultralowlatency", "lowlatency", "webcam"] as const,
         default: "transcoding",
         description: "Usage profile.",
       } as EnumFlag,
@@ -1183,8 +1114,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         min: -8,
         max: 8,
         default: 2,
-        description:
-          "CPU usage. Negative = quality mode (slower). Positive = realtime (faster).",
+        description: "CPU usage. Negative = quality mode (slower). Positive = realtime (faster).",
         ffmpegArg: "cpu-used",
       } as NumberFlag,
       deadline: {
@@ -1218,11 +1148,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
         ffmpegArg: "tile-rows",
       } as NumberFlag,
     },
-    notes: [
-      "YouTube, WebM support",
-      "Good web compatibility",
-      "Slower than hardware options",
-    ],
+    notes: ["YouTube, WebM support", "Good web compatibility", "Slower than hardware options"],
   },
 
   vp9_qsv: {
@@ -1237,15 +1163,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
     flags: {
       preset: {
         type: "enum",
-        values: [
-          "veryfast",
-          "faster",
-          "fast",
-          "medium",
-          "slow",
-          "slower",
-          "veryslow",
-        ] as const,
+        values: ["veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"] as const,
         default: "medium",
         description: "Encoding speed preset.",
       } as EnumFlag,
@@ -1281,8 +1199,7 @@ export const videoEncoders: Record<string, VideoEncoderInfo> = {
 export const audioEncoders: Record<string, AudioEncoderInfo> = {
   copy: {
     name: "Copy (Passthrough)",
-    description:
-      "Copy audio stream without re-encoding. Fastest and preserves quality.",
+    description: "Copy audio stream without re-encoding. Fastest and preserves quality.",
     codec: "copy",
     flags: {},
   },
@@ -1421,8 +1338,7 @@ export const audioEncoders: Record<string, AudioEncoderInfo> = {
 
   ac3: {
     name: "AC3 (Dolby Digital)",
-    description:
-      "Dolby Digital audio. Good compatibility with home theater systems.",
+    description: "Dolby Digital audio. Good compatibility with home theater systems.",
     codec: "ac3",
     flags: {
       "b:a": {
@@ -1445,8 +1361,7 @@ export const audioEncoders: Record<string, AudioEncoderInfo> = {
 
   eac3: {
     name: "E-AC3 (Dolby Digital Plus)",
-    description:
-      "Enhanced AC3. Better quality and efficiency than AC3. Supports 7.1.",
+    description: "Enhanced AC3. Better quality and efficiency than AC3. Supports 7.1.",
     codec: "eac3",
     flags: {
       "b:a": {
@@ -1477,8 +1392,7 @@ export const audioEncoders: Record<string, AudioEncoderInfo> = {
         min: 0,
         max: 12,
         default: 5,
-        description:
-          "Compression level. Higher = smaller but slower. 5 is a good balance.",
+        description: "Compression level. Higher = smaller but slower. 5 is a good balance.",
       } as NumberFlag,
       ac: {
         type: "enum",
@@ -1600,9 +1514,7 @@ export function validateEncoderFlags(
       }
       case "enum": {
         if (!flagDef.values.includes(value as string)) {
-          errors.push(
-            `Flag ${key} must be one of: ${flagDef.values.join(", ")}`
-          );
+          errors.push(`Flag ${key} must be one of: ${flagDef.values.join(", ")}`);
         }
         break;
       }

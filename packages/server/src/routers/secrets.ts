@@ -14,16 +14,16 @@
  * - delete: Delete a secret
  */
 
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { randomBytes } from "crypto";
-import { router, publicProcedure, adminProcedure } from "../trpc.js";
-import { getSecretsService } from "../services/secrets.js";
 import {
-  SECRET_DEFINITIONS,
   getSecretDefinition,
-  validateSecret,
   maskSecret,
+  SECRET_DEFINITIONS,
+  validateSecret,
 } from "../config/secrets-schema.js";
+import { getSecretsService } from "../services/secrets.js";
+import { adminProcedure, publicProcedure, router } from "../trpc.js";
 
 export const secretsRouter = router({
   /**
@@ -38,7 +38,13 @@ export const secretsRouter = router({
 
     // Check each service's secrets
     const services: Record<string, boolean> = {};
-    const serviceSecrets = ["tmdb.apiKey", "mdblist.apiKey", "qbittorrent.url", "plex.serverUrl", "emby.serverUrl"];
+    const serviceSecrets = [
+      "tmdb.apiKey",
+      "mdblist.apiKey",
+      "qbittorrent.url",
+      "plex.serverUrl",
+      "emby.serverUrl",
+    ];
 
     for (const key of serviceSecrets) {
       const serviceName = key.split(".")[0];
@@ -247,9 +253,12 @@ export const secretsRouter = router({
 
           try {
             const response = await fetch(`${url}/api/v2/app/version`, {
-              headers: username && password
-                ? { Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}` }
-                : undefined,
+              headers:
+                username && password
+                  ? {
+                      Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`,
+                    }
+                  : undefined,
             });
 
             if (response.ok) {
@@ -291,9 +300,7 @@ export const secretsRouter = router({
           }
 
           try {
-            const response = await fetch(
-              `https://mdblist.com/api/?apikey=${apiKey}&i=tt0111161`
-            );
+            const response = await fetch(`https://mdblist.com/api/?apikey=${apiKey}&i=tt0111161`);
 
             if (response.ok) {
               return { success: true, message: "Connected to MDBList!" };

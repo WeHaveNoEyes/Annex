@@ -1,6 +1,6 @@
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
+import { AlternativesModal, Button, Input, Select, Skeleton } from "../components/ui";
 import { trpc } from "../trpc";
-import { Button, Input, Select, AlternativesModal } from "../components/ui";
 
 type RequestStatus =
   | "pending"
@@ -21,15 +21,63 @@ type FilterType = "all" | "movie" | "tv";
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
-const statusConfig: Record<RequestStatus, { label: string; color: string; bgColor: string; variant: "default" | "success" | "warning" | "danger" | "info" }> = {
-  pending: { label: "Pending", color: "text-yellow-400", bgColor: "bg-yellow-500/20", variant: "warning" },
-  searching: { label: "Searching", color: "text-blue-400", bgColor: "bg-blue-500/20", variant: "info" },
-  awaiting: { label: "Awaiting", color: "text-amber-400", bgColor: "bg-amber-500/20", variant: "warning" },
-  quality_unavailable: { label: "Quality N/A", color: "text-orange-400", bgColor: "bg-orange-500/20", variant: "warning" },
-  downloading: { label: "Downloading", color: "text-purple-400", bgColor: "bg-purple-500/20", variant: "info" },
-  encoding: { label: "Encoding", color: "text-cyan-400", bgColor: "bg-cyan-500/20", variant: "info" },
-  delivering: { label: "Delivering", color: "text-teal-400", bgColor: "bg-teal-500/20", variant: "info" },
-  completed: { label: "Completed", color: "text-green-400", bgColor: "bg-green-500/20", variant: "success" },
+const statusConfig: Record<
+  RequestStatus,
+  {
+    label: string;
+    color: string;
+    bgColor: string;
+    variant: "default" | "success" | "warning" | "danger" | "info";
+  }
+> = {
+  pending: {
+    label: "Pending",
+    color: "text-yellow-400",
+    bgColor: "bg-yellow-500/20",
+    variant: "warning",
+  },
+  searching: {
+    label: "Searching",
+    color: "text-blue-400",
+    bgColor: "bg-blue-500/20",
+    variant: "info",
+  },
+  awaiting: {
+    label: "Awaiting",
+    color: "text-amber-400",
+    bgColor: "bg-amber-500/20",
+    variant: "warning",
+  },
+  quality_unavailable: {
+    label: "Quality N/A",
+    color: "text-orange-400",
+    bgColor: "bg-orange-500/20",
+    variant: "warning",
+  },
+  downloading: {
+    label: "Downloading",
+    color: "text-purple-400",
+    bgColor: "bg-purple-500/20",
+    variant: "info",
+  },
+  encoding: {
+    label: "Encoding",
+    color: "text-cyan-400",
+    bgColor: "bg-cyan-500/20",
+    variant: "info",
+  },
+  delivering: {
+    label: "Delivering",
+    color: "text-teal-400",
+    bgColor: "bg-teal-500/20",
+    variant: "info",
+  },
+  completed: {
+    label: "Completed",
+    color: "text-green-400",
+    bgColor: "bg-green-500/20",
+    variant: "success",
+  },
   failed: { label: "Failed", color: "text-red-400", bgColor: "bg-red-500/20", variant: "danger" },
 };
 
@@ -46,7 +94,15 @@ const episodeStatusColors: Record<EpisodeStatus, string> = {
   available: "bg-emerald-500/20 text-emerald-400",
 };
 
-function ProgressRing({ progress, size = 40, strokeWidth = 3 }: { progress: number; size?: number; strokeWidth?: number }) {
+function ProgressRing({
+  progress,
+  size = 40,
+  strokeWidth = 3,
+}: {
+  progress: number;
+  size?: number;
+  strokeWidth?: number;
+}) {
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const offset = circumference - (progress / 100) * circumference;
@@ -79,13 +135,26 @@ function ProgressRing({ progress, size = 40, strokeWidth = 3 }: { progress: numb
 }
 
 function StatusIcon({ status }: { status: RequestStatus }) {
-  const isActive = ["pending", "searching", "downloading", "encoding", "delivering"].includes(status);
+  const isActive = ["pending", "searching", "downloading", "encoding", "delivering"].includes(
+    status
+  );
 
   if (isActive) {
     return (
       <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        <circle
+          className="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth="4"
+        />
+        <path
+          className="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        />
       </svg>
     );
   }
@@ -93,7 +162,11 @@ function StatusIcon({ status }: { status: RequestStatus }) {
   if (status === "completed") {
     return (
       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+        <path
+          fillRule="evenodd"
+          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+          clipRule="evenodd"
+        />
       </svg>
     );
   }
@@ -101,7 +174,11 @@ function StatusIcon({ status }: { status: RequestStatus }) {
   if (status === "failed") {
     return (
       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+        <path
+          fillRule="evenodd"
+          d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+          clipRule="evenodd"
+        />
       </svg>
     );
   }
@@ -109,7 +186,11 @@ function StatusIcon({ status }: { status: RequestStatus }) {
   if (status === "awaiting" || status === "quality_unavailable") {
     return (
       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+        <path
+          fillRule="evenodd"
+          d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+          clipRule="evenodd"
+        />
       </svg>
     );
   }
@@ -128,14 +209,22 @@ function EpisodeStatusIcon({ status }: { status: EpisodeStatus }) {
   if (status === "completed") {
     return (
       <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+        <path
+          fillRule="evenodd"
+          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+          clipRule="evenodd"
+        />
       </svg>
     );
   }
   if (status === "failed") {
     return (
       <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+        <path
+          fillRule="evenodd"
+          d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z"
+          clipRule="evenodd"
+        />
       </svg>
     );
   }
@@ -143,8 +232,19 @@ function EpisodeStatusIcon({ status }: { status: EpisodeStatus }) {
   if (isProcessing) {
     return (
       <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        <circle
+          className="opacity-25"
+          cx="12"
+          cy="12"
+          r="10"
+          stroke="currentColor"
+          strokeWidth="4"
+        />
+        <path
+          className="opacity-75"
+          fill="currentColor"
+          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+        />
       </svg>
     );
   }
@@ -157,7 +257,6 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
     { refetchInterval: 5000 }
   );
 
-
   if (episodeStatuses.isLoading) {
     return (
       <div className="animate-pulse space-y-3">
@@ -169,9 +268,7 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
 
   if (!episodeStatuses.data || episodeStatuses.data.length === 0) {
     return (
-      <div className="text-white/40 text-sm py-2">
-        Episode data will appear once available.
-      </div>
+      <div className="text-white/40 text-sm py-2">Episode data will appear once available.</div>
     );
   }
 
@@ -198,8 +295,11 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
             </div>
             <div className="p-2 flex flex-wrap gap-1">
               {season.episodes.map((episode) => {
-                const canReprocess = episode.status === "completed" || episode.status === "available";
-                const isProcessing = ["downloading", "encoding", "delivering"].includes(episode.status);
+                const canReprocess =
+                  episode.status === "completed" || episode.status === "available";
+                const isProcessing = ["downloading", "encoding", "delivering"].includes(
+                  episode.status
+                );
                 const hasProgress = episode.progress != null && isProcessing;
 
                 return (
@@ -223,7 +323,9 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
                       <EpisodeStatusIcon status={episode.status as EpisodeStatus} />
                       <span>{episode.episodeNumber}</span>
                       {hasProgress && (
-                        <span className="text-[10px] opacity-70">{Math.round(episode.progress || 0)}%</span>
+                        <span className="text-[10px] opacity-70">
+                          {Math.round(episode.progress || 0)}%
+                        </span>
                       )}
                     </span>
                   </div>
@@ -289,7 +391,6 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
     },
   });
 
-
   const refreshQualityMutation = trpc.requests.refreshQualitySearch.useMutation({
     onSuccess: () => {
       utils.requests.list.invalidate();
@@ -299,7 +400,9 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
 
   const status = request.status as RequestStatus;
   const config = statusConfig[status];
-  const isActive = ["pending", "searching", "downloading", "encoding", "delivering"].includes(status);
+  const isActive = ["pending", "searching", "downloading", "encoding", "delivering"].includes(
+    status
+  );
   const isAwaiting = status === "awaiting";
   const isQualityUnavailable = status === "quality_unavailable";
   const isFailed = status === "failed";
@@ -327,9 +430,11 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
   };
 
   return (
-    <div className={`bg-white/5 border rounded overflow-hidden transition-all ${
-      isActive ? "border-annex-500/30" : "border-white/10"
-    }`}>
+    <div
+      className={`bg-white/5 border rounded overflow-hidden transition-all ${
+        isActive ? "border-annex-500/30" : "border-white/10"
+      }`}
+    >
       {/* Main Card Content */}
       <div
         className="flex gap-4 p-4 cursor-pointer hover:bg-white/[0.02] transition-colors"
@@ -345,8 +450,18 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
             />
           ) : (
             <div className="w-16 h-24 rounded border border-white/10 bg-white/5 flex items-center justify-center">
-              <svg className="w-8 h-8 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+              <svg
+                className="w-8 h-8 text-white/20"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
+                />
               </svg>
             </div>
           )}
@@ -378,7 +493,9 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
 
           {/* Status Row */}
           <div className="mt-2 flex items-center gap-2 flex-wrap">
-            <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs ${config.bgColor} ${config.color}`}>
+            <div
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs ${config.bgColor} ${config.color}`}
+            >
               <StatusIcon status={status} />
               <span>{config.label}</span>
             </div>
@@ -387,15 +504,19 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
             )}
             {request.type === "tv" && request.requestedSeasons.length > 0 && (
               <span className="text-xs text-white/30">
-                Season{request.requestedSeasons.length > 1 ? "s" : ""} {request.requestedSeasons.join(", ")}
+                Season{request.requestedSeasons.length > 1 ? "s" : ""}{" "}
+                {request.requestedSeasons.join(", ")}
               </span>
             )}
           </div>
 
           {/* Target servers (compact) */}
           <div className="mt-2 flex items-center gap-1 flex-wrap">
-            {request.targets.slice(0, 2).map((target, i) => (
-              <span key={i} className="text-xs px-1.5 py-0.5 bg-white/5 rounded text-white/40">
+            {request.targets.slice(0, 2).map((target) => (
+              <span
+                key={target.serverName}
+                className="text-xs px-1.5 py-0.5 bg-white/5 rounded text-white/40"
+              >
                 {target.serverName}
               </span>
             ))}
@@ -492,8 +613,8 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
             <div>
               <div className="text-xs text-white/40 mb-1">Target Servers</div>
               <div className="space-y-1">
-                {request.targets.map((target, i) => (
-                  <div key={i} className="text-white/70">
+                {request.targets.map((target) => (
+                  <div key={target.serverName} className="text-white/70">
                     {target.serverName}
                   </div>
                 ))}
@@ -596,10 +717,7 @@ export default function RequestsPage() {
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [alternativesRequestId, setAlternativesRequestId] = useState<string | null>(null);
 
-  const requests = trpc.requests.list.useQuery(
-    { limit: 100 },
-    { refetchInterval: 5000 }
-  );
+  const requests = trpc.requests.list.useQuery({ limit: 100 }, { refetchInterval: 5000 });
 
   const filteredAndSortedRequests = useMemo(() => {
     if (!requests.data) return [];
@@ -609,9 +727,9 @@ export default function RequestsPage() {
     // Search filter
     if (search) {
       const searchLower = search.toLowerCase();
-      filtered = filtered.filter((r) =>
-        r.title.toLowerCase().includes(searchLower) ||
-        r.year.toString().includes(searchLower)
+      filtered = filtered.filter(
+        (r) =>
+          r.title.toLowerCase().includes(searchLower) || r.year.toString().includes(searchLower)
       );
     }
 
@@ -621,7 +739,9 @@ export default function RequestsPage() {
         const status = r.status as RequestStatus;
         switch (statusFilter) {
           case "active":
-            return ["pending", "searching", "downloading", "encoding", "delivering"].includes(status);
+            return ["pending", "searching", "downloading", "encoding", "delivering"].includes(
+              status
+            );
           case "completed":
             return status === "completed";
           case "failed":
@@ -685,8 +805,8 @@ export default function RequestsPage() {
       ).length,
       completed: requests.data.filter((r) => r.status === "completed").length,
       failed: requests.data.filter((r) => r.status === "failed").length,
-      awaiting: requests.data.filter((r) =>
-        r.status === "awaiting" || r.status === "quality_unavailable"
+      awaiting: requests.data.filter(
+        (r) => r.status === "awaiting" || r.status === "quality_unavailable"
       ).length,
     };
   }, [requests.data]);
@@ -791,16 +911,24 @@ export default function RequestsPage() {
       {/* Request List */}
       {requests.isLoading ? (
         <div className="space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-28 bg-white/5 rounded animate-pulse" />
-          ))}
+          <Skeleton count={5} className="h-28" />
         </div>
       ) : filteredAndSortedRequests.length === 0 ? (
         <div className="text-center py-16 bg-white/5 rounded border border-white/10">
           {requests.data?.length === 0 ? (
             <>
-              <svg className="w-12 h-12 mx-auto text-white/20 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              <svg
+                className="w-12 h-12 mx-auto text-white/20 mb-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                />
               </svg>
               <p className="text-white/50">No requests yet</p>
               <p className="text-sm text-white/30 mt-1">
@@ -809,13 +937,21 @@ export default function RequestsPage() {
             </>
           ) : (
             <>
-              <svg className="w-12 h-12 mx-auto text-white/20 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <svg
+                className="w-12 h-12 mx-auto text-white/20 mb-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
               </svg>
               <p className="text-white/50">No matching requests</p>
-              <p className="text-sm text-white/30 mt-1">
-                Try adjusting your search or filters
-              </p>
+              <p className="text-sm text-white/30 mt-1">Try adjusting your search or filters</p>
             </>
           )}
         </div>

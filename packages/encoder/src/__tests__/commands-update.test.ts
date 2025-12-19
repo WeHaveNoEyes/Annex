@@ -2,10 +2,9 @@
  * Tests for update command
  */
 
-
-import { describe, test, expect, mock, spyOn, beforeEach, afterEach } from "bun:test";
-import * as fs from "fs";
-import { createHash } from "crypto";
+import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
 
 describe("commands/update", () => {
   let originalExit: typeof process.exit;
@@ -73,7 +72,7 @@ describe("commands/update", () => {
         // Expected if versions match
       }
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(output).toContain("Annex Encoder - Self Update");
       expect(output).toContain("Current Version:");
       expect(output).toContain("Platform:");
@@ -122,7 +121,7 @@ describe("commands/update", () => {
 
       await update(args);
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(output).toContain("Already up to date");
       expect(output).toContain("Use --force to reinstall anyway");
 
@@ -191,7 +190,7 @@ describe("commands/update", () => {
         // May exit after completion
       }
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(output).toContain("Force update requested");
 
       writeFileSyncSpy.mockRestore();
@@ -373,7 +372,7 @@ describe("commands/update", () => {
 
       expect(exitCode).toBe(1);
       expect(consoleErrorSpy).toHaveBeenCalled();
-      const errorOutput = consoleErrorSpy.mock.calls.map(call => call[0]).join("\n");
+      const errorOutput = consoleErrorSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(errorOutput).toContain("not available in manifest");
 
       consoleErrorSpy.mockRestore();
@@ -493,7 +492,7 @@ describe("commands/update", () => {
 
       expect(exitCode).toBe(1);
       expect(consoleErrorSpy).toHaveBeenCalled();
-      const errorOutput = consoleErrorSpy.mock.calls.map(call => call[0]).join("\n");
+      const errorOutput = consoleErrorSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(errorOutput).toContain("Checksum mismatch");
       expect(unlinkSyncSpy).toHaveBeenCalled(); // Temp file should be deleted
 
@@ -597,7 +596,7 @@ describe("commands/update", () => {
       }));
 
       mock.module("../config.js", () => ({
-          getConfig: mock(() => ({
+        getConfig: mock(() => ({
           serverUrl: "ws://example.com:3000/encoder",
         })),
       }));
@@ -689,7 +688,7 @@ describe("commands/update", () => {
         // Expected
       }
 
-      const output = consoleSpy.mock.calls.map(call => call[0]).join("\n");
+      const output = consoleSpy.mock.calls.map((call) => call[0]).join("\n");
       expect(output).toContain("[1/7] Checking for updates");
       expect(output).toContain("[2/7] Downloading new binary");
       expect(output).toContain("[3/7] Verifying checksum");
