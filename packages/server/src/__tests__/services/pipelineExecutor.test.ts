@@ -9,13 +9,21 @@
  * - Context merging across branches
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { PipelineExecutor } from "../../services/pipeline/PipelineExecutor.js";
-import { prisma } from "../../db/client.js";
-import { StepRegistry } from "../../services/pipeline/StepRegistry.js";
-import { BaseStep } from "../../services/pipeline/steps/BaseStep.js";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { createMockPrisma } from "../setup.js";
 import type { PipelineContext, StepOutput } from "../../services/pipeline/PipelineContext.js";
 import type { StepType } from "@prisma/client";
+
+// Mock the db/client module
+const mockPrisma = createMockPrisma();
+mock.module("../../db/client.js", () => ({
+  prisma: mockPrisma,
+}));
+
+// Import services AFTER mocking
+import { PipelineExecutor } from "../../services/pipeline/PipelineExecutor.js";
+import { StepRegistry } from "../../services/pipeline/StepRegistry.js";
+import { BaseStep } from "../../services/pipeline/steps/BaseStep.js";
 
 // Mock step that tracks execution
 class MockStep extends BaseStep {
@@ -70,6 +78,9 @@ describe("PipelineExecutor - Parallel Execution", () => {
     executor = new PipelineExecutor();
     MockStep.resetLog();
 
+    // Clear mock data
+    mockPrisma._clear();
+
     // Reset and register mock steps
     StepRegistry.reset();
 
@@ -88,14 +99,8 @@ describe("PipelineExecutor - Parallel Execution", () => {
     StepRegistry.register('NOTIFICATION' as StepType, NotificationStep);
     StepRegistry.register('APPROVAL' as StepType, ApprovalStep);
 
-    // Clean up any existing test data
-    await prisma.stepExecution.deleteMany({});
-    await prisma.pipelineExecution.deleteMany({});
-    await prisma.mediaRequest.deleteMany({});
-    await prisma.pipelineTemplate.deleteMany({});
-
-    // Create test request
-    const request = await prisma.mediaRequest.create({
+    // Create test request using mock
+    const request = await mockPrisma.mediaRequest.create({
       data: {
         type: 'MOVIE',
         tmdbId: 12345,
@@ -108,18 +113,15 @@ describe("PipelineExecutor - Parallel Execution", () => {
     mockRequestId = request.id;
   });
 
-  afterEach(async () => {
-    // Clean up test data
-    await prisma.stepExecution.deleteMany({});
-    await prisma.pipelineExecution.deleteMany({});
-    await prisma.mediaRequest.deleteMany({});
-    await prisma.pipelineTemplate.deleteMany({});
+  afterEach(() => {
+    // Clear mock data
+    mockPrisma._clear();
   });
 
   describe("Sequential Execution", () => {
     it("executes single branch steps in order", async () => {
       // Create template with sequential steps: Search -> Download -> Encode
-      const template = await prisma.pipelineTemplate.create({
+      const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Sequential Test",
           mediaType: 'MOVIE',
@@ -172,7 +174,7 @@ describe("PipelineExecutor - Parallel Execution", () => {
       expect(MockStep.executionLog[2].timestamp).toBeGreaterThan(MockStep.executionLog[1].timestamp);
 
       // Verify execution completed
-      const execution = await prisma.pipelineExecution.findFirst({
+      const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: mockRequestId },
       });
       expect(execution?.status).toBe('COMPLETED');
@@ -182,7 +184,7 @@ describe("PipelineExecutor - Parallel Execution", () => {
   describe("Parallel Execution", () => {
     it("executes parallel branches simultaneously", async () => {
       // Create template with 3 parallel branches from start
-      const template = await prisma.pipelineTemplate.create({
+      const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Parallel Test",
           mediaType: 'MOVIE',
@@ -243,7 +245,7 @@ describe("PipelineExecutor - Parallel Execution", () => {
 
     it("executes nested parallel branches correctly", async () => {
       // Create template with nested parallel execution
-      const template = await prisma.pipelineTemplate.create({
+      const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Nested Parallel Test",
           mediaType: 'MOVIE',
@@ -300,7 +302,7 @@ describe("PipelineExecutor - Parallel Execution", () => {
 
   describe("Error Handling", () => {
     it("fails pipeline when required step fails", async () => {
-      const template = await prisma.pipelineTemplate.create({
+      const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Error Test - Required Fail",
           mediaType: 'MOVIE',
@@ -322,14 +324,14 @@ describe("PipelineExecutor - Parallel Execution", () => {
 
       await expect(executor.startExecution(mockRequestId, mockTemplateId)).rejects.toThrow();
 
-      const execution = await prisma.pipelineExecution.findFirst({
+      const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: mockRequestId },
       });
       expect(execution?.status).toBe('FAILED');
     });
 
     it("continues when optional step fails", async () => {
-      const template = await prisma.pipelineTemplate.create({
+      const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Error Test - Optional Fail",
           mediaType: 'MOVIE',
@@ -362,14 +364,14 @@ describe("PipelineExecutor - Parallel Execution", () => {
       // Both steps should have been attempted
       expect(MockStep.executionLog.length).toBe(2);
 
-      const execution = await prisma.pipelineExecution.findFirst({
+      const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: mockRequestId },
       });
       expect(execution?.status).toBe('COMPLETED');
     });
 
     it("continues when continueOnError is true", async () => {
-      const template = await prisma.pipelineTemplate.create({
+      const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Error Test - Continue On Error",
           mediaType: 'MOVIE',
@@ -412,7 +414,7 @@ describe("PipelineExecutor - Parallel Execution", () => {
       // All steps should execute despite failure
       expect(MockStep.executionLog.length).toBe(3);
 
-      const execution = await prisma.pipelineExecution.findFirst({
+      const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: mockRequestId },
       });
       expect(execution?.status).toBe('COMPLETED');
@@ -421,7 +423,7 @@ describe("PipelineExecutor - Parallel Execution", () => {
 
   describe("Context Merging", () => {
     it("merges context from parallel branches", async () => {
-      const template = await prisma.pipelineTemplate.create({
+      const template = await mockPrisma.pipelineTemplate.create({
         data: {
           name: "Context Merge Test",
           mediaType: 'MOVIE',
@@ -451,7 +453,7 @@ describe("PipelineExecutor - Parallel Execution", () => {
 
       await executor.startExecution(mockRequestId, mockTemplateId);
 
-      const execution = await prisma.pipelineExecution.findFirst({
+      const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: mockRequestId },
       });
 

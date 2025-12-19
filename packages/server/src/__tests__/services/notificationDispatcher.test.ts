@@ -10,10 +10,18 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
-import { NotificationDispatcher, type BaseNotificationProvider } from "../../services/notifications/NotificationDispatcher.js";
-import { prisma } from "../../db/client.js";
+import { createMockPrisma } from "../setup.js";
 import { NotificationProvider, MediaType } from "@prisma/client";
 import type { NotificationPayload, NotificationResult } from "../../services/notifications/types.js";
+
+// Mock the db/client module
+const mockPrisma = createMockPrisma();
+mock.module("../../db/client.js", () => ({
+  prisma: mockPrisma,
+}));
+
+// Import services AFTER mocking
+import { NotificationDispatcher, type BaseNotificationProvider } from "../../services/notifications/NotificationDispatcher.js";
 
 // Mock notification provider
 class MockProvider implements BaseNotificationProvider {
@@ -60,13 +68,11 @@ describe("NotificationDispatcher - Integration Tests", () => {
 
     MockProvider.resetCalls();
 
-    // Clean up test data
-    await prisma.activityLog.deleteMany({});
-    await prisma.notificationConfig.deleteMany({});
-    await prisma.mediaRequest.deleteMany({});
+    // Clear mock data
+    mockPrisma._clear();
 
     // Create test request
-    const request = await prisma.mediaRequest.create({
+    const request = await mockPrisma.mediaRequest.create({
       data: {
         type: 'MOVIE',
         tmdbId: 12345,
@@ -80,16 +86,14 @@ describe("NotificationDispatcher - Integration Tests", () => {
     userId = "test-user-123";
   });
 
-  afterEach(async () => {
-    // Clean up test data
-    await prisma.activityLog.deleteMany({});
-    await prisma.notificationConfig.deleteMany({});
-    await prisma.mediaRequest.deleteMany({});
+  afterEach(() => {
+    // Clear mock data
+    mockPrisma._clear();
   });
 
   describe("Provider Routing", () => {
     it("dispatches to matching notification config", async () => {
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Test Webhook",
           provider: NotificationProvider.WEBHOOK,
@@ -113,7 +117,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
     });
 
     it("dispatches to multiple matching configs", async () => {
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Webhook 1",
           provider: NotificationProvider.WEBHOOK,
@@ -123,7 +127,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
         },
       });
 
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Discord",
           provider: NotificationProvider.DISCORD,
@@ -145,7 +149,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
     });
 
     it("does not dispatch to disabled configs", async () => {
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Disabled Config",
           provider: NotificationProvider.WEBHOOK,
@@ -169,7 +173,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
 
   describe("Event Filtering", () => {
     beforeEach(async () => {
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Completed Events",
           provider: NotificationProvider.WEBHOOK,
@@ -225,7 +229,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
 
   describe("Media Type Filtering", () => {
     it("dispatches to config with no media type filter", async () => {
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "All Media",
           provider: NotificationProvider.WEBHOOK,
@@ -255,7 +259,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
     });
 
     it("dispatches to config with matching media type", async () => {
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Movies Only",
           provider: NotificationProvider.WEBHOOK,
@@ -285,7 +289,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
     });
 
     it("dispatches to both filtered and unfiltered configs", async () => {
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "All Media",
           provider: NotificationProvider.WEBHOOK,
@@ -296,7 +300,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
         },
       });
 
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Movies Only",
           provider: NotificationProvider.DISCORD,
@@ -320,7 +324,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
 
   describe("User-Specific Notifications", () => {
     it("dispatches to global config when no userId filter", async () => {
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Global Notifications",
           provider: NotificationProvider.WEBHOOK,
@@ -343,7 +347,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
 
     it("does not dispatch to global config when userId is specified", async () => {
       // Global config (userId: null)
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Global Notifications",
           provider: NotificationProvider.WEBHOOK,
@@ -369,7 +373,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
 
   describe("Error Handling", () => {
     it("handles provider failure gracefully", async () => {
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Failing Config",
           provider: NotificationProvider.WEBHOOK,
@@ -394,7 +398,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
     });
 
     it("logs activity when notification fails", async () => {
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Failing Config",
           provider: NotificationProvider.WEBHOOK,
@@ -413,7 +417,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
         data: {},
       });
 
-      const activities = await prisma.activityLog.findMany({
+      const activities = await mockPrisma.activityLog.findMany({
         where: { requestId: mockRequestId },
       });
 
@@ -422,7 +426,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
     });
 
     it("continues dispatching after one provider fails", async () => {
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Failing Config",
           provider: NotificationProvider.WEBHOOK,
@@ -432,7 +436,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
         },
       });
 
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Success Config",
           provider: NotificationProvider.DISCORD,
@@ -476,7 +480,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
 
   describe("Test Notification", () => {
     it("sends test notification successfully", async () => {
-      const config = await prisma.notificationConfig.create({
+      const config = await mockPrisma.notificationConfig.create({
         data: {
           name: "Test Config",
           provider: NotificationProvider.WEBHOOK,
@@ -504,7 +508,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
 
     it("returns error when provider not registered", async () => {
       // Create a config with EMAIL provider but remove it from the dispatcher
-      const config = await prisma.notificationConfig.create({
+      const config = await mockPrisma.notificationConfig.create({
         data: {
           name: "Unregistered Provider",
           provider: NotificationProvider.EMAIL,
@@ -529,7 +533,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
 
   describe("Payload Construction", () => {
     it("includes all required payload fields", async () => {
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Test Config",
           provider: NotificationProvider.WEBHOOK,
@@ -566,7 +570,7 @@ describe("NotificationDispatcher - Integration Tests", () => {
         headers: { Authorization: "Bearer token" },
       };
 
-      await prisma.notificationConfig.create({
+      await mockPrisma.notificationConfig.create({
         data: {
           name: "Test Config",
           provider: NotificationProvider.WEBHOOK,

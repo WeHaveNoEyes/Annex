@@ -8,10 +8,18 @@
  * - Role-based filtering
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { ApprovalService } from "../../services/approvals/ApprovalService.js";
-import { prisma } from "../../db/client.js";
+import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { createMockPrisma } from "../setup.js";
 import { ApprovalStatus } from "@prisma/client";
+
+// Mock the db/client module
+const mockPrisma = createMockPrisma();
+mock.module("../../db/client.js", () => ({
+  prisma: mockPrisma,
+}));
+
+// Import services AFTER mocking
+import { ApprovalService } from "../../services/approvals/ApprovalService.js";
 
 describe("ApprovalService - Integration Tests", () => {
   let approvalService: ApprovalService;
@@ -21,15 +29,11 @@ describe("ApprovalService - Integration Tests", () => {
   beforeEach(async () => {
     approvalService = new ApprovalService();
 
-    // Clean up test data
-    await prisma.activityLog.deleteMany({});
-    await prisma.approvalQueue.deleteMany({});
-    await prisma.stepExecution.deleteMany({});
-    await prisma.pipelineExecution.deleteMany({});
-    await prisma.mediaRequest.deleteMany({});
+    // Clear mock data
+    mockPrisma._clear();
 
     // Create test request
-    const request = await prisma.mediaRequest.create({
+    const request = await mockPrisma.mediaRequest.create({
       data: {
         type: 'MOVIE',
         tmdbId: 12345,
@@ -42,7 +46,7 @@ describe("ApprovalService - Integration Tests", () => {
     mockRequestId = request.id;
 
     // Create test template
-    const template = await prisma.pipelineTemplate.create({
+    const template = await mockPrisma.pipelineTemplate.create({
       data: {
         name: 'Test Template',
         mediaType: 'MOVIE',
@@ -53,7 +57,7 @@ describe("ApprovalService - Integration Tests", () => {
     });
 
     // Create test execution
-    const execution = await prisma.pipelineExecution.create({
+    const execution = await mockPrisma.pipelineExecution.create({
       data: {
         requestId: mockRequestId,
         templateId: template.id,
@@ -65,13 +69,9 @@ describe("ApprovalService - Integration Tests", () => {
     mockExecutionId = execution.id;
   });
 
-  afterEach(async () => {
-    // Clean up test data
-    await prisma.activityLog.deleteMany({});
-    await prisma.approvalQueue.deleteMany({});
-    await prisma.stepExecution.deleteMany({});
-    await prisma.pipelineExecution.deleteMany({});
-    await prisma.mediaRequest.deleteMany({});
+  afterEach(() => {
+    // Clear mock data
+    mockPrisma._clear();
   });
 
   describe("Approval Creation", () => {
@@ -87,7 +87,7 @@ describe("ApprovalService - Integration Tests", () => {
 
       expect(approvalId).toBeDefined();
 
-      const approval = await prisma.approvalQueue.findUnique({
+      const approval = await mockPrisma.approvalQueue.findUnique({
         where: { id: approvalId },
       });
 
@@ -111,7 +111,7 @@ describe("ApprovalService - Integration Tests", () => {
         autoAction: "approve",
       });
 
-      const approval = await prisma.approvalQueue.findUnique({
+      const approval = await mockPrisma.approvalQueue.findUnique({
         where: { id: approvalId },
       });
 
@@ -129,7 +129,7 @@ describe("ApprovalService - Integration Tests", () => {
         requiredRole: "admin",
       });
 
-      const activities = await prisma.activityLog.findMany({
+      const activities = await mockPrisma.activityLog.findMany({
         where: { requestId: mockRequestId },
       });
 
@@ -155,7 +155,7 @@ describe("ApprovalService - Integration Tests", () => {
         comment: "Looks good",
       });
 
-      const approval = await prisma.approvalQueue.findUnique({
+      const approval = await mockPrisma.approvalQueue.findUnique({
         where: { id: approvalId },
       });
 
@@ -181,7 +181,7 @@ describe("ApprovalService - Integration Tests", () => {
         comment: "Quality too low",
       });
 
-      const approval = await prisma.approvalQueue.findUnique({
+      const approval = await mockPrisma.approvalQueue.findUnique({
         where: { id: approvalId },
       });
 
@@ -206,7 +206,7 @@ describe("ApprovalService - Integration Tests", () => {
       });
 
       // Verify at least the creation activity log exists
-      const activities = await prisma.activityLog.findMany({
+      const activities = await mockPrisma.activityLog.findMany({
         where: { requestId: mockRequestId },
       });
 
@@ -252,7 +252,7 @@ describe("ApprovalService - Integration Tests", () => {
   describe("Timeout Handling", () => {
     it("auto-approves timed out approval", async () => {
       // Create approval that's already timed out (created 25 hours ago)
-      const approval = await prisma.approvalQueue.create({
+      const approval = await mockPrisma.approvalQueue.create({
         data: {
           requestId: mockRequestId,
           executionId: mockExecutionId,
@@ -268,7 +268,7 @@ describe("ApprovalService - Integration Tests", () => {
 
       await approvalService.checkTimeouts();
 
-      const updated = await prisma.approvalQueue.findUnique({
+      const updated = await mockPrisma.approvalQueue.findUnique({
         where: { id: approval.id },
       });
 
@@ -278,7 +278,7 @@ describe("ApprovalService - Integration Tests", () => {
     });
 
     it("auto-rejects timed out approval", async () => {
-      const approval = await prisma.approvalQueue.create({
+      const approval = await mockPrisma.approvalQueue.create({
         data: {
           requestId: mockRequestId,
           executionId: mockExecutionId,
@@ -294,7 +294,7 @@ describe("ApprovalService - Integration Tests", () => {
 
       await approvalService.checkTimeouts();
 
-      const updated = await prisma.approvalQueue.findUnique({
+      const updated = await mockPrisma.approvalQueue.findUnique({
         where: { id: approval.id },
       });
 
@@ -304,7 +304,7 @@ describe("ApprovalService - Integration Tests", () => {
     });
 
     it("cancels timed out approval with cancel auto-action", async () => {
-      const approval = await prisma.approvalQueue.create({
+      const approval = await mockPrisma.approvalQueue.create({
         data: {
           requestId: mockRequestId,
           executionId: mockExecutionId,
@@ -320,7 +320,7 @@ describe("ApprovalService - Integration Tests", () => {
 
       await approvalService.checkTimeouts();
 
-      const updated = await prisma.approvalQueue.findUnique({
+      const updated = await mockPrisma.approvalQueue.findUnique({
         where: { id: approval.id },
       });
 
@@ -330,7 +330,7 @@ describe("ApprovalService - Integration Tests", () => {
     });
 
     it("marks as timeout without auto-action", async () => {
-      const approval = await prisma.approvalQueue.create({
+      const approval = await mockPrisma.approvalQueue.create({
         data: {
           requestId: mockRequestId,
           executionId: mockExecutionId,
@@ -345,7 +345,7 @@ describe("ApprovalService - Integration Tests", () => {
 
       await approvalService.checkTimeouts();
 
-      const updated = await prisma.approvalQueue.findUnique({
+      const updated = await mockPrisma.approvalQueue.findUnique({
         where: { id: approval.id },
       });
 
@@ -354,7 +354,7 @@ describe("ApprovalService - Integration Tests", () => {
     });
 
     it("does not process approvals that haven't timed out yet", async () => {
-      const approval = await prisma.approvalQueue.create({
+      const approval = await mockPrisma.approvalQueue.create({
         data: {
           requestId: mockRequestId,
           executionId: mockExecutionId,
@@ -370,7 +370,7 @@ describe("ApprovalService - Integration Tests", () => {
 
       await approvalService.checkTimeouts();
 
-      const updated = await prisma.approvalQueue.findUnique({
+      const updated = await mockPrisma.approvalQueue.findUnique({
         where: { id: approval.id },
       });
 
@@ -379,7 +379,7 @@ describe("ApprovalService - Integration Tests", () => {
     });
 
     it("logs activity when timeout occurs", async () => {
-      await prisma.approvalQueue.create({
+      await mockPrisma.approvalQueue.create({
         data: {
           requestId: mockRequestId,
           executionId: mockExecutionId,
@@ -395,7 +395,7 @@ describe("ApprovalService - Integration Tests", () => {
 
       await approvalService.checkTimeouts();
 
-      const activities = await prisma.activityLog.findMany({
+      const activities = await mockPrisma.activityLog.findMany({
         where: { requestId: mockRequestId },
       });
 
