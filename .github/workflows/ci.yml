@@ -22,7 +22,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Run Biome lint
-        run: biome lint --reporter=github .
+        run: bunx biome lint --reporter=github .
 
   typecheck:
     name: Type Check
