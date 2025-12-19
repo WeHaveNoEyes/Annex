@@ -25,12 +25,7 @@ export ANNEX_LOG_LEVEL="${ANNEX_LOG_LEVEL:-info}"
 if [ -e "/dev/dri/renderD128" ]; then
   echo "[Encoder] GPU detected at /dev/dri/renderD128"
   export ANNEX_GPU_DEVICE="/dev/dri/renderD128"
-
-  # Test VAAPI support
-  if command -v vainfo &> /dev/null; then
-    echo "[Encoder] Testing VAAPI support..."
-    vainfo --display drm --device /dev/dri/renderD128 || echo "[Encoder] Warning: VAAPI test failed, will fall back to CPU encoding"
-  fi
+  echo "[Encoder] VAAPI drivers should be available from host system"
 else
   echo "[Encoder] No GPU detected, using CPU encoding (libsvtav1)"
 fi
