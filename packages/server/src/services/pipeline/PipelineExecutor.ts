@@ -7,14 +7,27 @@ import type { PipelineContext, StepOutput } from './PipelineContext';
 import { StepRegistry } from './StepRegistry';
 import { logger } from '../../utils/logger';
 
+// Tree-based step structure
+interface StepTree {
+  type: StepType;
+  name: string;
+  config: unknown;
+  condition?: unknown;
+  required?: boolean;
+  retryable?: boolean;
+  timeout?: number;
+  continueOnError?: boolean;
+  children?: StepTree[];
+}
+
 export class PipelineExecutor {
+
   // Start a new pipeline execution for a request
   async startExecution(requestId: string, templateId: string): Promise<void> {
     try {
-      // Fetch the template with all its steps
+      // Fetch the template
       const template = await prisma.pipelineTemplate.findUnique({
         where: { id: templateId },
-        include: { steps: { orderBy: { order: 'asc' } } },
       });
 
       if (!template) {
@@ -30,18 +43,8 @@ export class PipelineExecutor {
         throw new Error(`Request ${requestId} not found`);
       }
 
-      // Create immutable snapshot of steps
-      const stepsSnapshot = template.steps.map((step) => ({
-        order: step.order,
-        type: step.type,
-        name: step.name,
-        config: step.config,
-        condition: step.condition,
-        required: step.required,
-        retryable: step.retryable,
-        timeout: step.timeout,
-        continueOnError: step.continueOnError,
-      }));
+      // Parse steps tree from template
+      const stepsTree = template.steps as unknown as StepTree[];
 
       // Initialize context from request
       const initialContext: PipelineContext = {
@@ -62,34 +65,139 @@ export class PipelineExecutor {
           templateId,
           status: 'RUNNING' as ExecutionStatus,
           currentStep: 0,
-          steps: stepsSnapshot as unknown as Prisma.JsonArray,
+          steps: stepsTree as unknown as Prisma.JsonArray,
           context: initialContext as unknown as Prisma.JsonObject,
         },
       });
 
-      // Create step execution records
-      for (const step of template.steps) {
-        await prisma.stepExecution.create({
-          data: {
-            executionId: execution.id,
-            stepOrder: step.order,
-            stepType: step.type,
-            status: 'PENDING' as StepStatus,
-          },
-        });
-      }
-
       logger.info(`Started pipeline execution ${execution.id} for request ${requestId}`);
 
-      // Start executing the first step
-      await this.executeNextStep(execution.id);
+      // Start executing the tree
+      await this.executeStepTree(execution.id, stepsTree, initialContext);
+
+      // Mark execution as complete
+      await this.completeExecution(execution.id);
     } catch (error) {
-      logger.error(`Failed to start pipeline execution for request ${requestId}:`, error);
+      logger.error(`Failed to execute pipeline for request ${requestId}:`, error);
+      await this.failExecution(await this.getExecutionId(requestId), error instanceof Error ? error.message : 'Unknown error');
       throw error;
     }
   }
 
-  // Execute the next pending step in the pipeline
+  // Get execution ID for a request
+  private async getExecutionId(requestId: string): Promise<string> {
+    const execution = await prisma.pipelineExecution.findFirst({
+      where: { requestId },
+      orderBy: { id: 'desc' },
+    });
+    return execution?.id || '';
+  }
+
+  // Execute a tree of steps (supports parallel execution of branches)
+  private async executeStepTree(
+    executionId: string,
+    steps: StepTree[],
+    currentContext: PipelineContext
+  ): Promise<PipelineContext> {
+    // Execute all steps at this level in parallel
+    const results = await Promise.all(
+      steps.map(async (stepDef) => {
+        try {
+          // Get current execution state
+          const execution = await prisma.pipelineExecution.findUnique({
+            where: { id: executionId },
+          });
+
+          if (!execution || execution.status !== 'RUNNING') {
+            logger.info(`Pipeline execution ${executionId} is not running, stopping step ${stepDef.name}`);
+            return currentContext;
+          }
+
+          // Create step instance
+          const step = StepRegistry.create(stepDef.type);
+
+          // Validate config
+          step.validateConfig(stepDef.config);
+
+          // Evaluate condition
+          const shouldExecute = step.evaluateCondition(
+            currentContext,
+            stepDef.condition as unknown as Parameters<typeof step.evaluateCondition>[1]
+          );
+
+          if (!shouldExecute) {
+            logger.info(`Skipped step ${stepDef.name} (condition not met)`);
+            return currentContext;
+          }
+
+          // Log step start
+          logger.info(`Executing step: ${stepDef.name}`);
+
+          // Execute the step
+          const result: StepOutput = await step.execute(currentContext, stepDef.config);
+
+          // Handle result
+          if (result.shouldPause) {
+            // Pause execution (used by ApprovalStep)
+            await this.pauseExecution(executionId, `Awaiting approval: ${stepDef.name}`);
+            throw new Error('Execution paused for approval');
+          }
+
+          if (result.shouldSkip) {
+            logger.info(`Step ${stepDef.name} chose to skip`);
+            return currentContext;
+          }
+
+          if (!result.success) {
+            // Step failed
+            if (stepDef.continueOnError) {
+              logger.warn(`Step ${stepDef.name} failed but continuing: ${result.error}`);
+              return currentContext;
+            } else if (stepDef.required !== false) {
+              throw new Error(`Required step ${stepDef.name} failed: ${result.error}`);
+            } else {
+              logger.warn(`Optional step ${stepDef.name} failed: ${result.error}`);
+              return currentContext;
+            }
+          }
+
+          // Step succeeded - merge output into context
+          const updatedContext = {
+            ...currentContext,
+            ...result.data,
+          };
+
+          logger.info(`Completed step: ${stepDef.name}`);
+
+          // Execute children if any
+          if (stepDef.children && stepDef.children.length > 0) {
+            return await this.executeStepTree(executionId, stepDef.children, updatedContext);
+          }
+
+          return updatedContext;
+        } catch (error) {
+          logger.error(`Step ${stepDef.name} failed:`, error);
+          if (stepDef.required !== false) {
+            throw error;
+          }
+          return currentContext;
+        }
+      })
+    );
+
+    // Merge all branch contexts (last one wins for conflicts)
+    const mergedContext = results.reduce((acc, ctx) => ({ ...acc, ...ctx }), currentContext);
+
+    // Update execution context in database once after all parallel branches complete
+    await prisma.pipelineExecution.update({
+      where: { id: executionId },
+      data: { context: mergedContext as unknown as Prisma.JsonObject },
+    });
+
+    return mergedContext;
+  }
+
+  // Execute the next pending step in the pipeline (LEGACY - kept for compatibility)
   async executeNextStep(executionId: string): Promise<void> {
     try {
       // Fetch execution with current state
@@ -379,4 +487,14 @@ export class PipelineExecutor {
     });
     logger.info(`Cancelled pipeline execution ${executionId}`);
   }
+}
+
+// Singleton instance
+let pipelineExecutorInstance: PipelineExecutor | null = null;
+
+export function getPipelineExecutor(): PipelineExecutor {
+  if (!pipelineExecutorInstance) {
+    pipelineExecutorInstance = new PipelineExecutor();
+  }
+  return pipelineExecutorInstance;
 }
