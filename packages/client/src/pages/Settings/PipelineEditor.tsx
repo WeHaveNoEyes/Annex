@@ -1,20 +1,23 @@
 import { useState, useCallback, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { trpc } from "../../trpc";
-import { Button, Input, Card, Label } from "../../components/ui";
+import { Button, Input, Card, Label, Select } from "../../components/ui";
 import {
   ReactFlow,
+  ReactFlowProvider,
   MiniMap,
   Controls,
   Background,
   useNodesState,
   useEdgesState,
+  useReactFlow,
   addEdge,
   Node,
   Edge,
   Connection,
   BackgroundVariant,
   ConnectionLineType,
+  type Viewport,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import StepNode from "../../components/pipeline/StepNode";
@@ -35,10 +38,12 @@ interface StepData extends Record<string, unknown> {
   continueOnError: boolean;
 }
 
-export default function PipelineEditor() {
+// Inner component that has access to ReactFlow instance
+function PipelineEditorInner() {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEditing = id !== "new";
+  const reactFlowInstance = useReactFlow();
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -46,6 +51,7 @@ export default function PipelineEditor() {
   const [isDefault, setIsDefault] = useState(false);
   const [isPublic, setIsPublic] = useState(true);
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
+  const [viewport, setViewport] = useState<Viewport>({ x: 0, y: 0, zoom: 0.5 });
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<StepData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -97,7 +103,26 @@ export default function PipelineEditor() {
       setIsDefault(pipeline.isDefault);
       setIsPublic(pipeline.isPublic);
 
-      // Convert steps to nodes and edges
+      // Check if we have saved layout data
+      if (pipeline.layout) {
+        const layoutData = pipeline.layout as {
+          nodes: Node<StepData>[];
+          edges: Edge[];
+          viewport?: Viewport;
+        };
+        setNodes(layoutData.nodes);
+        setEdges(layoutData.edges);
+        if (layoutData.viewport) {
+          setViewport(layoutData.viewport);
+          // Imperatively set the viewport on the ReactFlow instance
+          setTimeout(() => {
+            reactFlowInstance.setViewport(layoutData.viewport!);
+          }, 0);
+        }
+        return;
+      }
+
+      // Legacy: Convert steps to nodes and edges
       const loadedNodes: Node<StepData>[] = [
         {
           id: "start",
@@ -118,7 +143,16 @@ export default function PipelineEditor() {
       const loadedEdges: Edge[] = [];
       let yPosition = 200;
 
-      pipeline.steps.forEach((step, index) => {
+      interface LoadedStep {
+        type: string;
+        name: string;
+        config: Record<string, unknown>;
+        required: boolean;
+        retryable: boolean;
+        continueOnError: boolean;
+      }
+
+      (pipeline.steps as LoadedStep[]).forEach((step, index) => {
         const nodeId = `step-${index}`;
         loadedNodes.push({
           id: nodeId,
@@ -128,9 +162,9 @@ export default function PipelineEditor() {
             label: step.name,
             type: step.type as StepType,
             config: (step.config as Record<string, unknown>) || {},
-            required: step.required,
-            retryable: step.retryable,
-            continueOnError: step.continueOnError,
+            required: step.required ?? true,
+            retryable: step.retryable ?? true,
+            continueOnError: step.continueOnError ?? false,
           },
         });
 
@@ -151,7 +185,7 @@ export default function PipelineEditor() {
       setNodes(loadedNodes);
       setEdges(loadedEdges);
     }
-  }, [pipeline, setNodes, setEdges]);
+  }, [pipeline, setNodes, setEdges, reactFlowInstance]);
 
   const onConnect = useCallback(
     (params: Connection) =>
@@ -268,26 +302,12 @@ export default function PipelineEditor() {
       return;
     }
 
-    // Convert nodes and edges to steps in order
-    const orderedSteps = getOrderedSteps();
-    if (orderedSteps.length === 0) {
+    // Build tree structure from flow graph
+    const steps = buildStepTree();
+    if (steps.length === 0) {
       alert("Please add at least one step to the pipeline");
       return;
     }
-
-    const steps = orderedSteps
-      .filter((node) => node.data.type !== "START")
-      .map((node) => {
-        const data = node.data;
-        return {
-          type: data.type as Exclude<StepType, "START">,
-          name: data.label,
-          config: data.config,
-          required: data.required,
-          retryable: data.retryable,
-          continueOnError: data.continueOnError,
-        };
-      });
 
     const data = {
       name,
@@ -296,6 +316,7 @@ export default function PipelineEditor() {
       isDefault,
       isPublic,
       steps,
+      layout: { nodes, edges, viewport },
     };
 
     try {
@@ -309,32 +330,55 @@ export default function PipelineEditor() {
     }
   };
 
-  // Get steps in execution order by following edges from start node
+  // Build tree structure from flow graph
   // Supports branching (multiple outgoing edges) but not merging (multiple incoming edges)
-  const getOrderedSteps = (): Node<StepData>[] => {
-    const ordered: Node<StepData>[] = [];
+  // Returns root-level steps (direct children of START node)
+  type ApiStepType = "SEARCH" | "DOWNLOAD" | "ENCODE" | "DELIVER" | "APPROVAL" | "NOTIFICATION";
+
+  interface StepTreeNode {
+    type: ApiStepType;
+    name: string;
+    config: Record<string, unknown>;
+    required: boolean;
+    retryable: boolean;
+    continueOnError: boolean;
+    children?: StepTreeNode[];
+  }
+
+  const buildStepTree = (): StepTreeNode[] => {
     const visited = new Set<string>();
 
-    // Depth-first traversal to collect all branches
-    const traverse = (nodeId: string) => {
-      if (visited.has(nodeId)) return;
+    // Recursively build tree for a node
+    const buildNode = (nodeId: string): StepTreeNode | null => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node || node.id === "start" || visited.has(nodeId)) return null;
+
       visited.add(nodeId);
 
-      // Find all outgoing edges from this node
-      const outgoingEdges = edges.filter((e) => e.source === nodeId && !visited.has(e.target));
+      // Find all children (outgoing edges)
+      const outgoingEdges = edges.filter((e) => e.source === nodeId);
+      const children = outgoingEdges
+        .map((edge) => buildNode(edge.target))
+        .filter((child): child is StepTreeNode => child !== null);
 
-      // Process each branch
-      for (const edge of outgoingEdges) {
-        const nextNode = nodes.find((n) => n.id === edge.target);
-        if (nextNode && nextNode.id !== "start") {
-          ordered.push(nextNode);
-          traverse(edge.target); // Recursively traverse this branch
-        }
-      }
+      return {
+        type: node.data.type as ApiStepType,
+        name: node.data.label,
+        config: node.data.config,
+        required: node.data.required,
+        retryable: node.data.retryable,
+        continueOnError: node.data.continueOnError,
+        ...(children.length > 0 && { children }),
+      };
     };
 
-    traverse("start");
-    return ordered;
+    // Find all direct children of START node
+    const startEdges = edges.filter((e) => e.source === "start");
+    const rootSteps = startEdges
+      .map((edge) => buildNode(edge.target))
+      .filter((step): step is StepTreeNode => step !== null);
+
+    return rootSteps;
   };
 
   return (
@@ -359,14 +403,14 @@ export default function PipelineEditor() {
 
             <div>
               <Label>Media Type</Label>
-              <select
+              <Select
                 value={mediaType}
                 onChange={(e) => setMediaType(e.target.value as "MOVIE" | "TV")}
-                className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white"
+                className="w-full"
               >
                 <option value="MOVIE">Movie</option>
                 <option value="TV">TV Show</option>
-              </select>
+              </Select>
             </div>
 
             <div className="col-span-2">
@@ -434,10 +478,12 @@ export default function PipelineEditor() {
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               onNodeDoubleClick={onNodeDoubleClick}
+              onMove={(_event, newViewport) => setViewport(newViewport)}
+              defaultViewport={viewport}
               nodeTypes={nodeTypes}
-              fitView
               deleteKeyCode={["Backspace", "Delete"]}
               multiSelectionKeyCode={["Control", "Meta"]}
+              connectionRadius={50}
               className="bg-gradient-to-br from-black via-black to-annex-950/20"
               style={{
                 background: "linear-gradient(135deg, #000000 0%, #000000 50%, rgba(239, 68, 68, 0.05) 100%)",
@@ -507,5 +553,14 @@ export default function PipelineEditor() {
         />
       )}
     </div>
+  );
+}
+
+// Wrapper component that provides ReactFlowProvider
+export default function PipelineEditor() {
+  return (
+    <ReactFlowProvider>
+      <PipelineEditorInner />
+    </ReactFlowProvider>
   );
 }
