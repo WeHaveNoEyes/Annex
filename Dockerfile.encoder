@@ -1,6 +1,44 @@
 # Annex Encoder-Only Image
-# Minimal image using pre-compiled binary
+# Builds binary in first stage, runs it in minimal runtime
 
+# =============================================================================
+# Stage 1: Build binary
+# =============================================================================
+FROM oven/bun:1 AS builder
+
+# Install build tools for native dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy package files for dependency installation
+COPY package.json bun.lock ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/server/package.json packages/server/
+COPY packages/client/package.json packages/client/
+COPY packages/encoder/package.json packages/encoder/
+
+# Install dependencies
+RUN bun install --frozen-lockfile
+
+# Copy source code
+COPY packages/shared ./packages/shared/
+COPY packages/encoder ./packages/encoder/
+
+# Build encoder binary for Linux x64
+RUN cd packages/encoder && bun run build
+
+# =============================================================================
+# Stage 2: Runtime (minimal, no Bun needed)
+# =============================================================================
 FROM debian:trixie-slim
 
 # Install FFmpeg for encoding (VAAPI drivers passed through from host)
@@ -9,8 +47,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy pre-compiled binary (must run 'bun run build' first)
-COPY packages/encoder/dist-binaries/annex-encoder-linux-x64 /usr/local/bin/annex-encoder
+# Copy pre-compiled binary from builder
+COPY --from=builder /app/packages/encoder/dist-binaries/annex-encoder-linux-x64 /usr/local/bin/annex-encoder
 RUN chmod +x /usr/local/bin/annex-encoder
 
 # Environment defaults
