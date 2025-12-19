@@ -15,6 +15,7 @@ Unified media acquisition platform replacing Jellyseerr, Radarr, Sonarr & Prowla
 ## Documentation
 
 - [Docker Deployment](docs/deployment.md) - Deploy with Docker (recommended)
+- [Proxmox Deployment](docs/proxmox-deployment.md) - Deploy to Proxmox 9.1+ with native Docker support
 - [Development Setup](docs/development.md) - Local development environment
 - [Encoder Migration Guide](docs/encoder-migration.md) - Upgrade from old encoder to new binary
 - [Contributing](docs/CONTRIBUTING.md) - Contribution guidelines
@@ -67,6 +68,15 @@ Annex Server ←──WebSocket──→ Encoder 1 (Intel Arc)
 
 ### Docker (Recommended)
 
+Annex provides three Docker images for different deployment scenarios:
+
+| Image | Use Case | Size |
+|-------|----------|------|
+| `ghcr.io/wehavenoeyes/annex:latest` | All-in-one (PostgreSQL + Server + Encoder) | ~600MB |
+| `ghcr.io/wehavenoeyes/annex-server:latest` | Server-only (requires external DB) | ~200MB |
+| `ghcr.io/wehavenoeyes/annex-encoder:latest` | Encoder-only (distributed encoding) | ~300MB |
+
+**All-in-One (best for testing):**
 ```bash
 docker run -d \
   --name annex \
@@ -77,9 +87,30 @@ docker run -d \
   ghcr.io/wehavenoeyes/annex:latest
 ```
 
-Access the web UI at `http://localhost` and complete the setup wizard.
+**Server-Only (production with external PostgreSQL):**
+```bash
+docker run -d \
+  --name annex-server \
+  -p 3000:3000 \
+  -e DATABASE_URL="postgresql://user:password@postgres:5432/annex" \
+  -v annex-config:/data/config \
+  ghcr.io/wehavenoeyes/annex-server:latest
+```
 
-See [Docker Deployment](docs/deployment.md) for more options including external PostgreSQL and GPU encoding.
+**Encoder-Only (distributed GPU encoding):**
+```bash
+docker run -d \
+  --name annex-encoder \
+  -e ANNEX_SERVER_URL="ws://server:3000/encoder" \
+  -e ANNEX_ENCODER_ID="encoder-1" \
+  -v /path/to/downloads:/downloads \
+  --device=/dev/dri:/dev/dri \
+  ghcr.io/wehavenoeyes/annex-encoder:latest
+```
+
+Access the web UI at `http://localhost` (all-in-one) or `http://localhost:3000` (server-only) and complete the setup wizard.
+
+See [Docker Deployment](docs/deployment.md) for docker-compose examples and [Proxmox Deployment](docs/proxmox-deployment.md) for Proxmox 9.1+ native Docker support.
 
 ### Manual Installation
 

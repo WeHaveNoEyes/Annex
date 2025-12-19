@@ -1,0 +1,71 @@
+# Annex Encoder-Only Image
+# Dedicated encoder image for distributed encoding with GPU support
+
+# =============================================================================
+# Stage 1: Build
+# =============================================================================
+FROM oven/bun:1 AS builder
+
+# Install build tools for native dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy package files for dependency installation
+COPY package.json bun.lock ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/encoder/package.json packages/encoder/
+
+# Install dependencies
+RUN bun install --frozen-lockfile
+
+# Copy source code
+COPY packages/shared ./packages/shared/
+COPY packages/encoder ./packages/encoder/
+
+# Build encoder package
+RUN cd packages/encoder && bun run typecheck
+
+# Prune dev dependencies
+RUN rm -rf node_modules && bun install --production --omit=optional
+
+# =============================================================================
+# Stage 2: Runtime
+# =============================================================================
+FROM oven/bun:1-slim AS runtime
+
+# Install FFmpeg and VAAPI drivers for hardware encoding
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    vainfo \
+    intel-media-va-driver-non-free \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy built artifacts from builder
+COPY --from=builder /app/packages/encoder ./encoder/
+COPY --from=builder /app/packages/shared ./shared/
+COPY --from=builder /app/node_modules ./node_modules/
+
+# Copy entrypoint
+COPY docker-entrypoint-encoder.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Environment defaults
+ENV ANNEX_ENCODER_ID=encoder-1
+ENV ANNEX_ENCODER_NAME="Docker Encoder"
+ENV ANNEX_MAX_CONCURRENT=1
+ENV ANNEX_LOG_LEVEL=info
+
+# Entrypoint
+ENTRYPOINT ["/docker-entrypoint.sh"]

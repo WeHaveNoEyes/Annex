@@ -59,6 +59,25 @@ bunx prisma studio    # Open Prisma database GUI
 bun packages/encoder/scripts/build-dist.js  # Build distributable tarball
 ```
 
+## Docker Images
+
+Annex provides three Docker images for different deployment scenarios:
+
+| Image | Includes | Use Case | Size |
+|-------|----------|----------|------|
+| `ghcr.io/wehavenoeyes/annex:latest` | PostgreSQL, Nginx, Server, Encoder | All-in-one for testing/demos | ~600MB |
+| `ghcr.io/wehavenoeyes/annex-server:latest` | Server only (Bun serves static files) | Production with external DB | ~200MB |
+| `ghcr.io/wehavenoeyes/annex-encoder:latest` | Encoder with FFmpeg and VAAPI | Distributed GPU encoding | ~300MB |
+
+**Building:**
+```bash
+docker build -t annex:local .                          # All-in-one
+docker build -f Dockerfile.server -t annex-server:local .    # Server-only
+docker build -f Dockerfile.encoder -t annex-encoder:local .  # Encoder-only
+```
+
+**CI/CD:** GitHub Actions builds all three images on every push to main (canary) and manual releases (latest + version tags).
+
 ## Key Data Models (Prisma)
 
 ```prisma

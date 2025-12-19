@@ -302,6 +302,41 @@ const server = Bun.serve<WebSocketData>({
       return response;
     }
 
+    // Static file serving for client
+    const clientDistPath = findFile("packages/client/dist");
+    if (clientDistPath) {
+      let filePath = url.pathname;
+
+      // Default to index.html for root and directories
+      if (filePath === "/" || filePath === "") {
+        filePath = "/index.html";
+      }
+
+      const fullPath = path.join(clientDistPath, filePath);
+
+      // Security: ensure the path is within client dist directory
+      if (fullPath.startsWith(clientDistPath)) {
+        try {
+          const file = Bun.file(fullPath);
+          if (await file.exists()) {
+            return new Response(file);
+          }
+        } catch {
+          // File doesn't exist, fall through to SPA fallback
+        }
+      }
+
+      // SPA fallback - serve index.html for non-API routes
+      if (!url.pathname.startsWith("/api")) {
+        const indexFile = Bun.file(path.join(clientDistPath, "index.html"));
+        if (await indexFile.exists()) {
+          return new Response(indexFile, {
+            headers: { "Content-Type": "text/html" },
+          });
+        }
+      }
+    }
+
     // Not found
     return new Response("Not Found", { status: 404 });
   },

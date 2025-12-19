@@ -2,7 +2,25 @@
 
 This guide covers deploying Annex using Docker.
 
+## Available Images
+
+Annex provides three Docker images for different deployment scenarios:
+
+| Image | Use Case | Includes |
+|-------|----------|----------|
+| `ghcr.io/wehavenoeyes/annex:latest` | All-in-one deployment | PostgreSQL, Server, Nginx, Encoder |
+| `ghcr.io/wehavenoeyes/annex-server:latest` | Server-only deployment | Server only (requires external DB) |
+| `ghcr.io/wehavenoeyes/annex-encoder:latest` | Encoder-only deployment | Encoder with FFmpeg and VAAPI |
+
+### Which Image Should I Use?
+
+- **All-in-One** (`annex:latest`): Best for testing, demos, or single-server deployments
+- **Server** (`annex-server:latest`): Production deployments with external PostgreSQL and dedicated encoder nodes
+- **Encoder** (`annex-encoder:latest`): Distributed encoding nodes with GPU access
+
 ## Quick Start
+
+### All-in-One
 
 Pull and run with zero configuration:
 
@@ -18,6 +36,29 @@ docker run -d \
 
 Open `http://localhost` and complete the setup wizard.
 
+### Server-Only
+
+```bash
+docker run -d \
+  --name annex-server \
+  -p 3000:3000 \
+  -e DATABASE_URL="postgresql://user:password@postgres:5432/annex" \
+  -v annex-config:/data/config \
+  ghcr.io/wehavenoeyes/annex-server:latest
+```
+
+### Encoder-Only
+
+```bash
+docker run -d \
+  --name annex-encoder \
+  -e ANNEX_SERVER_URL="ws://annex-server:3000/encoder" \
+  -e ANNEX_ENCODER_ID="encoder-1" \
+  -v /path/to/downloads:/downloads \
+  --device=/dev/dri:/dev/dri \
+  ghcr.io/wehavenoeyes/annex-encoder:latest
+```
+
 ## Available Tags
 
 | Tag | Description |
@@ -25,6 +66,8 @@ Open `http://localhost` and complete the setup wizard.
 | `latest` | Latest stable release (manual deployment) |
 | `canary` | Latest build from main branch (automated) |
 | `x.y.z` | Specific version (e.g., `1.0.0`) |
+
+All tags are available for each image variant (`annex`, `annex-server`, `annex-encoder`).
 
 ## Deployment Modes
 
@@ -123,6 +166,8 @@ The internal server runs on port 3001, proxied by nginx.
 
 ## Docker Compose
 
+### All-in-One Deployment
+
 Example `docker-compose.yml` for all-in-one deployment:
 
 ```yaml
@@ -147,12 +192,106 @@ volumes:
   annex-config:
 ```
 
-Example with external PostgreSQL:
+### Multi-Container Production Deployment
+
+Example using separate server and encoder containers:
 
 ```yaml
 version: "3.8"
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: annex-postgres
+    environment:
+      - POSTGRES_USER=annex
+      - POSTGRES_PASSWORD=secure-password-here
+      - POSTGRES_DB=annex
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - annex-net
+
+  server:
+    image: ghcr.io/wehavenoeyes/annex-server:latest
+    container_name: annex-server
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://annex:secure-password-here@postgres:5432/annex
+    volumes:
+      - annex-config:/data/config
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - annex-net
+
+  encoder-1:
+    image: ghcr.io/wehavenoeyes/annex-encoder:latest
+    container_name: annex-encoder-1
+    environment:
+      - ANNEX_SERVER_URL=ws://server:3000/encoder
+      - ANNEX_ENCODER_ID=encoder-1
+      - ANNEX_ENCODER_NAME=Primary Encoder
+      - ANNEX_MAX_CONCURRENT=1
+    volumes:
+      - /path/to/downloads:/downloads
+    devices:
+      - /dev/dri:/dev/dri
+    depends_on:
+      - server
+    restart: unless-stopped
+    networks:
+      - annex-net
+
+  encoder-2:
+    image: ghcr.io/wehavenoeyes/annex-encoder:latest
+    container_name: annex-encoder-2
+    environment:
+      - ANNEX_SERVER_URL=ws://server:3000/encoder
+      - ANNEX_ENCODER_ID=encoder-2
+      - ANNEX_ENCODER_NAME=Secondary Encoder
+      - ANNEX_MAX_CONCURRENT=1
+    volumes:
+      - /path/to/downloads:/downloads
+    devices:
+      - /dev/dri/renderD129:/dev/dri/renderD128  # Second GPU
+    depends_on:
+      - server
+    restart: unless-stopped
+    networks:
+      - annex-net
+
+volumes:
+  postgres-data:
+  annex-config:
+
+networks:
+  annex-net:
+    driver: bridge
+```
+
+### Hybrid Deployment
+
+All-in-one with external PostgreSQL:
+
+```yaml
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: annex-postgres
+    environment:
+      - POSTGRES_USER=annex
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=annex
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   annex:
     image: ghcr.io/wehavenoeyes/annex:latest
     container_name: annex
@@ -168,30 +307,27 @@ services:
       - postgres
     restart: unless-stopped
 
-  postgres:
-    image: postgres:16-alpine
-    container_name: annex-postgres
-    environment:
-      - POSTGRES_USER=annex
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=annex
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    restart: unless-stopped
-
 volumes:
   annex-config:
   postgres-data:
 ```
 
-## Building the Image
+## Building the Images
 
-To build the Docker image locally:
+To build the Docker images locally:
 
 ```bash
 git clone https://github.com/WeHaveNoEyes/Annex.git
 cd Annex
-docker build -t annex .
+
+# Build all-in-one image
+docker build -t annex:local .
+
+# Build server-only image
+docker build -f Dockerfile.server -t annex-server:local .
+
+# Build encoder-only image
+docker build -f Dockerfile.encoder -t annex-encoder:local .
 ```
 
 ## External Encoder Nodes

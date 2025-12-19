@@ -1,0 +1,79 @@
+# Annex Server-Only Image
+# Minimal image for running the Annex server with external PostgreSQL and encoders
+# Static files served directly by Bun
+
+# =============================================================================
+# Stage 1: Build
+# =============================================================================
+FROM oven/bun:1 AS builder
+
+# Install build tools for native dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    python3 \
+    make \
+    g++ \
+    curl \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy package files for dependency installation
+COPY package.json bun.lock ./
+COPY packages/shared/package.json packages/shared/
+COPY packages/server/package.json packages/server/
+COPY packages/client/package.json packages/client/
+
+# Install dependencies
+RUN bun install --frozen-lockfile
+
+# Copy source code
+COPY . .
+
+# Build all packages
+RUN bun run build
+
+# Prune dev dependencies
+RUN rm -rf node_modules && bun install --production --omit=optional
+
+# =============================================================================
+# Stage 2: Runtime
+# =============================================================================
+FROM oven/bun:1-slim AS runtime
+
+# Install runtime dependencies (minimal)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy built artifacts from builder
+COPY --from=builder /app/packages/server/src ./server/src/
+COPY --from=builder /app/packages/server/prisma ./server/prisma/
+COPY --from=builder /app/packages/server/node_modules ./server/node_modules/
+COPY --from=builder /app/packages/client/dist ./client/
+COPY --from=builder /app/node_modules ./node_modules/
+
+# Copy entrypoint
+COPY docker-entrypoint-server.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
+
+# Create config directory
+RUN mkdir -p /data/config
+
+# Environment defaults
+ENV PORT=3000
+ENV NODE_ENV=production
+ENV ANNEX_CONFIG_DIR=/data/config
+
+# Expose port
+EXPOSE 3000
+
+# Volume for config
+VOLUME ["/data/config"]
+
+# Entrypoint
+ENTRYPOINT ["/docker-entrypoint.sh"]
