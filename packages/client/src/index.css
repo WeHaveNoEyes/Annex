@@ -113,3 +113,17 @@ body {
   @apply bg-black/90 border border-white/10 rounded shadow-xl backdrop-blur-sm;
 }
 
+/* Sidepane slide-in animation */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 0.2s ease-out;
+}
+

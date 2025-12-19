@@ -2,8 +2,6 @@ import { z } from "zod";
 import { router, publicProcedure } from "../trpc.js";
 import { prisma } from "../db/client.js";
 import { MediaType, RequestStatus, Prisma, TvEpisodeStatus } from "@prisma/client";
-import { startLegacyMoviePipeline, cancelLegacyMoviePipeline, retryLegacyMoviePipeline, reprocessLegacyMoviePipeline } from "../services/legacyMoviePipeline.js";
-import { initializeLegacyTvEpisodes, reprocessLegacyTvEpisode, reprocessLegacyTvSeason, reprocessLegacyTvRequest } from "../services/legacyTvPipeline.js";
 import { getDownloadService } from "../services/download.js";
 import { getPipelineExecutor } from "../services/pipeline/PipelineExecutor.js";
 
@@ -90,6 +88,26 @@ function fromRequestStatus(value: RequestStatus): string {
 }
 
 /**
+ * Get default pipeline template for a media type.
+ * Throws error if no default template exists.
+ */
+async function getDefaultTemplate(mediaType: "MOVIE" | "TV"): Promise<string> {
+  const template = await prisma.pipelineTemplate.findFirst({
+    where: {
+      mediaType: mediaType === "MOVIE" ? MediaType.MOVIE : MediaType.TV,
+      isDefault: true,
+    },
+    select: { id: true },
+  });
+
+  if (!template) {
+    throw new Error(`No default pipeline template found for ${mediaType}. Run: bun run scripts/seed-default-pipelines.ts`);
+  }
+
+  return template.id;
+}
+
+/**
  * Resolve encoding profile for each target.
  * If target has no profile specified, use server's default profile.
  * If server has no default profile, use system default profile.
@@ -172,16 +190,28 @@ export const requestsRouter = router({
         },
       });
 
-      // Use new pipeline executor if pipelineTemplateId is provided
-      if (input.pipelineTemplateId) {
-        const executor = getPipelineExecutor();
-        executor.startExecution(request.id, input.pipelineTemplateId).catch((error) => {
-          console.error(`Pipeline execution failed for request ${request.id}:`, error);
-        });
-      } else {
-        // Fall back to legacy pipeline for backwards compatibility
-        await startLegacyMoviePipeline(request.id);
+      // Get pipeline template: use provided one or auto-select default
+      const templateId = input.pipelineTemplateId || await getDefaultTemplate("MOVIE");
+
+      // Validate template exists
+      const template = await prisma.pipelineTemplate.findUnique({
+        where: { id: templateId },
+      });
+
+      if (!template) {
+        throw new Error(`Pipeline template ${templateId} not found`);
       }
+
+      // Start pipeline execution
+      const executor = getPipelineExecutor();
+      executor.startExecution(request.id, templateId).catch(async (error) => {
+        console.error(`Pipeline execution failed for request ${request.id}:`, error);
+        // Mark request as failed if pipeline fails to start
+        await prisma.mediaRequest.update({
+          where: { id: request.id },
+          data: { status: RequestStatus.FAILED, error: error.message },
+        });
+      });
 
       return { id: request.id };
     }),
@@ -226,16 +256,28 @@ export const requestsRouter = router({
         },
       });
 
-      // Use new pipeline executor if pipelineTemplateId is provided
-      if (input.pipelineTemplateId) {
-        const executor = getPipelineExecutor();
-        executor.startExecution(request.id, input.pipelineTemplateId).catch((error) => {
-          console.error(`Pipeline execution failed for request ${request.id}:`, error);
-        });
-      } else {
-        // Fall back to legacy pipeline for backwards compatibility
-        await startLegacyMoviePipeline(request.id);
+      // Get pipeline template: use provided one or auto-select default
+      const templateId = input.pipelineTemplateId || await getDefaultTemplate("TV");
+
+      // Validate template exists
+      const template = await prisma.pipelineTemplate.findUnique({
+        where: { id: templateId },
+      });
+
+      if (!template) {
+        throw new Error(`Pipeline template ${templateId} not found`);
       }
+
+      // Start pipeline execution
+      const executor = getPipelineExecutor();
+      executor.startExecution(request.id, templateId).catch(async (error) => {
+        console.error(`Pipeline execution failed for request ${request.id}:`, error);
+        // Mark request as failed if pipeline fails to start
+        await prisma.mediaRequest.update({
+          where: { id: request.id },
+          data: { status: RequestStatus.FAILED, error: error.message },
+        });
+      });
 
       return { id: request.id };
     }),
@@ -422,8 +464,21 @@ export const requestsRouter = router({
    * Cancel a request
    */
   cancel: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
-    // Cancel any running pipeline jobs
-    await cancelLegacyMoviePipeline(input.id);
+    // Find and cancel the pipeline execution
+    const execution = await prisma.pipelineExecution.findUnique({
+      where: { requestId: input.id },
+    });
+
+    if (execution && execution.status === "RUNNING") {
+      const executor = getPipelineExecutor();
+      await executor.cancelExecution(execution.id);
+    }
+
+    // Update request status
+    await prisma.mediaRequest.update({
+      where: { id: input.id },
+      data: { status: RequestStatus.FAILED, error: "Cancelled by user" },
+    });
 
     return { success: true };
   }),
@@ -441,8 +496,15 @@ export const requestsRouter = router({
       return { success: false, error: "Request not found" };
     }
 
-    // Cancel any running pipeline jobs first
-    await cancelLegacyMoviePipeline(input.id);
+    // Cancel any running pipeline execution first
+    const execution = await prisma.pipelineExecution.findUnique({
+      where: { requestId: input.id },
+    });
+
+    if (execution && execution.status === "RUNNING") {
+      const executor = getPipelineExecutor();
+      await executor.cancelExecution(execution.id);
+    }
 
     // TODO: Cancel torrent downloads and delete downloaded media from qBittorrent
     // - Get all torrent hashes from downloads (for TV) or the request itself (for movies)
@@ -473,74 +535,49 @@ export const requestsRouter = router({
   }),
 
   /**
-   * Retry a failed request, resuming from the appropriate step
+   * Retry a failed request by restarting its pipeline
    */
   retry: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
-    // Use smart retry that resumes from where we left off
-    const result = await retryLegacyMoviePipeline(input.id);
-
-    return { success: true, step: result.step };
-  }),
-
-  /**
-   * Reprocess a completed movie request (re-encode and re-deliver)
-   */
-  reprocess: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
     const request = await prisma.mediaRequest.findUnique({
       where: { id: input.id },
     });
 
     if (!request) {
-      return { success: false, error: "Request not found" };
+      throw new Error("Request not found");
     }
 
-    if (request.type === MediaType.TV) {
-      // For TV shows, reprocess all delivered episodes
-      const result = await reprocessLegacyTvRequest(input.id);
-      return {
-        success: true,
-        step: "encoding",
-        episodesReprocessed: result.episodesReprocessed,
-        sourcesFound: result.sourcesFound,
-      };
+    // Find the execution to get the template ID
+    const execution = await prisma.pipelineExecution.findUnique({
+      where: { requestId: input.id },
+      select: { templateId: true },
+    });
+
+    if (!execution) {
+      throw new Error("No pipeline execution found for this request");
     }
 
-    // For movies
-    const result = await reprocessLegacyMoviePipeline(input.id);
-    return {
-      success: true,
-      step: result.step,
-      sourceExists: result.sourceExists,
-    };
+    // Reset request status
+    await prisma.mediaRequest.update({
+      where: { id: input.id },
+      data: {
+        status: RequestStatus.PENDING,
+        progress: 0,
+        error: null,
+      },
+    });
+
+    // Start a new pipeline execution
+    const executor = getPipelineExecutor();
+    executor.startExecution(request.id, execution.templateId).catch(async (error) => {
+      console.error(`Pipeline retry failed for request ${request.id}:`, error);
+      await prisma.mediaRequest.update({
+        where: { id: request.id },
+        data: { status: RequestStatus.FAILED, error: error.message },
+      });
+    });
+
+    return { success: true };
   }),
-
-  /**
-   * Reprocess a single TV episode (re-encode and re-deliver)
-   */
-  reprocessEpisode: publicProcedure
-    .input(z.object({ episodeId: z.string() }))
-    .mutation(async ({ input }) => {
-      const result = await reprocessLegacyTvEpisode(input.episodeId);
-      return {
-        success: true,
-        step: result.step,
-        sourceExists: result.sourceExists,
-      };
-    }),
-
-  /**
-   * Reprocess all episodes in a specific season
-   */
-  reprocessSeason: publicProcedure
-    .input(z.object({ requestId: z.string(), seasonNumber: z.number() }))
-    .mutation(async ({ input }) => {
-      const result = await reprocessLegacyTvSeason(input.requestId, input.seasonNumber);
-      return {
-        success: true,
-        episodesReprocessed: result.episodesReprocessed,
-        sourcesFound: result.sourcesFound,
-      };
-    }),
 
   /**
    * Get episode statuses for a TV request
@@ -570,24 +607,10 @@ export const requestsRouter = router({
       }
 
       // Check if TV episodes exist, if not, initialize them
-      let episodes = await prisma.tvEpisode.findMany({
+      const episodes = await prisma.tvEpisode.findMany({
         where: { requestId: input.requestId },
         orderBy: [{ season: "asc" }, { episode: "asc" }],
       });
-
-      // Initialize TV episodes on-demand if they don't exist
-      if (episodes.length === 0) {
-        try {
-          await initializeLegacyTvEpisodes(input.requestId);
-          episodes = await prisma.tvEpisode.findMany({
-            where: { requestId: input.requestId },
-            orderBy: [{ season: "asc" }, { episode: "asc" }],
-          });
-        } catch (error) {
-          console.error(`[Requests] Failed to initialize TV episodes for ${input.requestId}:`, error);
-          return [];
-        }
-      }
 
       // Get target server IDs from the request
       const targets = request.targets as unknown as RequestTarget[];
@@ -837,8 +860,22 @@ export const requestsRouter = router({
         },
       });
 
-      // Re-start pipeline with the selected release
-      await startLegacyMoviePipeline(input.id);
+      // Restart pipeline with the selected release
+      const execution = await prisma.pipelineExecution.findUnique({
+        where: { requestId: input.id },
+        select: { templateId: true },
+      });
+
+      if (execution) {
+        const executor = getPipelineExecutor();
+        executor.startExecution(request.id, execution.templateId).catch(async (error) => {
+          console.error(`Pipeline restart failed for request ${request.id}:`, error);
+          await prisma.mediaRequest.update({
+            where: { id: request.id },
+            data: { status: RequestStatus.FAILED, error: error.message },
+          });
+        });
+      }
 
       return { success: true };
     }),
@@ -874,7 +911,22 @@ export const requestsRouter = router({
         },
       });
 
-      await startLegacyMoviePipeline(input.id);
+      const execution = await prisma.pipelineExecution.findUnique({
+        where: { requestId: input.id },
+        select: { templateId: true },
+      });
+
+      if (execution) {
+        const executor = getPipelineExecutor();
+        executor.startExecution(request.id, execution.templateId).catch(async (error) => {
+          console.error(`Pipeline restart failed for request ${request.id}:`, error);
+          await prisma.mediaRequest.update({
+            where: { id: request.id },
+            data: { status: RequestStatus.FAILED, error: error.message },
+          });
+        });
+      }
+
       return { success: true };
     }),
 });

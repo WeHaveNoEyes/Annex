@@ -1046,7 +1046,8 @@ model PipelineTemplate {
   isPublic    Boolean  @default(true)
   userId      String?
   user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  steps       PipelineStep[]
+  steps       Json     // Tree structure of steps with children for parallel execution
+  layout      Json?    // Visual layout data for React Flow editor (node positions)
   executions  PipelineExecution[]
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1056,23 +1057,25 @@ model PipelineTemplate {
   @@index([isPublic])
 }
 
-model PipelineStep {
-  id         String   @id @default(cuid())
-  templateId String
-  template   PipelineTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  order      Int
-  type       StepType
-  name       String
-  config     Json     // Step-specific configuration
-  condition  Json?    // Conditional execution rules
-  required   Boolean  @default(true)
-  retryable  Boolean  @default(true)
-  timeout    Int?     // Timeout in seconds
-  continueOnError Boolean @default(false)
-
-  @@unique([templateId, order])
-  @@index([templateId])
-}
+// DEPRECATED: Legacy flat step structure - replaced by JSON tree in PipelineTemplate.steps
+// Keeping for reference but not used in new pipeline system
+// model PipelineStep {
+//   id         String   @id @default(cuid())
+//   templateId String
+//   template   PipelineTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+//   order      Int
+//   type       StepType
+//   name       String
+//   config     Json     // Step-specific configuration
+//   condition  Json?    // Conditional execution rules
+//   required   Boolean  @default(true)
+//   retryable  Boolean  @default(true)
+//   timeout    Int?     // Timeout in seconds
+//   continueOnError Boolean @default(false)
+//
+//   @@unique([templateId, order])
+//   @@index([templateId])
+// }
 
 model PipelineExecution {
   id          String   @id @default(cuid())

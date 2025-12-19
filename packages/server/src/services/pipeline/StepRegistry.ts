@@ -11,10 +11,12 @@ export class StepRegistry {
 
   // Register a step type with its constructor
   static register(type: StepType, stepClass: StepConstructor): void {
-    if (this.steps.has(type)) {
-      throw new Error(`Step type ${type} is already registered`);
-    }
     this.steps.set(type, stepClass);
+  }
+
+  // Reset registry (used for testing)
+  static reset(): void {
+    this.steps.clear();
   }
 
   // Create a new instance of a step by type

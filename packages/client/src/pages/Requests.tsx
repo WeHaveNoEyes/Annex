@@ -152,25 +152,11 @@ function EpisodeStatusIcon({ status }: { status: EpisodeStatus }) {
 }
 
 function EpisodeGrid({ requestId }: { requestId: string }) {
-  const utils = trpc.useUtils();
   const episodeStatuses = trpc.requests.getEpisodeStatuses.useQuery(
     { requestId },
     { refetchInterval: 5000 }
   );
 
-  const reprocessEpisodeMutation = trpc.requests.reprocessEpisode.useMutation({
-    onSuccess: () => {
-      utils.requests.list.invalidate();
-      utils.requests.getEpisodeStatuses.invalidate({ requestId });
-    },
-  });
-
-  const reprocessSeasonMutation = trpc.requests.reprocessSeason.useMutation({
-    onSuccess: () => {
-      utils.requests.list.invalidate();
-      utils.requests.getEpisodeStatuses.invalidate({ requestId });
-    },
-  });
 
   if (episodeStatuses.isLoading) {
     return (
@@ -196,9 +182,6 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
           (e) => e.status === "completed" || e.status === "available"
         ).length;
         const availableCount = season.episodes.filter((e) => e.status === "available").length;
-        const hasReprocessable = season.episodes.some(
-          (e) => e.status === "completed" || e.status === "available"
-        );
 
         return (
           <div key={season.seasonNumber} className="bg-white/5 rounded border border-white/10">
@@ -212,19 +195,6 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
                   )}
                 </span>
               </div>
-              {hasReprocessable && (
-                <button
-                  onClick={() => {
-                    if (confirm(`Reprocess Season ${season.seasonNumber}?`)) {
-                      reprocessSeasonMutation.mutate({ requestId, seasonNumber: season.seasonNumber });
-                    }
-                  }}
-                  disabled={reprocessSeasonMutation.isPending}
-                  className="text-xs px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 text-white/50 hover:text-white/70 transition-colors disabled:opacity-50"
-                >
-                  Reprocess
-                </button>
-              )}
             </div>
             <div className="p-2 flex flex-wrap gap-1">
               {season.episodes.map((episode) => {
@@ -233,16 +203,8 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
                 const hasProgress = episode.progress != null && isProcessing;
 
                 return (
-                  <button
+                  <div
                     key={episode.episodeNumber}
-                    onClick={() => {
-                      if (canReprocess && episode.id) {
-                        if (confirm(`Reprocess Episode ${episode.episodeNumber}?`)) {
-                          reprocessEpisodeMutation.mutate({ episodeId: episode.id });
-                        }
-                      }
-                    }}
-                    disabled={!canReprocess}
                     className={`
                       relative flex items-center gap-1 px-2 py-1 rounded text-xs
                       ${episodeStatusColors[episode.status as EpisodeStatus] || "bg-white/5 text-white/40"}
@@ -264,7 +226,7 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
                         <span className="text-[10px] opacity-70">{Math.round(episode.progress || 0)}%</span>
                       )}
                     </span>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -329,12 +291,6 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
     },
   });
 
-  const reprocessMutation = trpc.requests.reprocess.useMutation({
-    onSuccess: () => {
-      utils.requests.list.invalidate();
-      utils.system.queue.invalidate();
-    },
-  });
 
   const refreshQualityMutation = trpc.requests.refreshQualitySearch.useMutation({
     onSuccess: () => {
@@ -349,7 +305,6 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
   const isAwaiting = status === "awaiting";
   const isQualityUnavailable = status === "quality_unavailable";
   const isFailed = status === "failed";
-  const isCompleted = status === "completed";
   const isDownloading = status === "downloading";
 
   const posterUrl = request.posterPath
@@ -612,22 +567,6 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
                 popcorn={false}
               >
                 Cancel
-              </Button>
-            )}
-
-            {isCompleted && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirm(`Reprocess "${request.title}"?`)) {
-                    reprocessMutation.mutate({ id: request.id });
-                  }
-                }}
-                disabled={reprocessMutation.isPending}
-              >
-                {reprocessMutation.isPending ? "Reprocessing..." : "Reprocess"}
               </Button>
             )}
 

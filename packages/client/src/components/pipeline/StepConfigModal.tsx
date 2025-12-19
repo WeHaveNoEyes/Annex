@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Button, Input, Card, Label } from "../ui";
+import { Button, Input, Card, Label, Select } from "../ui";
 
 interface StepNodeData {
   label: string;
@@ -100,16 +100,16 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
             </div>
             <div>
               <Label>Max Resolution</Label>
-              <select
+              <Select
                 value={(config.maxResolution as string) || "1080p"}
                 onChange={(e) => setConfig({ ...config, maxResolution: e.target.value })}
-                className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white"
+                className="w-full"
               >
                 <option value="480p">480p</option>
                 <option value="720p">720p</option>
                 <option value="1080p">1080p</option>
                 <option value="2160p">4K (2160p)</option>
-              </select>
+              </Select>
             </div>
           </div>
         );
@@ -146,14 +146,14 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
             </div>
             <div>
               <Label>Default Action on Timeout</Label>
-              <select
+              <Select
                 value={(config.defaultAction as string) || "REJECT"}
                 onChange={(e) => setConfig({ ...config, defaultAction: e.target.value })}
-                className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white"
+                className="w-full"
               >
                 <option value="APPROVE">Approve</option>
                 <option value="REJECT">Reject</option>
-              </select>
+              </Select>
             </div>
           </div>
         );
@@ -163,16 +163,16 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
           <div className="space-y-3">
             <div>
               <Label>Event Type</Label>
-              <select
+              <Select
                 value={(config.event as string) || "REQUEST_SUBMITTED"}
                 onChange={(e) => setConfig({ ...config, event: e.target.value })}
-                className="w-full bg-white/5 border border-white/10 rounded px-3 py-2 text-white"
+                className="w-full"
               >
                 <option value="REQUEST_SUBMITTED">Request Submitted</option>
                 <option value="REQUEST_COMPLETED">Request Completed</option>
                 <option value="REQUEST_FAILED">Request Failed</option>
                 <option value="APPROVAL_REQUIRED">Approval Required</option>
-              </select>
+              </Select>
             </div>
           </div>
         );
@@ -183,14 +183,26 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 z-50 flex" onClick={onClose}>
+      <div className="flex-1" />
       <Card
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6"
+        className="w-full max-w-md h-full overflow-y-auto p-6 rounded-none border-l border-white/10 animate-slide-in-right"
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
       >
-        <h2 className="text-xl font-bold text-white mb-4">
-          Configure {nodeData.type} Step
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xl font-bold text-white">
+            Configure {nodeData.type} Step
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-white/50 hover:text-white transition-colors"
+            type="button"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
