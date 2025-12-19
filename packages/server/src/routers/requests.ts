@@ -5,6 +5,7 @@ import { MediaType, RequestStatus, Prisma, TvEpisodeStatus } from "@prisma/clien
 import { startLegacyMoviePipeline, cancelLegacyMoviePipeline, retryLegacyMoviePipeline, reprocessLegacyMoviePipeline } from "../services/legacyMoviePipeline.js";
 import { initializeLegacyTvEpisodes, reprocessLegacyTvEpisode, reprocessLegacyTvSeason, reprocessLegacyTvRequest } from "../services/legacyTvPipeline.js";
 import { getDownloadService } from "../services/download.js";
+import { getPipelineExecutor } from "../services/pipeline/PipelineExecutor.js";
 
 // =============================================================================
 // Types
@@ -171,9 +172,16 @@ export const requestsRouter = router({
         },
       });
 
-      // TODO: Use new pipeline executor if pipelineTemplateId is provided
-      // For now, always use legacy pipeline
-      await startLegacyMoviePipeline(request.id);
+      // Use new pipeline executor if pipelineTemplateId is provided
+      if (input.pipelineTemplateId) {
+        const executor = getPipelineExecutor();
+        executor.startExecution(request.id, input.pipelineTemplateId).catch((error) => {
+          console.error(`Pipeline execution failed for request ${request.id}:`, error);
+        });
+      } else {
+        // Fall back to legacy pipeline for backwards compatibility
+        await startLegacyMoviePipeline(request.id);
+      }
 
       return { id: request.id };
     }),
@@ -218,9 +226,16 @@ export const requestsRouter = router({
         },
       });
 
-      // TODO: Use new pipeline executor if pipelineTemplateId is provided
-      // For now, always use legacy pipeline
-      await startLegacyMoviePipeline(request.id);
+      // Use new pipeline executor if pipelineTemplateId is provided
+      if (input.pipelineTemplateId) {
+        const executor = getPipelineExecutor();
+        executor.startExecution(request.id, input.pipelineTemplateId).catch((error) => {
+          console.error(`Pipeline execution failed for request ${request.id}:`, error);
+        });
+      } else {
+        // Fall back to legacy pipeline for backwards compatibility
+        await startLegacyMoviePipeline(request.id);
+      }
 
       return { id: request.id };
     }),
