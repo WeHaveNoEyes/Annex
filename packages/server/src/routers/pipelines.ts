@@ -72,6 +72,17 @@ function toMediaType(value: string): MediaType {
   return value === "TV" ? MediaType.TV : MediaType.MOVIE;
 }
 
+function countSteps(steps: StepSchemaType[]): number {
+  let count = 0;
+  for (const step of steps) {
+    count++;
+    if (step.children && step.children.length > 0) {
+      count += countSteps(step.children);
+    }
+  }
+  return count;
+}
+
 export const pipelinesRouter = router({
   /**
    * List all pipeline templates
@@ -116,7 +127,7 @@ export const pipelinesRouter = router({
           mediaType: t.mediaType,
           isDefault: t.isDefault,
           isPublic: t.isPublic,
-          stepCount: steps.length,
+          stepCount: countSteps(steps),
           createdAt: t.createdAt,
           updatedAt: t.updatedAt,
         };
