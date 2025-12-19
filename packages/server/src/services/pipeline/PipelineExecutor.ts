@@ -192,7 +192,9 @@ export class PipelineExecutor {
     );
 
     // Merge all branch contexts (last one wins for conflicts)
-    const mergedContext = results.reduce((acc, ctx) => Object.assign(acc, ctx), { ...currentContext });
+    const mergedContext = results.reduce((acc, ctx) => Object.assign(acc, ctx), {
+      ...currentContext,
+    });
 
     // Update execution context in database once after all parallel branches complete
     await prisma.pipelineExecution.update({

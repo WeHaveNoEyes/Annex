@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, Input, type LibraryInfo, MediaCard, Skeleton, ToggleGroup } from "../components/ui";
+import {
+  Button,
+  Input,
+  type LibraryInfo,
+  MediaCard,
+  Skeleton,
+  ToggleGroup,
+} from "../components/ui";
 import { DiscoveryModeTabs } from "../components/ui/DiscoveryModeTabs";
 import { FilterPanel } from "../components/ui/FilterPanel";
 import { PeriodSelector } from "../components/ui/PeriodSelector";

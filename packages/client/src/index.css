@@ -36,16 +36,24 @@ body {
 
 /* Cinema glow effects */
 .glow-red {
-  box-shadow: 0 0 30px rgba(220, 38, 38, 0.4), 0 0 60px rgba(220, 38, 38, 0.2);
+  box-shadow:
+    0 0 30px rgba(220, 38, 38, 0.4),
+    0 0 60px rgba(220, 38, 38, 0.2);
 }
 
 .glow-gold {
-  box-shadow: 0 0 20px rgba(234, 179, 8, 0.3), 0 0 40px rgba(234, 179, 8, 0.1);
+  box-shadow:
+    0 0 20px rgba(234, 179, 8, 0.3),
+    0 0 40px rgba(234, 179, 8, 0.1);
 }
 
 /* Ambient red glow from top */
 .ambient-glow-top {
-  background: radial-gradient(ellipse 80% 50% at 50% 0%, rgba(185, 28, 28, 0.15) 0%, transparent 60%);
+  background: radial-gradient(
+    ellipse 80% 50% at 50% 0%,
+    rgba(185, 28, 28, 0.15) 0%,
+    transparent 60%
+  );
 }
 
 /* Ambient red glow from corners */
@@ -129,4 +137,3 @@ body {
 .animate-slide-in-right {
   animation: slide-in-right 0.2s ease-out;
 }
-
