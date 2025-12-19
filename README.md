@@ -15,7 +15,6 @@ Unified media acquisition platform replacing Jellyseerr, Radarr, Sonarr & Prowla
 ## Documentation
 
 - [Docker Deployment](docs/deployment.md) - Deploy with Docker (recommended)
-- [Proxmox Deployment](docs/proxmox-deployment.md) - Deploy to Proxmox 9.1+ with native Docker support
 - [Development Setup](docs/development.md) - Local development environment
 - [Encoder Migration Guide](docs/encoder-migration.md) - Upgrade from old encoder to new binary
 - [Contributing](docs/CONTRIBUTING.md) - Contribution guidelines
@@ -110,7 +109,7 @@ docker run -d \
 
 Access the web UI at `http://localhost` (all-in-one) or `http://localhost:3000` (server-only) and complete the setup wizard.
 
-See [Docker Deployment](docs/deployment.md) for docker-compose examples and [Proxmox Deployment](docs/proxmox-deployment.md) for Proxmox 9.1+ native Docker support.
+See [Docker Deployment](docs/deployment.md) for docker-compose examples and production deployment options.
 
 ### Manual Installation
 
