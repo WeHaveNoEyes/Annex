@@ -86,22 +86,53 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
 
       case "ENCODE":
         return (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div>
-              <Label>Target Quality (CRF)</Label>
+              <Label>Video Encoder</Label>
+              <Select
+                value={String(config.videoEncoder || "libsvtav1")}
+                onChange={(e) => setConfig({ ...config, videoEncoder: e.target.value })}
+                className="w-full"
+              >
+                <optgroup label="Software (CPU)">
+                  <option value="libsvtav1">libsvtav1 (AV1)</option>
+                  <option value="libx265">libx265 (HEVC/H.265)</option>
+                  <option value="libx264">libx264 (H.264)</option>
+                </optgroup>
+                <optgroup label="Hardware (VAAPI)">
+                  <option value="av1_vaapi">av1_vaapi (AV1 - Intel Arc)</option>
+                  <option value="hevc_vaapi">hevc_vaapi (HEVC)</option>
+                  <option value="h264_vaapi">h264_vaapi (H.264)</option>
+                </optgroup>
+                <optgroup label="Hardware (NVENC)">
+                  <option value="av1_nvenc">av1_nvenc (AV1 - RTX 40 series)</option>
+                  <option value="hevc_nvenc">hevc_nvenc (HEVC)</option>
+                  <option value="h264_nvenc">h264_nvenc (H.264)</option>
+                </optgroup>
+                <optgroup label="Hardware (QSV)">
+                  <option value="av1_qsv">av1_qsv (AV1 - Intel)</option>
+                  <option value="hevc_qsv">hevc_qsv (HEVC)</option>
+                  <option value="h264_qsv">h264_qsv (H.264)</option>
+                </optgroup>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Video Quality (CRF)</Label>
               <Input
                 type="number"
-                value={(config.crf as number) || 28}
+                value={Number(config.crf || 28)}
                 onChange={(e) => setConfig({ ...config, crf: parseInt(e.target.value) || 28 })}
                 min={0}
                 max={51}
               />
               <p className="text-xs text-white/50 mt-1">Lower = better quality (18-28 recommended)</p>
             </div>
+
             <div>
               <Label>Max Resolution</Label>
               <Select
-                value={(config.maxResolution as string) || "1080p"}
+                value={String(config.maxResolution || "1080p")}
                 onChange={(e) => setConfig({ ...config, maxResolution: e.target.value })}
                 className="w-full"
               >
@@ -109,6 +140,100 @@ export default function StepConfigModal({ nodeData, onClose, onUpdate }: StepCon
                 <option value="720p">720p</option>
                 <option value="1080p">1080p</option>
                 <option value="2160p">4K (2160p)</option>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Max Bitrate (kbps, optional)</Label>
+              <Input
+                type="number"
+                value={config.maxBitrate !== undefined ? Number(config.maxBitrate) : ""}
+                onChange={(e) => setConfig({ ...config, maxBitrate: e.target.value ? parseInt(e.target.value) : undefined })}
+                placeholder="Leave empty for no limit"
+                min={0}
+              />
+            </div>
+
+            <div>
+              <Label>Hardware Acceleration</Label>
+              <Select
+                value={String(config.hwAccel || "NONE")}
+                onChange={(e) => setConfig({ ...config, hwAccel: e.target.value })}
+                className="w-full"
+              >
+                <option value="NONE">Software (CPU)</option>
+                <option value="VAAPI">VAAPI (Intel Arc / AMD)</option>
+                <option value="NVENC">NVENC (NVIDIA)</option>
+                <option value="QSV">Quick Sync (Intel)</option>
+                <option value="AMF">AMF (AMD)</option>
+                <option value="VIDEOTOOLBOX">VideoToolbox (macOS)</option>
+              </Select>
+            </div>
+
+            {config.hwAccel && config.hwAccel !== "NONE" ? (
+              <div>
+                <Label>Hardware Device Path (optional)</Label>
+                <Input
+                  value={String(config.hwDevice || "")}
+                  onChange={(e) => setConfig({ ...config, hwDevice: e.target.value || undefined })}
+                  placeholder="/dev/dri/renderD128"
+                />
+              </div>
+            ) : null}
+
+            <div>
+              <Label>Encoding Preset</Label>
+              <Select
+                value={String(config.preset || "medium")}
+                onChange={(e) => setConfig({ ...config, preset: e.target.value })}
+                className="w-full"
+              >
+                <option value="fast">Fast</option>
+                <option value="medium">Medium (balanced)</option>
+                <option value="slow">Slow (best quality)</option>
+              </Select>
+              <p className="text-xs text-white/50 mt-1">Speed vs quality tradeoff</p>
+            </div>
+
+            <div>
+              <Label>Audio Encoder</Label>
+              <Select
+                value={String(config.audioEncoder || "copy")}
+                onChange={(e) => setConfig({ ...config, audioEncoder: e.target.value })}
+                className="w-full"
+              >
+                <option value="copy">Copy (passthrough)</option>
+                <option value="aac">AAC</option>
+                <option value="opus">Opus</option>
+                <option value="ac3">AC3 (Dolby Digital)</option>
+                <option value="eac3">EAC3 (Dolby Digital Plus)</option>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Subtitles</Label>
+              <Select
+                value={String(config.subtitlesMode || "COPY")}
+                onChange={(e) => setConfig({ ...config, subtitlesMode: e.target.value })}
+                className="w-full"
+              >
+                <option value="COPY">Copy all tracks</option>
+                <option value="COPY_TEXT">Copy text tracks only</option>
+                <option value="EXTRACT">Extract to separate files</option>
+                <option value="NONE">Remove subtitles</option>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Container Format</Label>
+              <Select
+                value={String(config.container || "MKV")}
+                onChange={(e) => setConfig({ ...config, container: e.target.value })}
+                className="w-full"
+              >
+                <option value="MKV">MKV (recommended)</option>
+                <option value="MP4">MP4 (wider compatibility)</option>
+                <option value="WEBM">WebM</option>
               </Select>
             </div>
           </div>
