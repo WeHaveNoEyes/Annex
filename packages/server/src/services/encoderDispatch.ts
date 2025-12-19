@@ -23,9 +23,9 @@ import type {
   JobCompleteMessage,
   JobFailedMessage,
   JobAssignMessage,
-  EncodingProfileData,
+  EncodingConfig,
 } from "@annex/shared";
-import type { EncodingProfile, RemoteEncoder, EncoderAssignment } from "@prisma/client";
+import type { RemoteEncoder, EncoderAssignment } from "@prisma/client";
 
 // =============================================================================
 // Types
@@ -318,11 +318,16 @@ class EncoderDispatchService {
         continue; // No available encoder
       }
 
-      // Get profile
-      const profile = await prisma.encodingProfile.findUnique({
-        where: { id: job.profileId },
+      // Get encoding config from job payload
+      const jobRecord = await prisma.job.findUnique({
+        where: { id: job.jobId },
+        select: { payload: true },
       });
-      if (!profile) continue;
+      if (!jobRecord) continue;
+
+      const payload = jobRecord.payload as { encodingConfig?: Record<string, unknown> };
+      const encodingConfig = payload.encodingConfig;
+      if (!encodingConfig) continue;
 
       // Get WebSocket connection
       const connection = this.encoders.get(encoder.encoderId);
@@ -334,8 +339,7 @@ class EncoderDispatchService {
         jobId: job.jobId,
         inputPath: translateToRemotePath(job.inputPath),
         outputPath: translateToRemotePath(job.outputPath),
-        profileId: job.profileId,
-        profile: this.serializeProfile(profile),
+        encodingConfig: encodingConfig as EncodingConfig,
       };
 
       this.send(connection.ws, assignMsg);
@@ -761,7 +765,7 @@ class EncoderDispatchService {
     jobId: string,
     inputPath: string,
     outputPath: string,
-    profileId: string
+    encodingConfig: Record<string, unknown>
   ): Promise<EncoderAssignment> {
     // Check for existing active assignment for same input file (deduplication)
     const existingAssignment = await prisma.encoderAssignment.findFirst({
@@ -802,7 +806,6 @@ class EncoderDispatchService {
         encoderId: encoder.encoderId,
         inputPath,
         outputPath,
-        profileId,
         status: "PENDING",
       },
     });
@@ -901,24 +904,6 @@ class EncoderDispatchService {
     if (ws.readyState === 1) {
       ws.send(JSON.stringify(msg));
     }
-  }
-
-  private serializeProfile(profile: EncodingProfile): EncodingProfileData {
-    return {
-      id: profile.id,
-      name: profile.name,
-      videoEncoder: profile.videoEncoder,
-      videoQuality: profile.videoQuality,
-      videoMaxResolution: profile.videoMaxResolution,
-      videoMaxBitrate: profile.videoMaxBitrate,
-      hwAccel: profile.hwAccel,
-      hwDevice: profile.hwDevice,
-      videoFlags: profile.videoFlags as Record<string, unknown>,
-      audioEncoder: profile.audioEncoder,
-      audioFlags: profile.audioFlags as Record<string, unknown>,
-      subtitlesMode: profile.subtitlesMode,
-      container: profile.container,
-    };
   }
 
   private emitEncoderStatusUpdate(encoderId: string): void {

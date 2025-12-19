@@ -760,33 +760,18 @@ export const requestsRouter = router({
       select: {
         id: true,
         name: true,
-        encodingProfileId: true,
         maxResolution: true,
-        encodingProfile: {
-          select: { id: true, name: true },
-        },
       },
       orderBy: { name: "asc" },
-    });
-
-    const profiles = await prisma.encodingProfile.findMany({
-      select: { id: true, name: true, isDefault: true },
-      orderBy: [{ isDefault: "desc" }, { name: "asc" }],
     });
 
     return {
       servers: servers.map((s) => ({
         id: s.id,
         name: s.name,
-        defaultProfileId: s.encodingProfileId,
-        defaultProfileName: s.encodingProfile?.name || null,
         maxResolution: s.maxResolution,
       })),
-      profiles: profiles.map((p) => ({
-        id: p.id,
-        name: p.name,
-        isDefault: p.isDefault,
-      })),
+      profiles: [], // No longer used
     };
   }),
 

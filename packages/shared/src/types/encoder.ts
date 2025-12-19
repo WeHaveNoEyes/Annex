@@ -148,8 +148,7 @@ export interface JobAssignMessage {
   jobId: string;
   inputPath: string;
   outputPath: string;
-  profileId: string;
-  profile: EncodingProfileData;
+  encodingConfig: EncodingConfig;
 }
 
 export interface JobCancelMessage {
@@ -175,19 +174,17 @@ export type ServerMessage =
 // =============================================================================
 
 /**
- * Encoding profile data sent to remote encoders
- * Matches the structure in Prisma but serializable over WebSocket
+ * Encoding configuration sent to remote encoders
  */
-export interface EncodingProfileData {
-  id: string;
-  name: string;
+export interface EncodingConfig {
   videoEncoder: string;
-  videoQuality: number;
-  videoMaxResolution: string;
-  videoMaxBitrate: number | null;
+  crf: number;
+  maxResolution: string;
+  maxBitrate?: number;
   hwAccel: string;
-  hwDevice: string | null;
+  hwDevice?: string;
   videoFlags: Record<string, unknown>;
+  preset: string;
   audioEncoder: string;
   audioFlags: Record<string, unknown>;
   subtitlesMode: string;
@@ -222,7 +219,6 @@ export interface EncoderAssignmentInfo {
   encoderId: string;
   inputPath: string;
   outputPath: string;
-  profileId: string;
   status: AssignmentStatus;
   attempt: number;
   maxAttempts: number;

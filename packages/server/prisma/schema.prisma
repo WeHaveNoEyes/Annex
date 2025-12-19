@@ -119,8 +119,6 @@ model StorageServer {
   updatedAt             DateTime @updatedAt
 
   // Relations
-  encodingProfile       EncodingProfile? @relation(fields: [encodingProfileId], references: [id])
-  encodingProfileId     String?
   libraryItems          LibraryItem[]
   episodeLibraryItems   EpisodeLibraryItem[]
 
@@ -199,80 +197,6 @@ model IndexerRateLimitRequest {
   @@index([requestedAt])
 }
 
-// =============================================================================
-// Encoding Profiles
-// =============================================================================
-
-model EncodingProfile {
-  id                   String     @id @default(cuid())
-  name                 String
-  description          String?
-
-  // Video encoder (e.g., "av1_qsv", "libsvtav1", "hevc_nvenc", "libx265")
-  videoEncoder         String     @default("libsvtav1")
-
-  // Primary quality control (CRF for software, global_quality for QSV, etc.)
-  videoQuality         Int        @default(25)
-
-  // Maximum output resolution
-  videoMaxResolution   Resolution @default(RES_1080P)
-
-  // Optional bitrate cap (kbps)
-  videoMaxBitrate      Int?
-
-  // Hardware acceleration settings
-  hwAccel              HwAccel    @default(NONE)
-  hwDevice             String?    // e.g., "/dev/dri/renderD129" for VAAPI/QSV
-
-  // Encoder-specific flags as JSON object
-  // e.g., {"preset": "slow", "look_ahead": 1, "tune": "film"}
-  videoFlags           Json       @default("{}")
-
-  // Audio encoder (e.g., "copy", "aac", "libopus", "ac3")
-  audioEncoder         String     @default("copy")
-
-  // Audio encoder flags as JSON object
-  // e.g., {"b": "192k", "ac": 2}
-  audioFlags           Json       @default("{}")
-
-  // Subtitle handling
-  subtitlesMode        SubtitlesMode @default(COPY)
-
-  // Output container format
-  container            Container  @default(MKV)
-
-  isDefault            Boolean    @default(false)
-
-  createdAt            DateTime   @default(now())
-  updatedAt            DateTime   @updatedAt
-
-  // Relations
-  servers              StorageServer[]
-
-  @@index([isDefault])
-}
-
-enum HwAccel {
-  NONE
-  QSV     // Intel Quick Sync Video
-  NVENC   // NVIDIA NVENC
-  VAAPI   // Video Acceleration API (Linux)
-  AMF     // AMD Advanced Media Framework
-  VIDEOTOOLBOX // macOS VideoToolbox
-}
-
-enum SubtitlesMode {
-  COPY        // Copy all subtitles as-is
-  COPY_TEXT   // Copy only text-based subtitles (SRT, ASS)
-  EXTRACT     // Extract to separate files
-  NONE        // No subtitles
-}
-
-enum Container {
-  MKV
-  MP4
-  WEBM
-}
 
 // =============================================================================
 // Media Requests
@@ -985,7 +909,6 @@ model EncoderAssignment {
   // Encode details (copied from job for resilience)
   inputPath       String
   outputPath      String
-  profileId       String
 
   // State
   status          AssignmentStatus @default(PENDING)

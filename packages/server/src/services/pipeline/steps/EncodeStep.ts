@@ -5,9 +5,42 @@ import { prisma } from "../../../db/client.js";
 import { getEncoderDispatchService } from "../../encoderDispatch.js";
 
 interface EncodeStepConfig {
-  crf?: number; // Quality (18-28 recommended, lower = better)
+  // Video encoder (e.g., "av1_qsv", "libsvtav1", "hevc_nvenc", "libx265")
+  videoEncoder?: string;
+
+  // Quality control (CRF for software, global_quality for QSV, etc.)
+  crf?: number; // 18-28 recommended, lower = better
+
+  // Maximum output resolution
   maxResolution?: "480p" | "720p" | "1080p" | "2160p";
+
+  // Optional bitrate cap (kbps)
+  maxBitrate?: number;
+
+  // Hardware acceleration
+  hwAccel?: "NONE" | "QSV" | "NVENC" | "VAAPI" | "AMF" | "VIDEOTOOLBOX";
+  hwDevice?: string; // e.g., "/dev/dri/renderD128" for VAAPI/QSV
+
+  // Encoder-specific flags as JSON object
+  // e.g., {"preset": "slow", "look_ahead": 1, "tune": "film"}
+  videoFlags?: Record<string, unknown>;
+
+  // Encoder preset
   preset?: "fast" | "medium" | "slow";
+
+  // Audio encoder (e.g., "copy", "aac", "libopus", "ac3")
+  audioEncoder?: string;
+
+  // Audio encoder flags
+  audioFlags?: Record<string, unknown>;
+
+  // Subtitle handling
+  subtitlesMode?: "COPY" | "COPY_TEXT" | "EXTRACT" | "NONE";
+
+  // Output container format
+  container?: "MKV" | "MP4" | "WEBM";
+
+  // Execution settings
   pollInterval?: number;
   timeout?: number;
 }
@@ -55,6 +88,18 @@ export class EncodeStep extends BaseStep {
     if (cfg.preset && !["fast", "medium", "slow"].includes(cfg.preset)) {
       throw new Error("preset must be one of: fast, medium, slow");
     }
+
+    if (cfg.hwAccel && !["NONE", "QSV", "NVENC", "VAAPI", "AMF", "VIDEOTOOLBOX"].includes(cfg.hwAccel)) {
+      throw new Error("hwAccel must be one of: NONE, QSV, NVENC, VAAPI, AMF, VIDEOTOOLBOX");
+    }
+
+    if (cfg.subtitlesMode && !["COPY", "COPY_TEXT", "EXTRACT", "NONE"].includes(cfg.subtitlesMode)) {
+      throw new Error("subtitlesMode must be one of: COPY, COPY_TEXT, EXTRACT, NONE");
+    }
+
+    if (cfg.container && !["MKV", "MP4", "WEBM"].includes(cfg.container)) {
+      throw new Error("container must be one of: MKV, MP4, WEBM");
+    }
   }
 
   async execute(context: PipelineContext, config: unknown): Promise<StepOutput> {
@@ -83,27 +128,23 @@ export class EncodeStep extends BaseStep {
       },
     });
 
-    // Get targets from context
-    const targets = context.targets || [];
-    if (targets.length === 0) {
-      return {
-        success: false,
-        error: "No target servers configured",
-      };
-    }
-
-    // Use first target's encoding profile (for now)
-    const target = targets[0];
-    const profileId = target.encodingProfileId;
-
-    if (!profileId) {
-      return {
-        success: false,
-        error: "No encoding profile configured for target server",
-      };
-    }
-
     await this.logActivity(requestId, ActivityType.INFO, "Starting encoding job");
+
+    // Build encoding configuration with defaults
+    const encodingConfig = {
+      videoEncoder: cfg.videoEncoder || "libsvtav1",
+      crf: cfg.crf || 28,
+      maxResolution: cfg.maxResolution || "1080p",
+      maxBitrate: cfg.maxBitrate,
+      hwAccel: cfg.hwAccel || "NONE",
+      hwDevice: cfg.hwDevice,
+      videoFlags: cfg.videoFlags || {},
+      preset: cfg.preset || "medium",
+      audioEncoder: cfg.audioEncoder || "copy",
+      audioFlags: cfg.audioFlags || {},
+      subtitlesMode: cfg.subtitlesMode || "COPY",
+      container: cfg.container || "MKV",
+    };
 
     // Create Job record
     const job = await prisma.job.create({
@@ -113,10 +154,7 @@ export class EncodeStep extends BaseStep {
           requestId,
           mediaType,
           inputPath: sourceFilePath,
-          profileId,
-          crf: cfg.crf,
-          maxResolution: cfg.maxResolution,
-          preset: cfg.preset,
+          encodingConfig,
         },
         dedupeKey: `encode:${requestId}`,
       },
@@ -132,7 +170,7 @@ export class EncodeStep extends BaseStep {
       job.id,
       sourceFilePath,
       outputPath,
-      profileId
+      encodingConfig
     );
 
     this.reportProgress(0, `Encoding job created: ${assignment.id}`);
