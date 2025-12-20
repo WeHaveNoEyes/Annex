@@ -184,6 +184,7 @@ enum IndexerType {
   RSS
   TORRENTLEECH
   UNIT3D
+  CARDIGANN
 }
 
 // Rate limit request tracking (sliding window)

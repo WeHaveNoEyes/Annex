@@ -102,6 +102,7 @@ export class CardigannRepository {
       throw new Error("Invalid response from GitHub API");
     }
 
+    // biome-ignore lint/suspicious/noExplicitAny: GitHub API response type is not typed
     return data.filter((item: any) => item.type === "file" && item.name.endsWith(".yml"));
   }
 
@@ -133,8 +134,9 @@ export class CardigannRepository {
   }
 
   async getDefinition(id: string): Promise<ParsedIndexerDefinition | null> {
-    if (this.definitionsCache.has(id)) {
-      return this.definitionsCache.get(id)!;
+    const cached = this.definitionsCache.get(id);
+    if (cached) {
+      return cached;
     }
 
     const filePath = join(this.storageDir, `${id}.yml`);
@@ -253,11 +255,13 @@ export class CardigannRepository {
     };
   }
 
+  // biome-ignore lint/suspicious/noExplicitAny: Metadata structure is dynamic
   private async saveMetadata(data: any): Promise<void> {
     const metadataPath = join(this.storageDir, ".metadata.json");
     await writeFile(metadataPath, JSON.stringify(data, null, 2), "utf-8");
   }
 
+  // biome-ignore lint/suspicious/noExplicitAny: Metadata structure is dynamic
   private async loadMetadata(): Promise<any> {
     const metadataPath = join(this.storageDir, ".metadata.json");
 

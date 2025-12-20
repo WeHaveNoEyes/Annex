@@ -8,6 +8,7 @@
 import { IndexerType } from "@prisma/client";
 import { XMLParser } from "fast-xml-parser";
 import { prisma } from "../db/client.js";
+import { getCardigannProvider } from "./cardigannProvider.js";
 import { getCryptoService } from "./crypto.js";
 import { getRateLimiter } from "./rateLimiter.js";
 import {
@@ -227,6 +228,10 @@ class IndexerService {
 
       case IndexerType.UNIT3D:
         return this.searchUnit3d(indexer, options);
+
+      case IndexerType.CARDIGANN:
+        return this.searchCardigann(indexer, options);
+
       default:
         return this.searchTorznab(indexer, options);
     }
@@ -402,6 +407,44 @@ class IndexerService {
       indexerId: indexer.id,
       indexerName: indexer.name,
     }));
+  }
+
+  /**
+   * Search Cardigann indexer
+   */
+  private async searchCardigann(
+    indexer: {
+      id: string;
+      name: string;
+      url: string;
+      apiKey: string;
+      categoriesMovies: number[];
+      categoriesTv: number[];
+    },
+    options: SearchOptions
+  ): Promise<Release[]> {
+    // Load the Cardigann indexer instance from database
+    const cardigannIndexer = await prisma.cardigannIndexer.findFirst({
+      where: {
+        id: indexer.apiKey, // API key field stores the CardigannIndexer ID
+        enabled: true,
+      },
+    });
+
+    if (!cardigannIndexer) {
+      throw new Error(`Cardigann indexer not found or disabled: ${indexer.apiKey}`);
+    }
+
+    const provider = getCardigannProvider();
+
+    return provider.search(
+      {
+        indexerId: indexer.id,
+        indexerName: indexer.name,
+        cardigannIndexer,
+      },
+      options
+    );
   }
 
   /**
