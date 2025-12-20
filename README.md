@@ -17,6 +17,10 @@ Unified media acquisition platform replacing Jellyseerr, Radarr, Sonarr & Prowla
 - [Docker Deployment](docs/deployment.md) - Deploy with Docker (recommended)
 - [Development Setup](docs/development.md) - Local development environment
 - [Encoder Migration Guide](docs/encoder-migration.md) - Upgrade from old encoder to new binary
+- [Cardigann User Guide](docs/cardigann-user-guide.md) - Using Cardigann indexers
+- [Cardigann Developer Guide](docs/cardigann-developer-guide.md) - Cardigann engine internals
+- [Cardigann API Reference](docs/cardigann-api-reference.md) - tRPC endpoint documentation
+- [Cardigann Architecture](docs/cardigann-architecture.md) - System design and data flow
 - [Contributing](docs/CONTRIBUTING.md) - Contribution guidelines
 - [Code of Conduct](docs/CODE_OF_CONDUCT.md) - Community guidelines
 
@@ -24,7 +28,8 @@ Unified media acquisition platform replacing Jellyseerr, Radarr, Sonarr & Prowla
 
 - **Discovery** - Browse trending movies and TV shows via TMDB with aggregated ratings from MDBList (IMDB, RT, Metacritic, Trakt, Letterboxd)
 - **Request Management** - One-click requests with real-time progress tracking
-- **Multi-Indexer Search** - Search across multiple Torznab indexers with quality prioritization
+- **Multi-Indexer Search** - Search across Torznab, Newznab, and 500+ Cardigann indexers with quality prioritization
+- **Cardigann Engine** - Support for hundreds of indexers via YAML definitions from Prowlarr's repository (no Prowlarr required)
 - **Remote AV1 Encoding** - Distributed encoding via remote encoder nodes with Intel Arc VAAPI hardware acceleration
 - **Per-Server Quality Profiles** - Different encoding profiles per storage server (4K HDR, 1080p, 720p compact)
 - **Smart Naming** - Plex/Emby-compatible file naming before transfer
