@@ -10,7 +10,7 @@ import { useNavigate } from "react-router-dom";
 import { Button, Card, Input, Label } from "../components/ui";
 import { trpc } from "../trpc";
 
-type SetupStep = "welcome" | "tmdb" | "downloads" | "optional" | "complete";
+type SetupStep = "welcome" | "tmdb" | "trakt" | "downloads" | "optional" | "complete";
 
 export default function SetupPage() {
   const navigate = useNavigate();
@@ -28,12 +28,22 @@ export default function SetupPage() {
     setSecrets((prev) => ({ ...prev, [key]: value }));
   };
 
-  const testConnection = async (service: "qbittorrent" | "tmdb" | "mdblist") => {
-    const result = await testConnectionMutation.mutateAsync({ service });
-    setTestResults((prev) => ({
-      ...prev,
-      [service]: { success: result.success, message: result.message || result.error },
-    }));
+  const testConnection = async (service: "qbittorrent" | "tmdb" | "mdblist" | "trakt") => {
+    try {
+      const result = await testConnectionMutation.mutateAsync({ service });
+      setTestResults((prev) => ({
+        ...prev,
+        [service]: { success: result.success, message: result.message || result.error },
+      }));
+    } catch (error) {
+      setTestResults((prev) => ({
+        ...prev,
+        [service]: {
+          success: false,
+          message: error instanceof Error ? error.message : "Connection failed",
+        },
+      }));
+    }
   };
 
   const handleComplete = async () => {
@@ -81,7 +91,7 @@ export default function SetupPage() {
         {/* Step indicator */}
         {step !== "welcome" && step !== "complete" && (
           <div className="flex justify-center gap-2 mb-8">
-            {["tmdb", "downloads", "optional"].map((s) => (
+            {["tmdb", "trakt", "downloads", "optional"].map((s) => (
               <div
                 key={s}
                 className={`w-3 h-3 rounded-full transition-colors ${
@@ -107,6 +117,7 @@ export default function SetupPage() {
               <p className="text-sm text-surface-300">You'll need:</p>
               <ul className="text-sm text-surface-400 space-y-1 list-disc list-inside">
                 <li>A TMDB API key (free) for movie and TV metadata</li>
+                <li>A Trakt Client ID (free) for discovery lists</li>
                 <li>qBittorrent for downloading (optional now, required later)</li>
                 <li>Indexer access for searching releases (configured in Settings)</li>
               </ul>
@@ -176,9 +187,78 @@ export default function SetupPage() {
                 Back
               </Button>
               <Button
-                onClick={() => setStep("downloads")}
+                onClick={() => setStep("trakt")}
                 className="flex-1"
                 disabled={!secrets["tmdb.apiKey"]}
+              >
+                Continue
+              </Button>
+            </div>
+          </Card>
+        )}
+
+        {step === "trakt" && (
+          <Card className="p-8 space-y-6">
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold">Trakt Client ID</h2>
+              <p className="text-surface-400 text-sm">
+                Trakt powers discovery features like trending, popular, and favorited lists. This is
+                required for Annex to work.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <Label>Client ID</Label>
+                <Input
+                  type="password"
+                  value={secrets["trakt.clientId"] || ""}
+                  onChange={(e) => updateSecret("trakt.clientId", e.target.value)}
+                  placeholder="Enter your Trakt client ID"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => testConnection("trakt")}
+                  disabled={!secrets["trakt.clientId"] || testConnectionMutation.isLoading}
+                >
+                  {testConnectionMutation.isLoading ? "Testing..." : "Test Connection"}
+                </Button>
+                {testResults.trakt && (
+                  <span
+                    className={
+                      testResults.trakt.success ? "text-green-400 text-sm" : "text-red-400 text-sm"
+                    }
+                  >
+                    {testResults.trakt.message}
+                  </span>
+                )}
+              </div>
+
+              <p className="text-xs text-surface-500">
+                Don't have a client ID?{" "}
+                <a
+                  href="https://trakt.tv/oauth/applications"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-annex-400 hover:text-annex-300"
+                >
+                  Create a Trakt application (free)
+                </a>
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <Button variant="ghost" onClick={() => setStep("tmdb")}>
+                Back
+              </Button>
+              <Button
+                onClick={() => setStep("downloads")}
+                className="flex-1"
+                disabled={!secrets["trakt.clientId"]}
               >
                 Continue
               </Button>
@@ -253,7 +333,7 @@ export default function SetupPage() {
             </div>
 
             <div className="flex gap-3">
-              <Button variant="ghost" onClick={() => setStep("tmdb")}>
+              <Button variant="ghost" onClick={() => setStep("trakt")}>
                 Back
               </Button>
               <Button variant="secondary" onClick={() => setStep("optional")} className="flex-1">
@@ -296,27 +376,6 @@ export default function SetupPage() {
                     className="text-annex-400 hover:text-annex-300"
                   >
                     Get an API key from MDBList
-                  </a>
-                </p>
-              </div>
-
-              {/* Trakt */}
-              <div className="space-y-2">
-                <Label hint="For trending/popular lists from Trakt">Trakt Client ID</Label>
-                <Input
-                  type="password"
-                  value={secrets["trakt.clientId"] || ""}
-                  onChange={(e) => updateSecret("trakt.clientId", e.target.value)}
-                  placeholder="Enter your Trakt client ID"
-                />
-                <p className="text-xs text-surface-500">
-                  <a
-                    href="https://trakt.tv/oauth/applications"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-annex-400 hover:text-annex-300"
-                  >
-                    Create a Trakt application
                   </a>
                 </p>
               </div>

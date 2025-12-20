@@ -46,9 +46,9 @@ export const SECRET_DEFINITIONS: SecretDefinition[] = [
   {
     key: "trakt.clientId",
     label: "Trakt Client ID",
-    description: "For Trakt integration (discovery lists)",
+    description: "Required for discovery lists (trending, popular, etc.)",
     group: "metadata",
-    required: false,
+    required: true,
     sensitive: true,
     placeholder: "Enter your Trakt client ID",
     helpUrl: "https://trakt.tv/oauth/applications",

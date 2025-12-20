@@ -235,7 +235,7 @@ export const secretsRouter = router({
   testConnection: adminProcedure
     .input(
       z.object({
-        service: z.enum(["qbittorrent", "tmdb", "mdblist"]),
+        service: z.enum(["qbittorrent", "tmdb", "mdblist", "trakt"]),
       })
     )
     .mutation(async ({ input }) => {
@@ -304,6 +304,31 @@ export const secretsRouter = router({
 
             if (response.ok) {
               return { success: true, message: "Connected to MDBList!" };
+            } else {
+              return { success: false, error: `HTTP ${response.status}` };
+            }
+          } catch (error) {
+            return { success: false, error: (error as Error).message };
+          }
+        }
+
+        case "trakt": {
+          const clientId = await secrets.getSecret("trakt.clientId");
+          if (!clientId) {
+            return { success: false, error: "Trakt Client ID not configured" };
+          }
+
+          try {
+            const response = await fetch("https://api.trakt.tv/movies/trending?limit=1", {
+              headers: {
+                "Content-Type": "application/json",
+                "trakt-api-version": "2",
+                "trakt-api-key": clientId,
+              },
+            });
+
+            if (response.ok) {
+              return { success: true, message: "Connected to Trakt!" };
             } else {
               return { success: false, error: `HTTP ${response.status}` };
             }
