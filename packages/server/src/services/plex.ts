@@ -962,6 +962,8 @@ export async function checkPlexServerAccess(
   plexUserId: string
 ): Promise<boolean> {
   try {
+    console.log(`[Plex] Checking access for user ${plexUserId} to server ${serverUrl}`);
+
     // First, get the server's machine identifier and owner
     const identity = await plexFetch<{
       MediaContainer: {
@@ -972,6 +974,7 @@ export async function checkPlexServerAccess(
     }>(serverUrl, serverToken, "/identity");
 
     const machineId = identity.MediaContainer.machineIdentifier;
+    console.log(`[Plex] Server machine ID: ${machineId}`);
 
     // Get the owner's Plex account info to compare
     const accountResponse = await fetch("https://plex.tv/users/account", {
@@ -989,9 +992,12 @@ export async function checkPlexServerAccess(
       user: { id: number; username: string };
     };
     const ownerId = accountData.user.id.toString();
+    console.log(`[Plex] Server owner ID: ${ownerId}, username: ${accountData.user.username}`);
+    console.log(`[Plex] Checking user ID: ${plexUserId}`);
 
     // Check if the user is the server owner
     if (plexUserId === ownerId) {
+      console.log(`[Plex] User ${plexUserId} is the server owner - access granted`);
       return true;
     }
 
@@ -1015,11 +1021,23 @@ export async function checkPlexServerAccess(
       SharedServer?: Array<{ userID: number; username: string; accessToken: string }>;
     };
 
+    console.log(
+      `[Plex] Shared users:`,
+      sharedData.SharedServer?.map((u) => ({ id: u.userID, username: u.username })) || []
+    );
+
     // Check if the user is in the shared users list
     if (sharedData.SharedServer) {
-      return sharedData.SharedServer.some((user) => user.userID.toString() === plexUserId);
+      const hasAccess = sharedData.SharedServer.some(
+        (user) => user.userID.toString() === plexUserId
+      );
+      console.log(
+        `[Plex] User ${plexUserId} ${hasAccess ? "found" : "not found"} in shared users list`
+      );
+      return hasAccess;
     }
 
+    console.log(`[Plex] No shared users found for server ${machineId} - access denied`);
     return false;
   } catch (error) {
     console.error(`[Plex] Error checking server access:`, error);

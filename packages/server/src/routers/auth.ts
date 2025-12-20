@@ -96,10 +96,20 @@ export const authRouter = router({
 
       // Get Plex user info
       const plexUser = await getPlexUser(authToken);
+      console.log(
+        `[Auth] Plex login attempt - User ID: ${plexUser.id}, Username: ${plexUser.username}, Email: ${plexUser.email}`
+      );
 
       // Check if user has access to any configured Plex servers
       const plexServers = await prisma.storageServer.findMany({
         where: { mediaServerType: "PLEX" },
+      });
+
+      console.log(`[Auth] Found ${plexServers.length} configured Plex server(s):`);
+      plexServers.forEach((server, idx) => {
+        console.log(
+          `[Auth]   ${idx + 1}. ${server.name} - URL: ${server.mediaServerUrl || "NOT SET"}, Has API Key: ${!!server.mediaServerApiKey}`
+        );
       });
 
       if (plexServers.length === 0) {
@@ -113,13 +123,19 @@ export const authRouter = router({
       let hasAccess = false;
       for (const server of plexServers) {
         if (!server.mediaServerUrl || !server.mediaServerApiKey) {
+          console.log(`[Auth] Skipping server ${server.name} - missing URL or API key`);
           continue;
         }
 
+        console.log(`[Auth] Checking access to server: ${server.name} (${server.mediaServerUrl})`);
         const access = await checkPlexServerAccess(
           server.mediaServerUrl,
           server.mediaServerApiKey,
           plexUser.id.toString()
+        );
+
+        console.log(
+          `[Auth] Access check result for ${server.name}: ${access ? "GRANTED" : "DENIED"}`
         );
 
         if (access) {
@@ -127,6 +143,10 @@ export const authRouter = router({
           break;
         }
       }
+
+      console.log(
+        `[Auth] Final access decision for user ${plexUser.username}: ${hasAccess ? "ALLOWED" : "DENIED"}`
+      );
 
       if (!hasAccess) {
         throw new TRPCError({
@@ -350,10 +370,20 @@ export const authRouter = router({
 
       // Get Plex user info
       const plexUser = await getPlexUser(authToken);
+      console.log(
+        `[Auth] Plex account linking attempt - User ID: ${plexUser.id}, Username: ${plexUser.username}, Email: ${plexUser.email}`
+      );
 
       // Check if user has access to any configured Plex servers
       const plexServers = await prisma.storageServer.findMany({
         where: { mediaServerType: "PLEX" },
+      });
+
+      console.log(`[Auth] Found ${plexServers.length} configured Plex server(s):`);
+      plexServers.forEach((server, idx) => {
+        console.log(
+          `[Auth]   ${idx + 1}. ${server.name} - URL: ${server.mediaServerUrl || "NOT SET"}, Has API Key: ${!!server.mediaServerApiKey}`
+        );
       });
 
       if (plexServers.length === 0) {
@@ -367,13 +397,19 @@ export const authRouter = router({
       let hasAccess = false;
       for (const server of plexServers) {
         if (!server.mediaServerUrl || !server.mediaServerApiKey) {
+          console.log(`[Auth] Skipping server ${server.name} - missing URL or API key`);
           continue;
         }
 
+        console.log(`[Auth] Checking access to server: ${server.name} (${server.mediaServerUrl})`);
         const access = await checkPlexServerAccess(
           server.mediaServerUrl,
           server.mediaServerApiKey,
           plexUser.id.toString()
+        );
+
+        console.log(
+          `[Auth] Access check result for ${server.name}: ${access ? "GRANTED" : "DENIED"}`
         );
 
         if (access) {
@@ -381,6 +417,10 @@ export const authRouter = router({
           break;
         }
       }
+
+      console.log(
+        `[Auth] Final access decision for user ${plexUser.username}: ${hasAccess ? "ALLOWED" : "DENIED"}`
+      );
 
       if (!hasAccess) {
         throw new TRPCError({
