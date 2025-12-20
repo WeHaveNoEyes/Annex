@@ -11,7 +11,7 @@
     "dev": "bun run --filter '*' dev",
     "build": "bun run --filter @annex/server build && bun run --filter '*' build",
     "start": "bun run --filter @annex/server start",
-    "lint": "biome lint .",
+    "lint": "biome ci .",
     "lint:fix": "biome lint --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",
