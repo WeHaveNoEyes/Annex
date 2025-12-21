@@ -1,0 +1,44 @@
+{
+  "numFound": 3,
+  "torrentList": [
+    {
+      "fid": "241257906",
+      "filename": "Fallout.S01.1080p.AMZN.WEB-DL.DDP5.1.Atmos.H.264-FLUX.torrent",
+      "name": "Fallout S01 1080p AMZN WEB-DL DDP5 1 Atmos H 264-FLUX",
+      "addedTimestamp": "2024-04-10 22:13:31",
+      "categoryID": 26,
+      "size": 25106127683,
+      "seeders": 843,
+      "leechers": 7,
+      "completed": 15234,
+      "imdbID": "tt12637874",
+      "download_multiplier": 1
+    },
+    {
+      "fid": "241257907",
+      "filename": "Fallout.S01.720p.AMZN.WEB-DL.DDP5.1.H.264-NTb.torrent",
+      "name": "Fallout S01 720p AMZN WEB-DL DDP5 1 H 264-NTb",
+      "addedTimestamp": "2024-04-10 22:14:12",
+      "categoryID": 26,
+      "size": 12553063842,
+      "seeders": 542,
+      "leechers": 3,
+      "completed": 8932,
+      "imdbID": "tt12637874",
+      "download_multiplier": 0
+    },
+    {
+      "fid": "241257908",
+      "filename": "Fallout.S01.2160p.AMZN.WEB-DL.DDP5.1.Atmos.DV.HDR10.HEVC-FLUX.torrent",
+      "name": "Fallout S01 2160p AMZN WEB-DL DDP5 1 Atmos DV HDR10 HEVC-FLUX",
+      "addedTimestamp": "2024-04-10 22:15:43",
+      "categoryID": 32,
+      "size": 89442357123,
+      "seeders": 234,
+      "leechers": 12,
+      "completed": 3421,
+      "imdbID": "tt12637874",
+      "download_multiplier": 1
+    }
+  ]
+}
