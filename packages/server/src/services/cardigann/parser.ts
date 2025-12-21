@@ -226,14 +226,28 @@ export class CardigannParser {
 
       case "regexp":
         if (args.length >= 1) {
-          const match = value.match(new RegExp(String(args[0])));
-          return match ? match[0] : value;
+          try {
+            const match = value.match(new RegExp(String(args[0])));
+            return match ? match[0] : value;
+          } catch (e) {
+            console.warn(
+              `[Cardigann Parser] Invalid regex pattern in regexp filter: ${args[0]}, returning original value`
+            );
+            return value;
+          }
         }
         return value;
 
       case "re_replace":
         if (args.length >= 2) {
-          return value.replace(new RegExp(String(args[0]), "g"), String(args[1]));
+          try {
+            return value.replace(new RegExp(String(args[0]), "g"), String(args[1]));
+          } catch (e) {
+            console.warn(
+              `[Cardigann Parser] Invalid regex pattern in re_replace filter: ${args[0]}, returning original value`
+            );
+            return value;
+          }
         }
         return value;
 
