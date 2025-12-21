@@ -189,6 +189,13 @@ export class PipelineExecutor {
 
           logger.info(`Completed step: ${stepDef.name}`);
 
+          // Check if step explicitly set nextStep to null (stop pipeline)
+          if (result.nextStep === null) {
+            logger.info(`Step ${stepDef.name} requested pipeline stop (nextStep: null)`);
+            await this.completeExecution(executionId);
+            return updatedContext;
+          }
+
           // Execute children if any
           if (stepDef.children && stepDef.children.length > 0) {
             return await this.executeStepTree(executionId, stepDef.children, updatedContext);

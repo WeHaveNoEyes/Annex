@@ -272,12 +272,18 @@ export class CardigannExecutor {
             typeof selector.text === "string" &&
             selector.text.includes(".Result.")
           ) {
+            console.log(
+              `[Cardigann Executor] Processing inter-field reference for ${key}: ${selector.text}`
+            );
             // Build variables object with extracted fields accessible as .Result.xxx
             const resultVars: { [key: string]: string | number | boolean } = {};
             for (const [fieldKey, fieldValue] of Object.entries(extractedFields)) {
               resultVars[fieldKey] = fieldValue;
             }
-            extractedFields[key] = cardigannParser.replaceVariables(selector.text, resultVars);
+            console.log(`[Cardigann Executor] Result vars for ${key}:`, resultVars);
+            const replaced = cardigannParser.replaceVariables(selector.text, resultVars);
+            console.log(`[Cardigann Executor] After replacement for ${key}: ${replaced}`);
+            extractedFields[key] = replaced;
           }
         }
 
