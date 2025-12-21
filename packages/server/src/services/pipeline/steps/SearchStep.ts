@@ -100,9 +100,11 @@ export class SearchStep extends BaseStep {
             success: true,
             nextStep: "download",
             data: {
-              existingDownload: {
-                torrentHash: existingMatch.match.torrent.hash,
-                isComplete: existingMatch.isComplete,
+              search: {
+                existingDownload: {
+                  torrentHash: existingMatch.match.torrent.hash,
+                  isComplete: existingMatch.isComplete,
+                },
               },
             },
           };
@@ -349,9 +351,11 @@ export class SearchStep extends BaseStep {
       success: true,
       nextStep: "download",
       data: {
-        selectedRelease: bestRelease,
-        alternativeReleases: alternatives,
-        qualityMet: true,
+        search: {
+          selectedRelease: bestRelease,
+          alternativeReleases: alternatives,
+          qualityMet: true,
+        },
       },
     };
   }
