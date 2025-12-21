@@ -265,7 +265,11 @@ export class CardigannExecutor {
 
         // Second pass: process .Result.xxx references in text fields
         for (const [key, selector] of Object.entries(fields || {})) {
-          if (selector.text && selector.text.includes(".Result.")) {
+          if (
+            selector.text &&
+            typeof selector.text === "string" &&
+            selector.text.includes(".Result.")
+          ) {
             // Build variables object with extracted fields accessible as .Result.xxx
             const resultVars: { [key: string]: string | number | boolean } = {};
             for (const [fieldKey, fieldValue] of Object.entries(extractedFields)) {
