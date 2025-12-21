@@ -217,7 +217,8 @@ export class CardigannExecutor {
           if (selector.text) {
             extractedFields[key] = selector.text;
           } else if (selector.selector) {
-            extractedFields[key] = selectorEngine.extractJsonValue(item, selector.selector);
+            const value = selectorEngine.extractJsonValue(item, selector.selector);
+            extractedFields[key] = String(value ?? "");
           }
 
           if (selector.filters) {

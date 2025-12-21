@@ -176,7 +176,7 @@ export class CardigannSelectorEngine {
     return null;
   }
 
-  extractJsonValue(json: unknown, path: string): string {
+  extractJsonValue(json: unknown, path: string): unknown {
     const parts = path.split(".");
     let current: unknown = json;
 
@@ -188,7 +188,8 @@ export class CardigannSelectorEngine {
       }
     }
 
-    return String(current || "");
+    // Return the actual value - could be array, object, string, number, etc.
+    return current ?? "";
   }
 
   extractXmlValue(xml: string, xpath: string): string {
