@@ -155,7 +155,13 @@ export async function validateEnvironment(): Promise<ValidationResult> {
       const hasAnyEncoder = Object.values(encoders).some((e) => e);
 
       if (!hasAnyEncoder) {
-        errors.push("No video encoders available - FFmpeg cannot encode video");
+        // In CI environments, this is expected (no real encoders installed)
+        // Downgrade to warning instead of error
+        if (process.env.CI) {
+          warnings.push("No video encoders available - FFmpeg cannot encode video (expected in CI)");
+        } else {
+          errors.push("No video encoders available - FFmpeg cannot encode video");
+        }
       } else {
         // Provide helpful recommendations
         if (!encoders.av1_vaapi && !encoders.libsvtav1 && !encoders.libaom) {
