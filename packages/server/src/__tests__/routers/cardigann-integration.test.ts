@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createMockPrisma } from "../setup.js";
 import { cardigannRouter } from "../../routers/cardigann.js";
 import { cardigannRepository } from "../../services/cardigann/repository.js";
+import { createMockPrisma } from "../setup.js";
 
 // Mock Prisma client to prevent database access
 const mockPrisma = createMockPrisma();
