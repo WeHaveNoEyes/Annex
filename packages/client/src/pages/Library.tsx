@@ -107,7 +107,7 @@ export default function LibraryPage() {
     );
   }
 
-  const selectedServer = servers.find((s) => s.id === selectedServerId);
+  const selectedServer = servers.find((s: any) => s.id === selectedServerId);
 
   return (
     <div className="space-y-6">
@@ -142,7 +142,7 @@ export default function LibraryPage() {
         <div className="flex items-center gap-3">
           <span className="text-white/50 text-sm">Server:</span>
           <div className="flex gap-2">
-            {servers.map((server) => (
+            {servers.map((server: any) => (
               <button
                 key={server.id}
                 onClick={() => handleServerChange(server.id)}

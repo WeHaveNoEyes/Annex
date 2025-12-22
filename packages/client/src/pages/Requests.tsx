@@ -728,14 +728,14 @@ export default function RequestsPage() {
     if (search) {
       const searchLower = search.toLowerCase();
       filtered = filtered.filter(
-        (r) =>
+        (r: any) =>
           r.title.toLowerCase().includes(searchLower) || r.year.toString().includes(searchLower)
       );
     }
 
     // Status filter
     if (statusFilter !== "all") {
-      filtered = filtered.filter((r) => {
+      filtered = filtered.filter((r: any) => {
         const status = r.status as RequestStatus;
         switch (statusFilter) {
           case "active":
@@ -756,7 +756,7 @@ export default function RequestsPage() {
 
     // Type filter
     if (typeFilter !== "all") {
-      filtered = filtered.filter((r) => r.type === typeFilter);
+      filtered = filtered.filter((r: any) => r.type === typeFilter);
     }
 
     // Sort
@@ -800,13 +800,13 @@ export default function RequestsPage() {
 
     return {
       total: requests.data.length,
-      active: requests.data.filter((r) =>
+      active: requests.data.filter((r: any) =>
         ["pending", "searching", "downloading", "encoding", "delivering"].includes(r.status)
       ).length,
-      completed: requests.data.filter((r) => r.status === "completed").length,
-      failed: requests.data.filter((r) => r.status === "failed").length,
+      completed: requests.data.filter((r: any) => r.status === "completed").length,
+      failed: requests.data.filter((r: any) => r.status === "failed").length,
       awaiting: requests.data.filter(
-        (r) => r.status === "awaiting" || r.status === "quality_unavailable"
+        (r: any) => r.status === "awaiting" || r.status === "quality_unavailable"
       ).length,
     };
   }, [requests.data]);

@@ -63,7 +63,7 @@ export const libraryRouter = router({
       ]);
 
       return {
-        items: items.map((item) => ({
+        items: items.map((item: any) => ({
           id: item.id,
           tmdbId: item.tmdbId,
           imdbId: item.imdbId,
@@ -165,7 +165,7 @@ export const libraryRouter = router({
       movies: movieCount,
       tvShows: tvCount,
       total: movieCount + tvCount,
-      recentlyAdded: recentlyAdded.map((item) => ({
+      recentlyAdded: recentlyAdded.map((item: any) => ({
         id: item.id,
         tmdbId: item.tmdbId,
         title: item.title,
@@ -204,7 +204,7 @@ export const libraryRouter = router({
 
       return {
         inLibrary: libraryItems.length > 0,
-        servers: libraryItems.map((item) => ({
+        servers: libraryItems.map((item: any) => ({
           serverId: item.server.id,
           serverName: item.server.name,
           quality: item.quality,
@@ -284,7 +284,7 @@ export const libraryRouter = router({
             episodeCount: episodes.length,
           }))
           .sort((a, b) => a.seasonNumber - b.seasonNumber),
-        totalEpisodes: episodeItems.filter((e) => e.serverId === server.serverId).length,
+        totalEpisodes: episodeItems.filter((e: any) => e.serverId === server.serverId).length,
       }));
 
       return {

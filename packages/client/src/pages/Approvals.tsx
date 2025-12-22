@@ -110,7 +110,7 @@ export default function Approvals() {
 
       <div className="space-y-4">
         {approvals && approvals.length > 0 ? (
-          approvals.map((approval) => (
+          approvals.map((approval: any) => (
             <Card key={approval.id} className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">

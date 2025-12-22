@@ -75,7 +75,7 @@ export const indexersRouter = router({
       orderBy: { priority: "asc" },
     });
 
-    return results.map((i) => ({
+    return results.map((i: any) => ({
       id: i.id,
       name: i.name,
       type: fromIndexerType(i.type),

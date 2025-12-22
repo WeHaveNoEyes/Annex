@@ -469,9 +469,9 @@ export const requestsRouter = router({
       }
 
       // For requests without posterPath, look up from MediaItem (legacy support)
-      const requestsWithoutPoster = results.filter((r) => !r.posterPath);
+      const requestsWithoutPoster = results.filter((r: any) => !r.posterPath);
       const mediaItemIds = requestsWithoutPoster.map(
-        (r) => `tmdb-${r.type === MediaType.MOVIE ? "movie" : "tv"}-${r.tmdbId}`
+        (r: any) => `tmdb-${r.type === MediaType.MOVIE ? "movie" : "tv"}-${r.tmdbId}`
       );
 
       const [servers, mediaItems] = await Promise.all([
@@ -487,10 +487,10 @@ export const requestsRouter = router({
           : [],
       ]);
 
-      const serverMap = new Map(servers.map((s) => [s.id, s.name]));
-      const posterMap = new Map(mediaItems.map((m) => [m.id, m.posterPath]));
+      const serverMap = new Map(servers.map((s: any) => [s.id, s.name]));
+      const posterMap = new Map(mediaItems.map((m: any) => [m.id, m.posterPath]));
 
-      return results.map((r) => {
+      return results.map((r: any) => {
         const targets = r.targets as unknown as RequestTarget[];
         const availableReleases = r.availableReleases as unknown[] | null;
         // Use stored posterPath, or fall back to MediaItem lookup for legacy requests
@@ -547,7 +547,7 @@ export const requestsRouter = router({
       select: { id: true, name: true },
     });
 
-    const serverMap = new Map(servers.map((s) => [s.id, s.name]));
+    const serverMap = new Map(servers.map((s: any) => [s.id, s.name]));
 
     return {
       id: r.id,
@@ -752,7 +752,7 @@ export const requestsRouter = router({
 
       // Get download progress for episodes that are downloading
       const downloadingEpisodes = episodes.filter(
-        (ep) => ep.status === TvEpisodeStatus.DOWNLOADING && ep.downloadId
+        (ep: any) => ep.status === TvEpisodeStatus.DOWNLOADING && ep.downloadId
       );
 
       const downloadService = getDownloadService();
@@ -760,14 +760,14 @@ export const requestsRouter = router({
 
       // First, get the Download records for these episodes
       const downloadIds = downloadingEpisodes
-        .map((ep) => ep.downloadId)
-        .filter((id): id is string => id !== null);
+        .map((ep: any) => ep.downloadId)
+        .filter((id: any): id is string => id !== null);
 
       const downloads = await prisma.download.findMany({
         where: { id: { in: downloadIds } },
       });
 
-      const downloadMap = new Map(downloads.map((d) => [d.id, d]));
+      const downloadMap = new Map(downloads.map((d: any) => [d.id, d]));
 
       // Fetch all torrents once instead of individual calls per episode
       // This reduces API overhead when qBittorrent is under load
@@ -880,7 +880,7 @@ export const requestsRouter = router({
     });
 
     return {
-      servers: servers.map((s) => ({
+      servers: servers.map((s: any) => ({
         id: s.id,
         name: s.name,
         maxResolution: s.maxResolution,

@@ -70,7 +70,7 @@ export const notificationsRouter = router({
         },
       });
 
-      return configs.map((c) => ({
+      return configs.map((c: any) => ({
         id: c.id,
         name: c.name,
         provider: c.provider,

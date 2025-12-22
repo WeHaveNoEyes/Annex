@@ -21,7 +21,7 @@ export const encodersRouter = router({
       orderBy: { encoderId: "asc" },
     });
 
-    return encoders.map((e) => ({
+    return encoders.map((e: any) => ({
       id: e.id,
       encoderId: e.encoderId,
       name: e.name,
@@ -118,7 +118,7 @@ export const encodersRouter = router({
       orderBy: { assignedAt: "desc" },
     });
 
-    return assignments.map((a) => ({
+    return assignments.map((a: any) => ({
       id: a.id,
       jobId: a.jobId,
       encoderId: a.encoderId,
@@ -156,7 +156,7 @@ export const encodersRouter = router({
         take: input.limit,
       });
 
-      return assignments.map((a) => ({
+      return assignments.map((a: any) => ({
         id: a.id,
         jobId: a.jobId,
         encoderId: a.encoderId,
@@ -259,7 +259,7 @@ export const encodersRouter = router({
       const events = getJobEventService();
 
       // Emit current state immediately
-      prisma.remoteEncoder.findMany().then((encoders) => {
+      prisma.remoteEncoder.findMany().then((encoders: any) => {
         for (const encoder of encoders) {
           emit.next({
             encoderId: encoder.encoderId,
@@ -310,7 +310,7 @@ export const encodersRouter = router({
             .findUnique({
               where: { jobId: event.job.id },
             })
-            .then((assignment) => {
+            .then((assignment: any) => {
               if (assignment) {
                 emit.next({
                   jobId: assignment.jobId,

@@ -154,13 +154,13 @@ class IndexerService {
     }
 
     // Decrypt API keys before searching
-    const indexersWithDecryptedKeys = indexers.map((indexer) => ({
+    const indexersWithDecryptedKeys = indexers.map((indexer: any) => ({
       ...indexer,
       apiKey: decryptApiKey(indexer.apiKey),
     }));
 
     const results = await Promise.allSettled(
-      indexersWithDecryptedKeys.map((indexer) => this.searchIndexer(indexer, options))
+      indexersWithDecryptedKeys.map((indexer: any) => this.searchIndexer(indexer, options))
     );
 
     const allReleases: Release[] = [];

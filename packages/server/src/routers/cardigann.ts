@@ -116,7 +116,7 @@ export const cardigannRouter = router({
       const baseUrl = definition.definition.links?.[0] || "https://example.com";
 
       // Create CardigannIndexer and corresponding Indexer in a transaction
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx: any) => {
         const cardigannIndexer = await tx.cardigannIndexer.create({
           data: input,
         });
@@ -163,7 +163,7 @@ export const cardigannRouter = router({
       const { id, ...data } = input;
 
       // Update both CardigannIndexer and corresponding Indexer in a transaction
-      const result = await prisma.$transaction(async (tx) => {
+      const result = await prisma.$transaction(async (tx: any) => {
         const cardigannIndexer = await tx.cardigannIndexer.update({
           where: { id },
           data,
@@ -201,7 +201,7 @@ export const cardigannRouter = router({
 
   deleteIndexer: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
     // Delete both CardigannIndexer and corresponding Indexer in a transaction
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.cardigannIndexer.delete({
         where: { id: input.id },
       });

@@ -89,7 +89,7 @@ export default function Notifications() {
 
       <div className="space-y-4">
         {configs && configs.length > 0 ? (
-          configs.map((config) => (
+          configs.map((config: any) => (
             <Card key={config.id} className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">

@@ -50,7 +50,7 @@ export default function Pipelines() {
 
       <div className="space-y-4">
         {pipelines && pipelines.length > 0 ? (
-          pipelines.map((pipeline) => (
+          pipelines.map((pipeline: any) => (
             <Card key={pipeline.id} className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">

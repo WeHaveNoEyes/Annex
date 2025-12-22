@@ -250,7 +250,7 @@ export class PipelineExecutor {
       }
 
       // Find next pending step
-      const nextStep = execution.stepExecutions.find((s) => s.status === "PENDING");
+      const nextStep = execution.stepExecutions.find((s: any) => s.status === "PENDING");
 
       if (!nextStep) {
         // All steps completed

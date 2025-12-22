@@ -369,7 +369,7 @@ export const discoveryRouter = router({
         });
 
         // Create lookup map
-        const localMap = new Map(localItems.map((item) => [item.id, item]));
+        const localMap = new Map(localItems.map((item: any) => [item.id, item]));
 
         // Build results, enriching with local data when available
         const results: TrendingResult[] = traktItems.map((traktItem) => {
@@ -765,14 +765,14 @@ export const discoveryRouter = router({
           numberOfSeasons: item.numberOfSeasons,
           numberOfEpisodes: item.numberOfEpisodes,
           seasons:
-            item.seasons?.map((s) => ({
+            item.seasons?.map((s: any) => ({
               seasonNumber: s.seasonNumber,
               name: s.name,
               overview: s.overview,
               posterPath: s.posterPath,
               episodeCount: s.episodeCount,
               airDate: s.airDate,
-              episodes: s.episodes?.map((e) => ({
+              episodes: s.episodes?.map((e: any) => ({
                 episodeNumber: e.episodeNumber,
                 name: e.name,
                 overview: e.overview,

@@ -334,7 +334,7 @@ export default function MediaDetailPage() {
               {/* Genres */}
               {data.genres.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {data.genres.map((genre) => (
+                  {data.genres.map((genre: any) => (
                     <span
                       key={genre}
                       className="px-3 py-1 text-sm bg-white/10 backdrop-blur-sm rounded-full text-white/90 border border-white/20"
@@ -351,7 +351,7 @@ export default function MediaDetailPage() {
                 movieAvailability.servers.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-white/50 text-sm">In Library:</span>
-                    {movieAvailability.servers.map((server) => (
+                    {movieAvailability.servers.map((server: any) => (
                       <span
                         key={server.serverId}
                         className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded text-sm"
@@ -462,7 +462,7 @@ export default function MediaDetailPage() {
                   Seasons ({tvData.seasons.length})
                 </h2>
                 <div className="space-y-3">
-                  {tvData.seasons.map((season) => {
+                  {tvData.seasons.map((season: any) => {
                     const isExpanded = expandedSeasons.has(season.seasonNumber);
                     const toggleSeason = () => {
                       setExpandedSeasons((prev) => {
@@ -553,7 +553,7 @@ export default function MediaDetailPage() {
                         {/* Episodes List (Expanded) */}
                         {isExpanded && season.episodes && season.episodes.length > 0 && (
                           <div className="border-t border-white/10">
-                            {season.episodes.map((episode) => {
+                            {season.episodes.map((episode: any) => {
                               const episodeAvail = getEpisodeAvailability(
                                 season.seasonNumber,
                                 episode.episodeNumber

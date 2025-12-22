@@ -1437,7 +1437,7 @@ function ServersSettings() {
 
   // Show form for editing existing server
   if (editingServer) {
-    const server = servers.data?.find((s) => s.id === editingServer);
+    const server = servers.data?.find((s: any) => s.id === editingServer);
     if (server) {
       const formData: ServerFormData = {
         name: server.name,
@@ -1496,7 +1496,7 @@ function ServersSettings() {
 
       {servers.data && servers.data.length > 0 && (
         <div className="space-y-3">
-          {servers.data.map((server) => (
+          {servers.data.map((server: any) => (
             <ServerCard
               key={server.id}
               server={server}
@@ -1990,7 +1990,7 @@ function IndexersSettings() {
 
   // Show form for editing existing indexer
   if (editingIndexer) {
-    const indexer = indexers.data?.find((i) => i.id === editingIndexer);
+    const indexer = indexers.data?.find((i: any) => i.id === editingIndexer);
     if (indexer) {
       const formData: IndexerFormData = {
         name: indexer.name,
@@ -2047,7 +2047,7 @@ function IndexersSettings() {
 
       {indexers.data && indexers.data.length > 0 && (
         <div className="space-y-3">
-          {indexers.data.map((indexer) => (
+          {indexers.data.map((indexer: any) => (
             <Card key={indexer.id} className="p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -2351,7 +2351,7 @@ function JobsSettings() {
 
           {jobs.data && jobs.data.jobs.length > 0 && (
             <div className="space-y-3">
-              {jobs.data.jobs.map((job) => (
+              {jobs.data.jobs.map((job: any) => (
                 <Card key={job.id} className="p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
@@ -2640,7 +2640,7 @@ function JobsSettings() {
 
           {workers.data && workers.data.length > 0 && (
             <div className="space-y-3">
-              {workers.data.map((worker) => (
+              {workers.data.map((worker: any) => (
                 <Card key={worker.id} className="p-4">
                   <div className="flex items-center justify-between">
                     <div className="flex-1">

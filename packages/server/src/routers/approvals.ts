@@ -52,7 +52,7 @@ export const approvalsRouter = router({
         },
       });
 
-      return approvals.map((a) => ({
+      return approvals.map((a: any) => ({
         id: a.id,
         requestId: a.requestId,
         request: {

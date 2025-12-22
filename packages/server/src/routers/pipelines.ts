@@ -118,7 +118,7 @@ export const pipelinesRouter = router({
         orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
       });
 
-      return templates.map((t) => {
+      return templates.map((t: any) => {
         const steps = (t.steps || []) as unknown as StepSchemaType[];
         return {
           id: t.id,
@@ -391,7 +391,7 @@ export const pipelinesRouter = router({
         },
       });
 
-      return executions.map((e) => ({
+      return executions.map((e: any) => ({
         id: e.id,
         requestId: e.requestId,
         templateId: e.templateId,
