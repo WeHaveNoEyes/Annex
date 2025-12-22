@@ -222,18 +222,17 @@ describe("platform/linux", () => {
       test("exits when install requested without root", async () => {
         process.getuid = mock(() => 1000); // Non-root
 
-        // Mock Bun.spawn to simulate systemctl being available
-        const originalSpawn = Bun.spawn;
-        Bun.spawn = mock((cmd: any) => {
-          if (cmd[0] === "which" && cmd[1] === "systemctl") {
-            return {
-              exitCode: 0, // Found
-              stdout: null,
-              stderr: null,
-            } as any;
+        // Mock fs.existsSync to simulate systemctl being available
+        const fs = await import("node:fs");
+        const originalExistsSync = fs.existsSync.bind(fs);
+        const existsSyncSpy = spyOn(fs, "existsSync").mockImplementation((path: any) => {
+          // Return true for systemctl paths
+          if (typeof path === "string" && path.includes("systemctl")) {
+            return true;
           }
-          return originalSpawn(cmd);
-        }) as any;
+          // Use original implementation for other paths
+          return originalExistsSync(path);
+        });
 
         const consoleErrorSpy = spyOn(console, "error");
 
@@ -256,7 +255,7 @@ describe("platform/linux", () => {
         const errorOutput = consoleErrorSpy.mock.calls.map((call) => call[0]).join("\n");
         expect(errorOutput).toContain("requires root privileges");
 
-        Bun.spawn = originalSpawn;
+        existsSyncSpy.mockRestore();
         consoleErrorSpy.mockRestore();
       });
 
