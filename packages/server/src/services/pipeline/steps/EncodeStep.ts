@@ -241,18 +241,35 @@ export class EncodeStep extends BaseStep {
           },
         });
 
+        // Extract target server IDs
+        const targetServerIds = context.targets.map((t) => t.serverId);
+
+        // Determine codec from encoder
+        const codec =
+          encodingConfig.videoEncoder.includes("av1") ||
+          encodingConfig.videoEncoder.includes("AV1")
+            ? "AV1"
+            : encodingConfig.videoEncoder.includes("hevc") ||
+                encodingConfig.videoEncoder.includes("265")
+              ? "HEVC"
+              : "H264";
+
         return {
           success: true,
           data: {
-            jobId: job.id,
-            assignmentId: assignment.id,
-            outputPath: assignmentStatus.outputPath,
-            encodedAt: new Date().toISOString(),
-            duration: (Date.now() - startTime) / 1000,
-            outputSize: assignmentStatus.outputSize
-              ? Number(assignmentStatus.outputSize)
-              : undefined,
-            compressionRatio: assignmentStatus.compressionRatio || undefined,
+            encodedFiles: [
+              {
+                profileId: context.targets[0]?.encodingProfileId || "default",
+                path: assignmentStatus.outputPath || outputPath,
+                targetServerIds,
+                resolution: encodingConfig.maxResolution,
+                codec,
+                size: assignmentStatus.outputSize
+                  ? Number(assignmentStatus.outputSize)
+                  : undefined,
+                compressionRatio: assignmentStatus.compressionRatio || undefined,
+              },
+            ],
           },
         };
       }
