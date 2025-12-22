@@ -6,10 +6,7 @@ import { cardigannParser } from "../../../services/cardigann/parser";
 describe("TorrentLeech Integration Test", () => {
   it("should parse TorrentLeech JSON response correctly", () => {
     // Load the TorrentLeech definition
-    const definitionPath = join(
-      __dirname,
-      "../../../../data/cardigann-definitions/torrentleech.yml"
-    );
+    const definitionPath = join(__dirname, "../../fixtures/cardigann/torrentleech.yml");
     const ymlContent = readFileSync(definitionPath, "utf-8");
     const parsed = cardigannParser.parseDefinition(ymlContent);
     const definition = parsed.definition;
@@ -74,10 +71,7 @@ describe("TorrentLeech Integration Test", () => {
   });
 
   it("should handle the title_test field correctly", () => {
-    const definitionPath = join(
-      __dirname,
-      "../../../../data/cardigann-definitions/torrentleech.yml"
-    );
+    const definitionPath = join(__dirname, "../../fixtures/cardigann/torrentleech.yml");
     const ymlContent = readFileSync(definitionPath, "utf-8");
     const parsed = cardigannParser.parseDefinition(ymlContent);
     const definition = parsed.definition;
@@ -94,10 +88,7 @@ describe("TorrentLeech Integration Test", () => {
   });
 
   it("should extract correct download URL format", () => {
-    const definitionPath = join(
-      __dirname,
-      "../../../../data/cardigann-definitions/torrentleech.yml"
-    );
+    const definitionPath = join(__dirname, "../../fixtures/cardigann/torrentleech.yml");
     const ymlContent = readFileSync(definitionPath, "utf-8");
     const parsed = cardigannParser.parseDefinition(ymlContent);
     const definition = parsed.definition;
