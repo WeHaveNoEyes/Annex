@@ -159,10 +159,12 @@ function buildFfmpegArgs(
     args.push("-extra_hw_frames", "8");
   } else if (hwAccel === "QSV") {
     console.log(`[Encoder] Using QSV (Quick Sync Video) hardware decode + encode on ${gpuDevice}`);
-    // QSV hardware decode - requires device initialization
-    args.push("-init_hw_device", `qsv=hw:${gpuDevice}`);
+    // QSV on Linux requires VAAPI device initialization first
+    // Initialize VAAPI as parent device, then QSV as child
+    args.push("-init_hw_device", `vaapi=va:${gpuDevice}`);
+    args.push("-init_hw_device", "qsv@va");
     args.push("-hwaccel", "qsv");
-    args.push("-hwaccel_device", "hw");
+    args.push("-hwaccel_device", "qsv");
     args.push("-hwaccel_output_format", "qsv");
     // Limit hardware frame pool
     args.push("-extra_hw_frames", "8");
@@ -259,7 +261,7 @@ function buildSubtitleMapping(mediaInfo: MediaInfo): {
 function buildVideoArgs(
   encodingConfig: EncodingConfig,
   mediaInfo: MediaInfo,
-  _gpuDevice: string
+  gpuDevice: string
 ): string[] {
   const args: string[] = [];
   const hwAccel = encodingConfig.hwAccel?.toUpperCase();
@@ -271,8 +273,7 @@ function buildVideoArgs(
   const filters: string[] = [];
 
   if (hwAccel === "VAAPI") {
-    // With hardware decode, frames are already on GPU in VAAPI format
-    // Use scale_vaapi for GPU-based scaling
+    // Hardware scaling on GPU
     if (targetRes.width !== mediaInfo.width || targetRes.height !== mediaInfo.height) {
       filters.push(`scale_vaapi=w=${targetRes.width}:h=${targetRes.height}`);
     }
