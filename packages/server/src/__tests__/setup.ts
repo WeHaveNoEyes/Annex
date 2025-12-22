@@ -81,11 +81,17 @@ export function createMockPrisma() {
   const mediaItemStore = new Map<string, any>();
   const indexerStore = new Map<string, any>();
   const cardigannIndexerStore = new Map<string, any>();
+  const cardigannIndexerRateLimitRequestStore = new Map<string, any>();
 
   let idCounter = 1;
   const generateId = () => `test-id-${idCounter++}`;
 
-  return {
+  const mockPrismaClient: any = {
+    $transaction: mock(async (callback: any) => {
+      // Execute the callback with the mock prisma client itself
+      // This allows transactions to use the same mocked methods
+      return callback(mockPrismaClient);
+    }),
     $queryRaw: mock(async (query: TemplateStringsArray, ...values: any[]) => {
       // Mock implementation for timeout query
       const queryStr = Array.from(query).join("");
@@ -515,12 +521,44 @@ export function createMockPrisma() {
       }),
     },
     indexer: {
+      create: mock(async ({ data }: { data: any }) => {
+        const id = data.id || generateId();
+        const record = { id, ...data, createdAt: new Date(), updatedAt: new Date() };
+        indexerStore.set(id, record);
+        return record;
+      }),
+      findUnique: mock(async ({ where }: { where: { id: string } }) => {
+        return indexerStore.get(where.id) || null;
+      }),
+      findFirst: mock(async ({ where }: { where?: any } = {}) => {
+        const results = Array.from(indexerStore.values());
+        if (where?.type && where?.apiKey) {
+          return results.find((r: any) => r.type === where.type && r.apiKey === where.apiKey) || null;
+        }
+        if (where?.type) {
+          return results.find((r: any) => r.type === where.type) || null;
+        }
+        return results[0] || null;
+      }),
       findMany: mock(async ({ where }: { where?: any } = {}) => {
         let results = Array.from(indexerStore.values());
         if (where?.type) {
           results = results.filter((r) => r.type === where.type);
         }
         return results;
+      }),
+      update: mock(async ({ where, data }: { where: { id: string }; data: any }) => {
+        const record = indexerStore.get(where.id);
+        if (!record) throw new Error(`Indexer with id ${where.id} not found`);
+        const updated = { ...record, ...data, updatedAt: new Date() };
+        indexerStore.set(where.id, updated);
+        return updated;
+      }),
+      delete: mock(async ({ where }: { where: { id: string } }) => {
+        const record = indexerStore.get(where.id);
+        if (!record) throw new Error(`Indexer with id ${where.id} not found`);
+        indexerStore.delete(where.id);
+        return record;
       }),
       deleteMany: mock(async ({ where }: { where?: any } = {}) => {
         let count = 0;
@@ -539,9 +577,91 @@ export function createMockPrisma() {
       }),
     },
     cardigannIndexer: {
+      create: mock(async ({ data }: { data: any }) => {
+        const id = data.id || generateId();
+        const record = { id, ...data, createdAt: new Date(), updatedAt: new Date() };
+        cardigannIndexerStore.set(id, record);
+        return record;
+      }),
+      findUnique: mock(async ({ where }: { where: { id: string } }) => {
+        return cardigannIndexerStore.get(where.id) || null;
+      }),
+      findMany: mock(async ({ where, orderBy }: { where?: any; orderBy?: any } = {}) => {
+        let results = Array.from(cardigannIndexerStore.values());
+        // Simple ordering support (not perfect but works for tests)
+        if (orderBy) {
+          results.sort((a: any, b: any) => {
+            for (const order of Array.isArray(orderBy) ? orderBy : [orderBy]) {
+              const [key, direction] = Object.entries(order)[0] as [string, string];
+              if (a[key] !== b[key]) {
+                const comparison = a[key] > b[key] ? 1 : -1;
+                return direction === "desc" ? -comparison : comparison;
+              }
+            }
+            return 0;
+          });
+        }
+        return results;
+      }),
+      update: mock(async ({ where, data }: { where: { id: string }; data: any }) => {
+        const record = cardigannIndexerStore.get(where.id);
+        if (!record) throw new Error(`CardigannIndexer with id ${where.id} not found`);
+        const updated = { ...record, ...data, updatedAt: new Date() };
+        cardigannIndexerStore.set(where.id, updated);
+        return updated;
+      }),
+      delete: mock(async ({ where }: { where: { id: string } }) => {
+        const record = cardigannIndexerStore.get(where.id);
+        if (!record) throw new Error(`CardigannIndexer with id ${where.id} not found`);
+        cardigannIndexerStore.delete(where.id);
+        // Also delete associated rate limit requests (cascade)
+        const rateLimitStore = cardigannIndexerRateLimitRequestStore;
+        for (const [id, req] of rateLimitStore.entries()) {
+          if (req.indexerId === where.id) {
+            rateLimitStore.delete(id);
+          }
+        }
+        return record;
+      }),
       deleteMany: mock(async () => {
         const count = cardigannIndexerStore.size;
         cardigannIndexerStore.clear();
+        return { count };
+      }),
+    },
+    cardigannIndexerRateLimitRequest: {
+      create: mock(async ({ data }: { data: any }) => {
+        const id = data.id || generateId();
+        const record = {
+          id,
+          ...data,
+          requestedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        cardigannIndexerRateLimitRequestStore.set(id, record);
+        return record;
+      }),
+      findMany: mock(async ({ where }: { where?: any } = {}) => {
+        let results = Array.from(cardigannIndexerRateLimitRequestStore.values());
+        if (where?.indexerId) {
+          results = results.filter((r: any) => r.indexerId === where.indexerId);
+        }
+        return results;
+      }),
+      deleteMany: mock(async ({ where }: { where?: any } = {}) => {
+        let count = 0;
+        if (where?.indexerId) {
+          for (const [id, req] of cardigannIndexerRateLimitRequestStore.entries()) {
+            if (req.indexerId === where.indexerId) {
+              cardigannIndexerRateLimitRequestStore.delete(id);
+              count++;
+            }
+          }
+        } else {
+          count = cardigannIndexerRateLimitRequestStore.size;
+          cardigannIndexerRateLimitRequestStore.clear();
+        }
         return { count };
       }),
     },
@@ -560,6 +680,7 @@ export function createMockPrisma() {
       mediaItem: mediaItemStore,
       indexer: indexerStore,
       cardigannIndexer: cardigannIndexerStore,
+      cardigannIndexerRateLimitRequest: cardigannIndexerRateLimitRequestStore,
     },
     _store: settingStore, // Backwards compatibility
     _clear: () => {
@@ -577,6 +698,9 @@ export function createMockPrisma() {
       mediaItemStore.clear();
       indexerStore.clear();
       cardigannIndexerStore.clear();
+      cardigannIndexerRateLimitRequestStore.clear();
     },
   };
+
+  return mockPrismaClient;
 }

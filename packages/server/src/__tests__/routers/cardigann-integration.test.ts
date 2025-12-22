@@ -2,9 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { prisma } from "../../db/client.js";
+import { createMockPrisma } from "../setup.js";
 import { cardigannRouter } from "../../routers/cardigann.js";
 import { cardigannRepository } from "../../services/cardigann/repository.js";
+
+// Mock Prisma client to prevent database access
+const mockPrisma = createMockPrisma();
+mock.module("../../db/client.js", () => ({
+  prisma: mockPrisma,
+  db: mockPrisma,
+}));
 
 describe("Cardigann Router Integration", () => {
   let tempDir: string;
@@ -77,8 +84,8 @@ search:
     global.fetch = originalFetch;
 
     // Clean up database
-    await prisma.indexer.deleteMany({ where: { type: "CARDIGANN" } });
-    await prisma.cardigannIndexer.deleteMany({});
+    await mockPrisma.indexer.deleteMany({ where: { type: "CARDIGANN" } });
+    await mockPrisma.cardigannIndexer.deleteMany({});
 
     // Clean up temp directory
     if (existsSync(tempDir)) {
@@ -171,7 +178,7 @@ search:
       expect(result.priority).toBe(75);
 
       // Verify corresponding Indexer record was created
-      const indexer = await prisma.indexer.findFirst({
+      const indexer = await mockPrisma.indexer.findFirst({
         where: {
           type: "CARDIGANN",
           apiKey: result.id,
@@ -254,7 +261,7 @@ search:
       expect(updated.enabled).toBe(false);
 
       // Verify corresponding Indexer record was updated
-      const indexer = await prisma.indexer.findFirst({
+      const indexer = await mockPrisma.indexer.findFirst({
         where: {
           type: "CARDIGANN",
           apiKey: created.id,
@@ -275,13 +282,13 @@ search:
       await caller.deleteIndexer({ id: created.id });
 
       // Verify CardigannIndexer is deleted
-      const cardigannIndexer = await prisma.cardigannIndexer.findUnique({
+      const cardigannIndexer = await mockPrisma.cardigannIndexer.findUnique({
         where: { id: created.id },
       });
       expect(cardigannIndexer).toBeNull();
 
       // Verify corresponding Indexer is deleted
-      const indexer = await prisma.indexer.findFirst({
+      const indexer = await mockPrisma.indexer.findFirst({
         where: {
           type: "CARDIGANN",
           apiKey: created.id,

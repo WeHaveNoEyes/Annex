@@ -1,9 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { prisma } from "../../db/client.js";
+import { createMockPrisma } from "../setup.js";
 import { CardigannRepository } from "../../services/cardigann/repository.js";
+
+// Mock Prisma client to prevent database access
+const mockPrisma = createMockPrisma();
+mock.module("../../db/client.js", () => ({
+  prisma: mockPrisma,
+  db: mockPrisma,
+}));
 
 describe("Cardigann Indexer Database Models", () => {
   let tempDir: string;
@@ -45,7 +52,7 @@ search:
 
   afterEach(async () => {
     // Clean up test indexers
-    await prisma.cardigannIndexer.deleteMany({});
+    await mockPrisma.cardigannIndexer.deleteMany({});
 
     // Clean up temp directory
     if (existsSync(tempDir)) {
@@ -55,7 +62,7 @@ search:
 
   describe("CRUD Operations", () => {
     it("creates indexer", async () => {
-      const result = await prisma.cardigannIndexer.create({
+      const result = await mockPrisma.cardigannIndexer.create({
         data: {
           definitionId: "test-indexer",
           name: "My Test Indexer",
@@ -79,7 +86,7 @@ search:
 
     it("lists indexers with proper ordering", async () => {
       // Create two indexers
-      await prisma.cardigannIndexer.create({
+      await mockPrisma.cardigannIndexer.create({
         data: {
           definitionId: "test-indexer",
           name: "Indexer 1",
@@ -87,7 +94,7 @@ search:
         },
       });
 
-      await prisma.cardigannIndexer.create({
+      await mockPrisma.cardigannIndexer.create({
         data: {
           definitionId: "test-indexer",
           name: "Indexer 2",
@@ -95,7 +102,7 @@ search:
         },
       });
 
-      const result = await prisma.cardigannIndexer.findMany({
+      const result = await mockPrisma.cardigannIndexer.findMany({
         orderBy: [{ enabled: "desc" }, { priority: "desc" }, { name: "asc" }],
       });
 
@@ -106,7 +113,7 @@ search:
     });
 
     it("gets indexer by id", async () => {
-      const created = await prisma.cardigannIndexer.create({
+      const created = await mockPrisma.cardigannIndexer.create({
         data: {
           definitionId: "test-indexer",
           name: "Test Indexer",
@@ -114,7 +121,7 @@ search:
         },
       });
 
-      const result = await prisma.cardigannIndexer.findUnique({
+      const result = await mockPrisma.cardigannIndexer.findUnique({
         where: { id: created.id },
       });
 
@@ -124,7 +131,7 @@ search:
     });
 
     it("returns null for non-existent indexer", async () => {
-      const result = await prisma.cardigannIndexer.findUnique({
+      const result = await mockPrisma.cardigannIndexer.findUnique({
         where: { id: "nonexistent" },
       });
 
@@ -132,7 +139,7 @@ search:
     });
 
     it("updates indexer", async () => {
-      const created = await prisma.cardigannIndexer.create({
+      const created = await mockPrisma.cardigannIndexer.create({
         data: {
           definitionId: "test-indexer",
           name: "Original Name",
@@ -140,7 +147,7 @@ search:
         },
       });
 
-      const updated = await prisma.cardigannIndexer.update({
+      const updated = await mockPrisma.cardigannIndexer.update({
         where: { id: created.id },
         data: {
           name: "Updated Name",
@@ -155,19 +162,19 @@ search:
     });
 
     it("deletes indexer", async () => {
-      const created = await prisma.cardigannIndexer.create({
+      const created = await mockPrisma.cardigannIndexer.create({
         data: {
           definitionId: "test-indexer",
           name: "To Delete",
         },
       });
 
-      await prisma.cardigannIndexer.delete({
+      await mockPrisma.cardigannIndexer.delete({
         where: { id: created.id },
       });
 
       // Verify it's deleted
-      const result = await prisma.cardigannIndexer.findUnique({
+      const result = await mockPrisma.cardigannIndexer.findUnique({
         where: { id: created.id },
       });
 
@@ -175,7 +182,7 @@ search:
     });
 
     it("creates indexer with rate limiting", async () => {
-      const result = await prisma.cardigannIndexer.create({
+      const result = await mockPrisma.cardigannIndexer.create({
         data: {
           definitionId: "test-indexer",
           name: "Rate Limited Indexer",
@@ -198,7 +205,7 @@ search:
         cookies: "session=xyz",
       };
 
-      const result = await prisma.cardigannIndexer.create({
+      const result = await mockPrisma.cardigannIndexer.create({
         data: {
           definitionId: "test-indexer",
           name: "JSON Test",
@@ -210,7 +217,7 @@ search:
     });
 
     it("handles category arrays", async () => {
-      const result = await prisma.cardigannIndexer.create({
+      const result = await mockPrisma.cardigannIndexer.create({
         data: {
           definitionId: "test-indexer",
           name: "Category Test",
@@ -226,7 +233,7 @@ search:
 
   describe("Rate Limit Request Tracking", () => {
     it("creates rate limit request records", async () => {
-      const indexer = await prisma.cardigannIndexer.create({
+      const indexer = await mockPrisma.cardigannIndexer.create({
         data: {
           definitionId: "test-indexer",
           name: "Rate Limited",
@@ -236,7 +243,7 @@ search:
         },
       });
 
-      const request = await prisma.cardigannIndexerRateLimitRequest.create({
+      const request = await mockPrisma.cardigannIndexerRateLimitRequest.create({
         data: {
           indexerId: indexer.id,
         },
@@ -248,7 +255,7 @@ search:
     });
 
     it("cascades delete when indexer is deleted", async () => {
-      const indexer = await prisma.cardigannIndexer.create({
+      const indexer = await mockPrisma.cardigannIndexer.create({
         data: {
           definitionId: "test-indexer",
           name: "To Delete",
@@ -256,20 +263,20 @@ search:
       });
 
       // Create some rate limit requests
-      await prisma.cardigannIndexerRateLimitRequest.create({
+      await mockPrisma.cardigannIndexerRateLimitRequest.create({
         data: { indexerId: indexer.id },
       });
-      await prisma.cardigannIndexerRateLimitRequest.create({
+      await mockPrisma.cardigannIndexerRateLimitRequest.create({
         data: { indexerId: indexer.id },
       });
 
       // Delete the indexer
-      await prisma.cardigannIndexer.delete({
+      await mockPrisma.cardigannIndexer.delete({
         where: { id: indexer.id },
       });
 
       // Verify rate limit requests were also deleted
-      const requests = await prisma.cardigannIndexerRateLimitRequest.findMany({
+      const requests = await mockPrisma.cardigannIndexerRateLimitRequest.findMany({
         where: { indexerId: indexer.id },
       });
 
