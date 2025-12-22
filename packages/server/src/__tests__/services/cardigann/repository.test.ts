@@ -322,6 +322,7 @@ search:
         ok: false,
         status: 404,
         statusText: "Not Found",
+        text: async () => "Not Found",
       })) as any;
 
       await expect(repository.syncFromGitHub()).rejects.toThrow("GitHub API error");

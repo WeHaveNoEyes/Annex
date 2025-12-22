@@ -6,13 +6,27 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { RequestStatus, StepType } from "@prisma/client";
-import { prisma } from "../../../../db/client.js";
+import { createMockPrisma } from "../../../../__tests__/setup.js";
 import { PipelineExecutor } from "../../PipelineExecutor.js";
+import { registerPipelineSteps } from "../../registerSteps.js";
+import { StepRegistry } from "../../StepRegistry.js";
 import { MOVIES, TARGETS } from "../fixtures/media.js";
 import { MOVIE_RELEASES } from "../fixtures/releases.js";
 import { MockDownloadManager } from "../mocks/downloadManager.mock.js";
 import { MockIndexerService } from "../mocks/indexer.mock.js";
-import { cleanupTestData, createTestRequest, getRequestStatus } from "../test-utils/database.js";
+import {
+  cleanupTestData,
+  createTestRequest,
+  createTestServer,
+  getRequestStatus,
+} from "../test-utils/database.js";
+
+// Mock Prisma client to prevent database access
+const mockPrisma = createMockPrisma();
+mock.module("../../../../db/client.js", () => ({
+  prisma: mockPrisma,
+  db: mockPrisma,
+}));
 
 // Mock external services
 let mockIndexer: MockIndexerService;
@@ -22,8 +36,22 @@ mock.module("../../../indexer.js", () => ({
   getIndexerService: () => mockIndexer,
 }));
 
+// Create a proxy that forwards to the current mockDownloadManager instance
+const downloadManagerProxy = new Proxy({} as any, {
+  get(_target, prop) {
+    if (!mockDownloadManager) {
+      throw new Error("MockDownloadManager not initialized");
+    }
+    const value = (mockDownloadManager as any)[prop];
+    if (typeof value === "function") {
+      return value.bind(mockDownloadManager);
+    }
+    return value;
+  },
+});
+
 mock.module("../../../downloadManager.js", () => ({
-  downloadManager: mockDownloadManager,
+  downloadManager: downloadManagerProxy,
 }));
 
 mock.module("../../../trakt.js", () => ({
@@ -37,12 +65,28 @@ describe("Movie Pipeline Integration", () => {
   let templateId: string;
 
   beforeEach(async () => {
+    // Clear and register pipeline steps
+    StepRegistry.clear();
+    registerPipelineSteps();
+
     mockIndexer = new MockIndexerService();
     mockDownloadManager = new MockDownloadManager();
     executor = new PipelineExecutor();
 
+    // Create test storage servers
+    await createTestServer({
+      id: "test-server-4k",
+      name: "4K Test Server",
+      maxResolution: "RES_4K",
+    });
+    await createTestServer({
+      id: "test-server-1080p",
+      name: "1080p Test Server",
+      maxResolution: "RES_1080P",
+    });
+
     // Create a simple movie pipeline template
-    const template = await prisma.pipelineTemplate.create({
+    const template = await mockPrisma.pipelineTemplate.create({
       data: {
         name: "Test Movie Pipeline",
         description: "Test template for integration tests",
@@ -64,7 +108,9 @@ describe("Movie Pipeline Integration", () => {
 
   afterEach(async () => {
     await cleanupTestData();
-    await prisma.pipelineTemplate.deleteMany({});
+    await mockPrisma.pipelineTemplate.deleteMany();
+    await mockPrisma.storageServer.deleteMany();
+    StepRegistry.clear();
     mockIndexer.clearMockReleases();
     mockIndexer.clearSearchCalls();
     mockDownloadManager.clearMockTorrents();
@@ -92,7 +138,7 @@ describe("Movie Pipeline Integration", () => {
       expect(status).toBeDefined();
 
       // Verify pipeline execution was created
-      const execution = await prisma.pipelineExecution.findFirst({
+      const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: request.id },
       });
 
@@ -126,7 +172,7 @@ describe("Movie Pipeline Integration", () => {
       await executor.startExecution(request.id, templateId);
 
       // Verify pipeline completed
-      const execution = await prisma.pipelineExecution.findFirst({
+      const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: request.id },
       });
 
@@ -157,14 +203,14 @@ describe("Movie Pipeline Integration", () => {
       await executor.startExecution(request.id, templateId);
 
       // Pipeline should complete but request should be in QUALITY_UNAVAILABLE
-      const updatedRequest = await prisma.mediaRequest.findUnique({
+      const updatedRequest = await mockPrisma.mediaRequest.findUnique({
         where: { id: request.id },
       });
 
       expect(updatedRequest?.status).toBe(RequestStatus.QUALITY_UNAVAILABLE);
       expect(updatedRequest?.availableReleases).toBeDefined();
 
-      const execution = await prisma.pipelineExecution.findFirst({
+      const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: request.id },
       });
 
@@ -187,7 +233,7 @@ describe("Movie Pipeline Integration", () => {
 
       await executor.startExecution(request.id, templateId);
 
-      const execution = await prisma.pipelineExecution.findFirst({
+      const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: request.id },
       });
 
@@ -210,7 +256,7 @@ describe("Movie Pipeline Integration", () => {
       await executor.startExecution(request.id, templateId);
 
       // Request should be in AWAITING status
-      const updatedRequest = await prisma.mediaRequest.findUnique({
+      const updatedRequest = await mockPrisma.mediaRequest.findUnique({
         where: { id: request.id },
       });
 
@@ -218,7 +264,7 @@ describe("Movie Pipeline Integration", () => {
       expect(updatedRequest?.progress).toBe(0);
 
       // Pipeline should complete gracefully
-      const execution = await prisma.pipelineExecution.findFirst({
+      const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: request.id },
       });
 
@@ -242,7 +288,7 @@ describe("Movie Pipeline Integration", () => {
         // Expected to fail
       }
 
-      const execution = await prisma.pipelineExecution.findFirst({
+      const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: request.id },
       });
 
@@ -266,7 +312,7 @@ describe("Movie Pipeline Integration", () => {
 
       await executor.startExecution(request.id, templateId);
 
-      const execution = await prisma.pipelineExecution.findFirst({
+      const execution = await mockPrisma.pipelineExecution.findFirst({
         where: { requestId: request.id },
       });
 
@@ -291,9 +337,8 @@ describe("Movie Pipeline Integration", () => {
       await executor.startExecution(request.id, templateId);
 
       // Verify activity logs were created
-      const logs = await prisma.activityLog.findMany({
+      const logs = await mockPrisma.activityLog.findMany({
         where: { requestId: request.id },
-        orderBy: { id: "asc" },
       });
 
       expect(logs.length).toBeGreaterThan(0);

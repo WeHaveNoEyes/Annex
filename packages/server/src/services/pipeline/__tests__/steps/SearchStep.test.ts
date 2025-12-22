@@ -6,6 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { MediaType } from "@prisma/client";
+import { createMockPrisma } from "../../../../__tests__/setup.js";
 import { SearchStep } from "../../steps/SearchStep.js";
 import { MOVIES, TARGETS } from "../fixtures/media.js";
 import { MOVIE_RELEASES } from "../fixtures/releases.js";
@@ -13,7 +14,14 @@ import { createMockTorrent, MockDownloadManager } from "../mocks/downloadManager
 import { createQualityVariants, MockIndexerService } from "../mocks/indexer.mock.js";
 import { assertStepData, assertStepRetry, assertStepSuccess } from "../test-utils/assertions.js";
 import { ContextBuilder } from "../test-utils/context-builder.js";
-import { cleanupTestData, createTestRequest } from "../test-utils/database.js";
+import { cleanupTestData, createTestRequest, createTestServer } from "../test-utils/database.js";
+
+// Mock Prisma client to prevent database access
+const mockPrisma = createMockPrisma();
+mock.module("../../../../db/client.js", () => ({
+  prisma: mockPrisma,
+  db: mockPrisma,
+}));
 
 // Mock the external services
 let mockIndexer: MockIndexerService;
@@ -24,8 +32,22 @@ mock.module("../../../indexer.js", () => ({
   getIndexerService: () => mockIndexer,
 }));
 
+// Create a proxy that forwards to the current mockDownloadManager instance
+const downloadManagerProxy = new Proxy({} as any, {
+  get(_target, prop) {
+    if (!mockDownloadManager) {
+      throw new Error("MockDownloadManager not initialized");
+    }
+    const value = (mockDownloadManager as any)[prop];
+    if (typeof value === "function") {
+      return value.bind(mockDownloadManager);
+    }
+    return value;
+  },
+});
+
 mock.module("../../../downloadManager.js", () => ({
-  downloadManager: mockDownloadManager,
+  downloadManager: downloadManagerProxy,
 }));
 
 mock.module("../../../trakt.js", () => ({
@@ -36,13 +58,26 @@ mock.module("../../../trakt.js", () => ({
 }));
 
 describe("SearchStep", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     mockIndexer = new MockIndexerService();
     mockDownloadManager = new MockDownloadManager();
+
+    // Create test storage servers
+    await createTestServer({
+      id: "test-server-4k",
+      name: "4K Test Server",
+      maxResolution: "RES_4K",
+    });
+    await createTestServer({
+      id: "test-server-1080p",
+      name: "1080p Test Server",
+      maxResolution: "RES_1080P",
+    });
   });
 
   afterEach(async () => {
     await cleanupTestData();
+    await mockPrisma.storageServer.deleteMany();
     mockIndexer.clearMockReleases();
     mockIndexer.clearSearchCalls();
     mockDownloadManager.clearMockTorrents();

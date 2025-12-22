@@ -89,6 +89,9 @@ export class CardigannExecutor {
     const processedPathRows = this.processRowsSelector(searchPath.rows, variables);
     const finalRows = processedPathRows || processedRows;
 
+    // Merge path-level fields with search-level fields (path takes precedence)
+    const finalFields = { ...defaultFields, ...searchPath.fields };
+
     // Process path template BEFORE creating URL
     const processedPath = cardigannParser.replaceVariables(searchPath.path, variables);
     let url = cardigannParser.normalizeUrl(baseUrl, processedPath);
@@ -119,11 +122,11 @@ export class CardigannExecutor {
     const responseType = searchPath.response?.type || "html";
 
     if (responseType === "json") {
-      return this.parseJsonResponse(responseText, baseUrl, finalRows, defaultFields);
+      return this.parseJsonResponse(responseText, baseUrl, finalRows, finalFields);
     } else if (responseType === "xml") {
-      return this.parseXmlResponse(responseText, baseUrl, finalRows, defaultFields);
+      return this.parseXmlResponse(responseText, baseUrl, finalRows, finalFields);
     } else {
-      return this.parseHtmlResponse(responseText, baseUrl, finalRows, defaultFields);
+      return this.parseHtmlResponse(responseText, baseUrl, finalRows, finalFields);
     }
   }
 

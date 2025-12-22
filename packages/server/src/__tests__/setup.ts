@@ -75,6 +75,12 @@ export function createMockPrisma() {
   const notificationConfigStore = new Map<string, any>();
   const activityLogStore = new Map<string, any>();
   const approvalQueueStore = new Map<string, any>();
+  const storageServerStore = new Map<string, any>();
+  const tvEpisodeStore = new Map<string, any>();
+  const downloadStore = new Map<string, any>();
+  const mediaItemStore = new Map<string, any>();
+  const indexerStore = new Map<string, any>();
+  const cardigannIndexerStore = new Map<string, any>();
 
   let idCounter = 1;
   const generateId = () => `test-id-${idCounter++}`;
@@ -157,7 +163,7 @@ export function createMockPrisma() {
     },
     mediaRequest: {
       create: mock(async ({ data }: { data: any }) => {
-        const id = generateId();
+        const id = data.id || generateId();
         const record = { id, ...data, createdAt: new Date(), updatedAt: new Date() };
         mediaRequestStore.set(id, record);
         return record;
@@ -174,13 +180,35 @@ export function createMockPrisma() {
       findMany: mock(async ({ where }: { where?: any } = {}) => {
         let results = Array.from(mediaRequestStore.values());
         if (where) {
-          results = results.filter((r) => Object.keys(where).every((k) => r[k] === where[k]));
+          results = results.filter((r) => {
+            if (where.id?.startsWith) {
+              return r.id?.startsWith(where.id.startsWith);
+            }
+            return Object.keys(where).every((k) => r[k] === where[k]);
+          });
         }
         return results;
       }),
-      deleteMany: mock(async () => {
-        const count = mediaRequestStore.size;
-        mediaRequestStore.clear();
+      update: mock(async ({ where, data }: { where: { id: string }; data: any }) => {
+        const record = mediaRequestStore.get(where.id);
+        if (!record) throw new Error(`MediaRequest with id ${where.id} not found`);
+        const updated = { ...record, ...data, updatedAt: new Date() };
+        mediaRequestStore.set(where.id, updated);
+        return updated;
+      }),
+      deleteMany: mock(async ({ where }: { where?: any } = {}) => {
+        let count = 0;
+        if (where?.id?.startsWith) {
+          Array.from(mediaRequestStore.entries()).forEach(([id, _record]) => {
+            if (id.startsWith(where.id.startsWith)) {
+              mediaRequestStore.delete(id);
+              count++;
+            }
+          });
+        } else {
+          count = mediaRequestStore.size;
+          mediaRequestStore.clear();
+        }
         return { count };
       }),
     },
@@ -402,6 +430,121 @@ export function createMockPrisma() {
         return { count };
       }),
     },
+    storageServer: {
+      create: mock(async ({ data }: { data: any }) => {
+        const id = data.id || generateId();
+        const record = { id, ...data, createdAt: new Date(), updatedAt: new Date() };
+        storageServerStore.set(id, record);
+        return record;
+      }),
+      findUnique: mock(async ({ where }: { where: { id: string } }) => {
+        return storageServerStore.get(where.id) || null;
+      }),
+      findMany: mock(async ({ where, select }: { where?: any; select?: any } = {}) => {
+        let results = Array.from(storageServerStore.values());
+        if (where?.id?.in) {
+          results = results.filter((r) => where.id.in.includes(r.id));
+        }
+        if (select) {
+          results = results.map((r: any) => {
+            const selected: any = {};
+            Object.keys(select).forEach((key) => {
+              if (select[key]) selected[key] = r[key];
+            });
+            return selected;
+          });
+        }
+        return results;
+      }),
+      deleteMany: mock(async () => {
+        const count = storageServerStore.size;
+        storageServerStore.clear();
+        return { count };
+      }),
+    },
+    tvEpisode: {
+      create: mock(async ({ data }: { data: any }) => {
+        const id = generateId();
+        const record = { id, ...data, createdAt: new Date(), updatedAt: new Date() };
+        tvEpisodeStore.set(id, record);
+        return record;
+      }),
+      deleteMany: mock(async () => {
+        const count = tvEpisodeStore.size;
+        tvEpisodeStore.clear();
+        return { count };
+      }),
+    },
+    download: {
+      create: mock(async ({ data }: { data: any }) => {
+        const id = generateId();
+        const record = { id, ...data, createdAt: new Date(), updatedAt: new Date() };
+        downloadStore.set(id, record);
+        return record;
+      }),
+      deleteMany: mock(async () => {
+        const count = downloadStore.size;
+        downloadStore.clear();
+        return { count };
+      }),
+    },
+    mediaItem: {
+      findUnique: mock(async ({ where }: { where: { id: string } }) => {
+        return mediaItemStore.get(where.id) || null;
+      }),
+      create: mock(async ({ data }: { data: any }) => {
+        const id = data.id || generateId();
+        const record = { id, ...data, createdAt: new Date(), updatedAt: new Date() };
+        mediaItemStore.set(id, record);
+        return record;
+      }),
+      upsert: mock(
+        async ({ where, create, update }: { where: { id: string }; create: any; update: any }) => {
+          const existing = mediaItemStore.get(where.id);
+          const record = existing
+            ? { ...existing, ...update, updatedAt: new Date() }
+            : { id: where.id, ...create, createdAt: new Date(), updatedAt: new Date() };
+          mediaItemStore.set(where.id, record);
+          return record;
+        }
+      ),
+      deleteMany: mock(async () => {
+        const count = mediaItemStore.size;
+        mediaItemStore.clear();
+        return { count };
+      }),
+    },
+    indexer: {
+      findMany: mock(async ({ where }: { where?: any } = {}) => {
+        let results = Array.from(indexerStore.values());
+        if (where?.type) {
+          results = results.filter((r) => r.type === where.type);
+        }
+        return results;
+      }),
+      deleteMany: mock(async ({ where }: { where?: any } = {}) => {
+        let count = 0;
+        if (where?.type) {
+          Array.from(indexerStore.entries()).forEach(([id, record]) => {
+            if (record.type === where.type) {
+              indexerStore.delete(id);
+              count++;
+            }
+          });
+        } else {
+          count = indexerStore.size;
+          indexerStore.clear();
+        }
+        return { count };
+      }),
+    },
+    cardigannIndexer: {
+      deleteMany: mock(async () => {
+        const count = cardigannIndexerStore.size;
+        cardigannIndexerStore.clear();
+        return { count };
+      }),
+    },
     _stores: {
       setting: settingStore,
       mediaRequest: mediaRequestStore,
@@ -411,6 +554,12 @@ export function createMockPrisma() {
       notificationConfig: notificationConfigStore,
       activityLog: activityLogStore,
       approvalQueue: approvalQueueStore,
+      storageServer: storageServerStore,
+      tvEpisode: tvEpisodeStore,
+      download: downloadStore,
+      mediaItem: mediaItemStore,
+      indexer: indexerStore,
+      cardigannIndexer: cardigannIndexerStore,
     },
     _store: settingStore, // Backwards compatibility
     _clear: () => {
@@ -422,6 +571,12 @@ export function createMockPrisma() {
       notificationConfigStore.clear();
       activityLogStore.clear();
       approvalQueueStore.clear();
+      storageServerStore.clear();
+      tvEpisodeStore.clear();
+      downloadStore.clear();
+      mediaItemStore.clear();
+      indexerStore.clear();
+      cardigannIndexerStore.clear();
     },
   };
 }
