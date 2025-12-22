@@ -117,8 +117,8 @@ jobs:
 
           exit $TYPECHECK_EXIT
 
-  test:
-    name: Test
+  test-server:
+    name: Test Server
     runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - uses: actions/checkout@v4
@@ -138,9 +138,30 @@ jobs:
       - name: Build shared types
         run: bun run --filter @annex/shared build
 
+      - name: Run server tests
+        run: bun test
+        working-directory: packages/server
+
+  test-encoder:
+    name: Test Encoder
+    runs-on: blacksmith-2vcpu-ubuntu-2404
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build shared types
+        run: bun run --filter @annex/shared build
+
       - name: Generate encoder version file
         run: |
-          cat > packages/encoder/src/version.ts << EOF
+          cat > src/version.ts << EOF
           /**
            * Version information
            * Auto-generated during build
@@ -150,81 +171,11 @@ jobs:
           export const BUILD_DATE = "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)";
           export const BUILD_TIMESTAMP = $(date +%s)000;
           EOF
+        working-directory: packages/encoder
 
-      - name: Run tests
-        id: test
-        run: |
-          set +e
-          bun run test 2>&1 | tee test.log
-          TEST_EXIT=${PIPESTATUS[0]}
-          set -e
-
-          # Parse test output and create summary
-          bun run - <<'SCRIPT'
-          import { readFileSync } from 'fs';
-
-          try {
-            const log = readFileSync('test.log', 'utf-8');
-            const lines = log.split('\n');
-
-            let totalTests = 0;
-            let passedTests = 0;
-            let failedTests = 0;
-            let skippedTests = 0;
-            const failures = [];
-
-            // Parse bun test output
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i];
-
-              // Match test result lines
-              if (line.includes('✓') || line.includes('✔')) {
-                passedTests++;
-                totalTests++;
-              } else if (line.includes('✗') || line.includes('×')) {
-                failedTests++;
-                totalTests++;
-                // Capture failure details
-                failures.push(line.trim());
-              } else if (line.includes('⊘') || line.includes('skip')) {
-                skippedTests++;
-                totalTests++;
-              }
-            }
-
-            let summary = '# Test Results\n\n';
-
-            if (failedTests === 0 && totalTests > 0) {
-              summary += `✅ All ${totalTests} tests passed!\n\n`;
-            } else if (totalTests === 0) {
-              summary += '⚠️ No tests found\n\n';
-            } else {
-              summary += `**Total Tests:** ${totalTests}\n`;
-              summary += `- ✅ Passed: ${passedTests}\n`;
-              summary += `- ❌ Failed: ${failedTests}\n`;
-              if (skippedTests > 0) {
-                summary += `- ⊘ Skipped: ${skippedTests}\n`;
-              }
-              summary += '\n';
-
-              if (failures.length > 0) {
-                summary += '## Failed Tests\n\n';
-                summary += '```\n';
-                summary += failures.slice(0, 20).join('\n');
-                if (failures.length > 20) {
-                  summary += `\n... and ${failures.length - 20} more failures`;
-                }
-                summary += '\n```\n';
-              }
-            }
-
-            await Bun.write(process.env.GITHUB_STEP_SUMMARY, summary);
-          } catch (err) {
-            console.error('Failed to parse test output:', err);
-          }
-          SCRIPT
-
-          exit $TEST_EXIT
+      - name: Run encoder tests
+        run: bun test
+        working-directory: packages/encoder
 
   build:
     name: Build
