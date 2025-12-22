@@ -19,6 +19,17 @@ type SortOption = "newest" | "oldest" | "title" | "progress" | "status";
 type FilterStatus = "all" | "active" | "completed" | "failed" | "awaiting";
 type FilterType = "all" | "movie" | "tv";
 
+interface MediaRequest {
+  id: string;
+  title: string;
+  year: number;
+  type: "movie" | "tv";
+  status: RequestStatus;
+  progress: number;
+  posterPath?: string;
+  [key: string]: unknown;
+}
+
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
 const statusConfig: Record<
@@ -728,14 +739,14 @@ export default function RequestsPage() {
     if (search) {
       const searchLower = search.toLowerCase();
       filtered = filtered.filter(
-        (r: any) =>
+        (r: MediaRequest) =>
           r.title.toLowerCase().includes(searchLower) || r.year.toString().includes(searchLower)
       );
     }
 
     // Status filter
     if (statusFilter !== "all") {
-      filtered = filtered.filter((r: any) => {
+      filtered = filtered.filter((r: MediaRequest) => {
         const status = r.status as RequestStatus;
         switch (statusFilter) {
           case "active":
@@ -756,7 +767,7 @@ export default function RequestsPage() {
 
     // Type filter
     if (typeFilter !== "all") {
-      filtered = filtered.filter((r: any) => r.type === typeFilter);
+      filtered = filtered.filter((r: MediaRequest) => r.type === typeFilter);
     }
 
     // Sort
@@ -800,13 +811,13 @@ export default function RequestsPage() {
 
     return {
       total: requests.data.length,
-      active: requests.data.filter((r: any) =>
+      active: requests.data.filter((r: MediaRequest) =>
         ["pending", "searching", "downloading", "encoding", "delivering"].includes(r.status)
       ).length,
-      completed: requests.data.filter((r: any) => r.status === "completed").length,
-      failed: requests.data.filter((r: any) => r.status === "failed").length,
+      completed: requests.data.filter((r: MediaRequest) => r.status === "completed").length,
+      failed: requests.data.filter((r: MediaRequest) => r.status === "failed").length,
       awaiting: requests.data.filter(
-        (r: any) => r.status === "awaiting" || r.status === "quality_unavailable"
+        (r: MediaRequest) => r.status === "awaiting" || r.status === "quality_unavailable"
       ).length,
     };
   }, [requests.data]);

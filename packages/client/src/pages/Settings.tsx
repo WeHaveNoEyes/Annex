@@ -19,6 +19,18 @@ import Notifications from "./Settings/Notifications";
 import PipelineEditor from "./Settings/PipelineEditor";
 import Pipelines from "./Settings/Pipelines";
 
+interface StorageServer {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+interface Indexer {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
 const settingsNavItems = [
   { to: "/settings", label: "General", end: true },
   { to: "/settings/servers", label: "Storage Servers" },
@@ -1437,7 +1449,7 @@ function ServersSettings() {
 
   // Show form for editing existing server
   if (editingServer) {
-    const server = servers.data?.find((s: any) => s.id === editingServer);
+    const server = servers.data?.find((s: StorageServer) => s.id === editingServer);
     if (server) {
       const formData: ServerFormData = {
         name: server.name,
@@ -1496,7 +1508,7 @@ function ServersSettings() {
 
       {servers.data && servers.data.length > 0 && (
         <div className="space-y-3">
-          {servers.data.map((server: any) => (
+          {servers.data.map((server: StorageServer) => (
             <ServerCard
               key={server.id}
               server={server}
@@ -1990,7 +2002,7 @@ function IndexersSettings() {
 
   // Show form for editing existing indexer
   if (editingIndexer) {
-    const indexer = indexers.data?.find((i: any) => i.id === editingIndexer);
+    const indexer = indexers.data?.find((i: Indexer) => i.id === editingIndexer);
     if (indexer) {
       const formData: IndexerFormData = {
         name: indexer.name,

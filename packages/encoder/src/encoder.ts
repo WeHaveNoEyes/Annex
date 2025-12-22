@@ -261,7 +261,7 @@ function buildSubtitleMapping(mediaInfo: MediaInfo): {
 function buildVideoArgs(
   encodingConfig: EncodingConfig,
   mediaInfo: MediaInfo,
-  gpuDevice: string
+  _gpuDevice: string
 ): string[] {
   const args: string[] = [];
   const hwAccel = encodingConfig.hwAccel?.toUpperCase();

@@ -2,6 +2,11 @@ import { useState } from "react";
 import { Badge, Button, Card, EmptyState, Input, Label } from "../../components/ui";
 import { trpc } from "../../trpc";
 
+interface NotificationConfig {
+  id: string;
+  [key: string]: unknown;
+}
+
 export default function Notifications() {
   const [isCreating, setIsCreating] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -89,7 +94,7 @@ export default function Notifications() {
 
       <div className="space-y-4">
         {configs && configs.length > 0 ? (
-          configs.map((config: any) => (
+          configs.map((config: NotificationConfig) => (
             <Card key={config.id} className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">

@@ -17,6 +17,28 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
+interface Genre {
+  id: number;
+  name: string;
+}
+
+interface ServerAvailability {
+  serverId: string;
+  serverName: string;
+  [key: string]: unknown;
+}
+
+interface Season {
+  seasonNumber: number;
+  episodes?: Episode[];
+  [key: string]: unknown;
+}
+
+interface Episode {
+  episodeNumber: number;
+  [key: string]: unknown;
+}
+
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
 // Build image URL - handles both full URLs (Trakt) and TMDB paths
@@ -334,7 +356,7 @@ export default function MediaDetailPage() {
               {/* Genres */}
               {data.genres.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {data.genres.map((genre: any) => (
+                  {data.genres.map((genre: string) => (
                     <span
                       key={genre}
                       className="px-3 py-1 text-sm bg-white/10 backdrop-blur-sm rounded-full text-white/90 border border-white/20"
@@ -351,7 +373,7 @@ export default function MediaDetailPage() {
                 movieAvailability.servers.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-white/50 text-sm">In Library:</span>
-                    {movieAvailability.servers.map((server: any) => (
+                    {movieAvailability.servers.map((server: ServerAvailability) => (
                       <span
                         key={server.serverId}
                         className="flex items-center gap-1.5 px-2.5 py-1 bg-green-500/20 text-green-400 border border-green-500/30 rounded text-sm"
@@ -462,7 +484,7 @@ export default function MediaDetailPage() {
                   Seasons ({tvData.seasons.length})
                 </h2>
                 <div className="space-y-3">
-                  {tvData.seasons.map((season: any) => {
+                  {tvData.seasons.map((season: Season) => {
                     const isExpanded = expandedSeasons.has(season.seasonNumber);
                     const toggleSeason = () => {
                       setExpandedSeasons((prev) => {
@@ -553,7 +575,7 @@ export default function MediaDetailPage() {
                         {/* Episodes List (Expanded) */}
                         {isExpanded && season.episodes && season.episodes.length > 0 && (
                           <div className="border-t border-white/10">
-                            {season.episodes.map((episode: any) => {
+                            {season.episodes.map((episode: Episode) => {
                               const episodeAvail = getEpisodeAvailability(
                                 season.seasonNumber,
                                 episode.episodeNumber

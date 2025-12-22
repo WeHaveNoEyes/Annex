@@ -20,6 +20,11 @@ interface StepTree {
   children?: StepTree[];
 }
 
+interface StepExecution {
+  status: StepStatus;
+  [key: string]: unknown;
+}
+
 export class PipelineExecutor {
   // Start a new pipeline execution for a request
   async startExecution(requestId: string, templateId: string): Promise<void> {
@@ -250,7 +255,7 @@ export class PipelineExecutor {
       }
 
       // Find next pending step
-      const nextStep = execution.stepExecutions.find((s: any) => s.status === "PENDING");
+      const nextStep = execution.stepExecutions.find((s: StepExecution) => s.status === "PENDING");
 
       if (!nextStep) {
         // All steps completed

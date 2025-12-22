@@ -6,6 +6,12 @@ type MediaType = "all" | "movie" | "tv";
 type SortBy = "SortName" | "DateCreated" | "PremiereDate" | "CommunityRating";
 type SortOrder = "Ascending" | "Descending";
 
+interface Server {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
 export default function LibraryPage() {
   // Server selection
   const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
@@ -107,7 +113,7 @@ export default function LibraryPage() {
     );
   }
 
-  const selectedServer = servers.find((s: any) => s.id === selectedServerId);
+  const selectedServer = servers.find((s: Server) => s.id === selectedServerId);
 
   return (
     <div className="space-y-6">
@@ -142,7 +148,7 @@ export default function LibraryPage() {
         <div className="flex items-center gap-3">
           <span className="text-white/50 text-sm">Server:</span>
           <div className="flex gap-2">
-            {servers.map((server: any) => (
+            {servers.map((server: Server) => (
               <button
                 key={server.id}
                 onClick={() => handleServerChange(server.id)}

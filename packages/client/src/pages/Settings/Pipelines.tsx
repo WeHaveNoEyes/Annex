@@ -2,6 +2,11 @@ import { useNavigate } from "react-router-dom";
 import { Badge, Button, Card, EmptyState } from "../../components/ui";
 import { trpc } from "../../trpc";
 
+interface Pipeline {
+  id: string;
+  [key: string]: unknown;
+}
+
 export default function Pipelines() {
   const navigate = useNavigate();
   const { data: pipelines, isLoading } = trpc.pipelines.list.useQuery();
@@ -50,7 +55,7 @@ export default function Pipelines() {
 
       <div className="space-y-4">
         {pipelines && pipelines.length > 0 ? (
-          pipelines.map((pipeline: any) => (
+          pipelines.map((pipeline: Pipeline) => (
             <Card key={pipeline.id} className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">

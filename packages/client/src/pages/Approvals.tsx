@@ -2,6 +2,11 @@ import { useState } from "react";
 import { Badge, Button, Card, EmptyState } from "../components/ui";
 import { trpc } from "../trpc";
 
+interface Approval {
+  id: string;
+  [key: string]: unknown;
+}
+
 export default function Approvals() {
   const [filter, setFilter] = useState<"PENDING" | "ALL">("PENDING");
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -110,7 +115,7 @@ export default function Approvals() {
 
       <div className="space-y-4">
         {approvals && approvals.length > 0 ? (
-          approvals.map((approval: any) => (
+          approvals.map((approval: Approval) => (
             <Card key={approval.id} className="p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
