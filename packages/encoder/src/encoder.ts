@@ -155,6 +155,8 @@ function buildFfmpegArgs(
     args.push("-hwaccel", "vaapi");
     args.push("-hwaccel_device", gpuDevice);
     args.push("-hwaccel_output_format", "vaapi");
+    // Limit hardware frame pool to prevent VRAM exhaustion on long encodes
+    args.push("-extra_hw_frames", "8");
   } else {
     console.log(`[Encoder] Using SOFTWARE encoding (hwAccel="${hwAccel}" is not VAAPI)`);
   }
@@ -184,6 +186,9 @@ function buildFfmpegArgs(
   if (hasCompatibleSubs) {
     args.push("-c:s", "copy");
   }
+
+  // Limit internal muxing queue to prevent memory buildup
+  args.push("-max_muxing_queue_size", "1024");
 
   // Output
   args.push(outputPath);
