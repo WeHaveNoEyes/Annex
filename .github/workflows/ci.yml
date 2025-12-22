@@ -166,16 +166,16 @@ jobs:
 
       - name: Generate encoder version file
         run: |
-          cat > src/version.ts << EOF
-          /**
-           * Version information
-           * Auto-generated during build
-           */
-
-          export const VERSION = "0.1.0";
-          export const BUILD_DATE = "$(date -u +%Y-%m-%dT%H:%M:%S.000Z)";
-          export const BUILD_TIMESTAMP = $(date +%s)000;
-          EOF
+          {
+            echo '/**'
+            echo ' * Version information'
+            echo ' * Auto-generated during build'
+            echo ' */'
+            echo ''
+            echo 'export const VERSION = "0.1.0";'
+            echo "export const BUILD_DATE = \"$(date -u +%Y-%m-%dT%H:%M:%S.000Z)\";"
+            echo "export const BUILD_TIMESTAMP = $(date +%s)000;"
+          } > src/version.ts
         working-directory: packages/encoder
 
       - name: Run encoder tests
