@@ -893,6 +893,34 @@ model MediaRatings {
 }
 
 // =============================================================================
+// Trakt List Cache (Discovery Page Optimization)
+// =============================================================================
+
+model TraktListCache {
+  id          String   @id @default(cuid())
+
+  // Cache key components
+  listType    String   // "trending", "popular", "favorited", "played", "watched", "collected"
+  mediaType   String   // "movie" or "tv"
+  page        Int
+  period      String   @default("") // For time-based lists (played, watched, collected), empty string if not applicable
+  filterHash  String   @default("") // MD5 hash of filter parameters for uniqueness, empty string if no filters
+
+  // Cached data
+  results      Json     // Array of TraktDiscoverItem with hydrated inLibrary/requestStatus
+  totalPages   Int
+  totalResults Int
+
+  // Timestamps
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime // createdAt + 6 hours
+
+  @@unique([listType, mediaType, page, period, filterHash])
+  @@index([expiresAt])
+  @@index([listType, mediaType, page])
+}
+
+// =============================================================================
 // Remote Encoders (Distributed encoding VMs)
 // =============================================================================
 

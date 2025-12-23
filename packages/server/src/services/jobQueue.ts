@@ -28,7 +28,9 @@ export type JobType =
   | "tv:download-season"
   | "tv:download-episode"
   | "tv:check-new-episodes"
-  | "ratelimit:cleanup";
+  | "ratelimit:cleanup"
+  | "trakt:refresh-list-cache"
+  | "trakt:cleanup-cache";
 
 interface LibrarySyncServerPayload {
   serverId: string;
@@ -121,6 +123,45 @@ class JobQueueService {
       return { cleaned: count };
     });
 
+    this.registerHandler("trakt:refresh-list-cache", async (payload) => {
+      const { input, filterHash } = payload as {
+        input: {
+          listType: string;
+          type: "movie" | "tv";
+          page: number;
+          period?: string;
+          years?: string;
+          genres?: string[];
+          languages?: string[];
+          countries?: string[];
+          runtimes?: string;
+          certifications?: string[];
+          ratings?: string;
+          tmdbRatings?: string;
+          imdbRatings?: string;
+          rtMeters?: string;
+          rtUserMeters?: string;
+          metascores?: string;
+          query?: string;
+        };
+        filterHash: string | null;
+      };
+
+      const { refreshTraktListCache } = await import("../routers/discovery.js");
+      await refreshTraktListCache(input, filterHash);
+      return { success: true };
+    });
+
+    this.registerHandler("trakt:cleanup-cache", async () => {
+      // Delete cache entries older than 24 hours
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const result = await prisma.traktListCache.deleteMany({
+        where: { expiresAt: { lt: cutoff } },
+      });
+      console.log(`[Trakt Cache] Cleaned up ${result.count} expired cache entries`);
+      return { deleted: result.count };
+    });
+
     this.registerHandler("pipeline:execute-step", async (payload) => {
       const { executionId } = payload as { executionId: string };
       const { PipelineExecutor } = await import("./pipeline/PipelineExecutor.js");
@@ -189,6 +230,9 @@ class JobQueueService {
 
     // 6. Start scheduled jobs (library sync, awaiting retries)
     this.startScheduledJobs();
+
+    // 7. Pre-hydrate Trakt cache for main trending pages
+    this.preHydrateTraktCache();
 
     console.log(`[JobQueue] Crash recovery complete, queue started`);
   }
@@ -364,12 +408,13 @@ class JobQueueService {
   }
 
   /**
-   * Start all scheduled recurring jobs (per-server library sync, awaiting retries)
+   * Start all scheduled recurring jobs (per-server library sync, awaiting retries, trakt cache cleanup)
    */
   private async startScheduledJobs(): Promise<void> {
     await this.startAllServerSyncSchedulers();
     await this.startAwaitingRetryScheduler();
     await this.startApprovalTimeoutScheduler();
+    await this.startTraktCacheCleanupScheduler();
   }
 
   /**
@@ -454,6 +499,83 @@ class JobQueueService {
       await approvalService.checkTimeouts();
     } catch (error) {
       console.error("[JobQueue] Approval timeout check failed:", error);
+    }
+  }
+
+  /**
+   * Register the Trakt cache cleanup task with scheduler
+   * Runs every 6 hours to delete expired cache entries
+   */
+  async startTraktCacheCleanupScheduler(): Promise<void> {
+    const scheduler = getSchedulerService();
+    const intervalMs = 6 * 60 * 60 * 1000; // 6 hours
+
+    scheduler.register("trakt-cache-cleanup", "Trakt Cache Cleanup", intervalMs, async () => {
+      await this.addJobIfNotExists(
+        "trakt:cleanup-cache",
+        {},
+        "trakt:cleanup-cache",
+        { priority: 3 }
+      );
+    });
+
+    console.log("[JobQueue] Registered Trakt cache cleanup task (6h interval)");
+  }
+
+  /**
+   * Pre-hydrate Trakt cache for main trending pages on server startup
+   * Only hydrates if cache is expired or doesn't exist
+   */
+  private async preHydrateTraktCache(): Promise<void> {
+    try {
+      const now = new Date();
+      const pagesToPreHydrate = [
+        { listType: "trending", mediaType: "movie" as const, period: "weekly" },
+        { listType: "trending", mediaType: "tv" as const, period: "weekly" },
+      ];
+
+      for (const { listType, mediaType, period } of pagesToPreHydrate) {
+        // Check if cache exists and is fresh
+        const cached = await prisma.traktListCache.findUnique({
+          where: {
+            listType_mediaType_page_period_filterHash: {
+              listType,
+              mediaType,
+              page: 1,
+              period,
+              filterHash: "",
+            },
+          },
+        });
+
+        // Only hydrate if cache is missing or expired
+        if (!cached || cached.expiresAt <= now) {
+          console.log(
+            `[TraktCache] Pre-hydrating ${listType} ${mediaType} (${period || "default"})`
+          );
+
+          await this.addJobIfNotExists(
+            "trakt:refresh-list-cache",
+            {
+              input: {
+                listType,
+                type: mediaType,
+                page: 1,
+                period,
+              },
+              filterHash: null,
+            },
+            `trakt:preheat:${listType}:${mediaType}:1:${period}`,
+            { priority: 8, maxAttempts: 2 } // High priority for startup
+          );
+        } else {
+          console.log(
+            `[TraktCache] Skipping pre-hydration for ${listType} ${mediaType} - cache is fresh`
+          );
+        }
+      }
+    } catch (error) {
+      console.error("[TraktCache] Pre-hydration failed:", error);
     }
   }
 

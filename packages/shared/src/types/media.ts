@@ -153,6 +153,25 @@ export type DiscoveryMode =
 // Quality tier filters
 export type QualityTier = "any" | "good" | "great" | "excellent";
 
+// Library status types (for Discover optimization)
+export interface LibraryServerInfo {
+  id: string;
+  name: string;
+  type: string;
+  quality?: string;
+  episodeCount?: number;
+  totalEpisodes?: number;
+  isComplete?: boolean;
+}
+
+export interface LibraryInfo {
+  servers: LibraryServerInfo[];
+}
+
+export interface RequestInfo {
+  status: string;
+}
+
 export interface TrendingResult {
   type: MediaType;
   tmdbId: number;
@@ -166,6 +185,9 @@ export interface TrendingResult {
   ratings?: MediaRatings;
   // YouTube trailer key (if available)
   trailerKey?: string | null;
+  // Server-side hydrated status (Discover optimization)
+  inLibrary?: LibraryInfo | null;
+  requestStatus?: RequestInfo | null;
 }
 
 export interface SearchResult extends TrendingResult {

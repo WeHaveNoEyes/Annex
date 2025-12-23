@@ -54,6 +54,8 @@ interface DisplayMediaItem {
     mdblistScore?: number | null;
   };
   trailerKey?: string | null;
+  inLibrary?: LibraryInfo | null;
+  requestStatus?: string | null;
 }
 
 // Transform API result to display format
@@ -74,6 +76,8 @@ function transformResult(item: {
     mdblistScore?: number | null;
   } | null;
   trailerKey?: string | null;
+  inLibrary?: LibraryInfo | null;
+  requestStatus?: { status: string } | null;
 }): DisplayMediaItem {
   return {
     tmdbId: item.tmdbId,
@@ -96,6 +100,8 @@ function transformResult(item: {
         }
       : undefined,
     trailerKey: item.trailerKey,
+    inLibrary: item.inLibrary,
+    requestStatus: item.requestStatus?.status || null,
   };
 }
 
@@ -242,52 +248,6 @@ export default function DiscoverPage() {
     {
       keepPreviousData: true,
     }
-  );
-
-  // Build a list of items to check for library status
-  const itemsToCheck = useMemo(() => {
-    return allResults.map((item) => ({
-      tmdbId: item.tmdbId,
-      type: item.type,
-    }));
-  }, [allResults]);
-
-  // Check library status for displayed items
-  const libraryStatusQuery = trpc.servers.checkInLibrary.useQuery(
-    { items: itemsToCheck },
-    {
-      enabled: itemsToCheck.length > 0,
-      staleTime: 60000, // Cache for 1 minute
-    }
-  );
-
-  // Check request status for displayed items
-  const requestStatusQuery = trpc.servers.checkRequested.useQuery(
-    { items: itemsToCheck },
-    {
-      enabled: itemsToCheck.length > 0,
-      staleTime: 30000, // Cache for 30 seconds (requests change more frequently)
-    }
-  );
-
-  // Get library info for a specific item
-  const getLibraryInfo = useCallback(
-    (type: "movie" | "tv", tmdbId: number): LibraryInfo | null => {
-      const key = `${type}-${tmdbId}`;
-      const info = libraryStatusQuery.data?.inLibrary[key];
-      return info || null;
-    },
-    [libraryStatusQuery.data]
-  );
-
-  // Get request status for a specific item
-  const getRequestStatus = useCallback(
-    (type: "movie" | "tv", tmdbId: number): string | null => {
-      const key = `${type}-${tmdbId}`;
-      const info = requestStatusQuery.data?.requested[key];
-      return info?.status || null;
-    },
-    [requestStatusQuery.data]
   );
 
   // Accumulate results when new data arrives
@@ -628,8 +588,8 @@ export default function DiscoverPage() {
                     voteAverage={item.voteAverage}
                     ratings={item.ratings}
                     trailerKey={item.trailerKey}
-                    inLibrary={getLibraryInfo(item.type, item.tmdbId)}
-                    requestStatus={getRequestStatus(item.type, item.tmdbId)}
+                    inLibrary={item.inLibrary || null}
+                    requestStatus={item.requestStatus || null}
                   />
                 ))}
               </div>

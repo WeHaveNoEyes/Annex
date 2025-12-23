@@ -24,15 +24,17 @@ let lastRequestTime = 0;
 const MIN_REQUEST_INTERVAL = 250; // 4 requests per second max
 
 // Cache TTLs (in milliseconds)
+// Reduced to 1 minute for request-level deduplication only
+// Database cache (6 hours) is now the primary cache
 const CACHE_TTL = {
-  trending: 2 * 60 * 1000, // 2 minutes - changes frequently
-  popular: 10 * 60 * 1000, // 10 minutes - cumulative, changes slowly
-  favorited: 10 * 60 * 1000, // 10 minutes - cumulative, changes slowly
-  played: 5 * 60 * 1000, // 5 minutes - period-based activity
-  watched: 5 * 60 * 1000, // 5 minutes - period-based activity
-  collected: 5 * 60 * 1000, // 5 minutes - period-based activity
+  trending: 60 * 1000, // 1 minute
+  popular: 60 * 1000, // 1 minute
+  favorited: 60 * 1000, // 1 minute
+  played: 60 * 1000, // 1 minute
+  watched: 60 * 1000, // 1 minute
+  collected: 60 * 1000, // 1 minute
   genres: 60 * 60 * 1000, // 1 hour - rarely changes
-  search: 5 * 60 * 1000, // 5 minutes - search results
+  search: 60 * 1000, // 1 minute
 } as const;
 
 // Simple in-memory cache

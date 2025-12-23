@@ -1,12 +1,291 @@
 import type { TrendingResult } from "@annex/shared";
 import type { Prisma } from "@prisma/client";
+import crypto from "node:crypto";
 import { z } from "zod";
 import { prisma } from "../db/client.js";
 import { getJobQueueService } from "../services/jobQueue.js";
+import { getLibraryStatusService } from "../services/libraryStatus.js";
 import { getTraktService, type TraktEpisodeDetails } from "../services/trakt.js";
 import { publicProcedure, router } from "../trpc.js";
 
 const ITEMS_PER_PAGE = 20;
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+// =============================================================================
+// Cache Helper Functions
+// =============================================================================
+
+/**
+ * Fetch Trakt list, hydrate with status, and update cache
+ * Can be called from endpoint (cache miss) or background job (refresh)
+ */
+export async function refreshTraktListCache(
+  input: {
+    listType: string;
+    type: "movie" | "tv";
+    page: number;
+    period?: string;
+    query?: string;
+    years?: string;
+    genres?: string[];
+    languages?: string[];
+    countries?: string[];
+    runtimes?: string;
+    certifications?: string[];
+    ratings?: string;
+    tmdbRatings?: string;
+    imdbRatings?: string;
+    rtMeters?: string;
+    rtUserMeters?: string;
+    metascores?: string;
+  },
+  filterHash: string | null
+): Promise<void> {
+  const trakt = getTraktService();
+
+  // Build filter params for Trakt API
+  const filters = {
+    years: input.years,
+    genres: input.genres?.join(","),
+    languages: input.languages?.join(","),
+    countries: input.countries?.join(","),
+    runtimes: input.runtimes,
+    certifications: input.certifications?.join(","),
+    ratings: input.ratings,
+    tmdb_ratings: input.tmdbRatings,
+    imdb_ratings: input.imdbRatings,
+    rt_meters: input.rtMeters,
+    rt_user_meters: input.rtUserMeters,
+    metascores: input.metascores,
+  };
+
+  // Fetch from Trakt
+  let traktItems: Awaited<ReturnType<typeof trakt.search>>;
+  if (input.query?.trim()) {
+    traktItems = await trakt.search(
+      input.query,
+      input.type,
+      input.page,
+      ITEMS_PER_PAGE,
+      filters
+    );
+  } else {
+    traktItems = await trakt.getList(
+      input.listType as any, // Type is validated by tRPC input schema
+      input.type,
+      input.page,
+      ITEMS_PER_PAGE,
+      input.period as any, // Type is validated by tRPC input schema
+      filters
+    );
+  }
+
+  // Batch hydrate library/request status
+  const libraryStatusService = getLibraryStatusService();
+  const status = await libraryStatusService.getBatchStatus(
+    traktItems.map((item) => ({ tmdbId: item.tmdbId, type: item.type }))
+  );
+
+  // Batch fetch from our database to enrich with ratings and trailer info
+  const mediaItemIds = traktItems.map((item) => `tmdb-${item.type}-${item.tmdbId}`);
+
+  const localItems = await prisma.mediaItem.findMany({
+    where: { id: { in: mediaItemIds } },
+    select: {
+      id: true,
+      tmdbId: true,
+      type: true,
+      title: true,
+      posterPath: true,
+      backdropPath: true,
+      year: true,
+      overview: true,
+      videos: true,
+      ratings: true,
+    },
+  });
+
+  type LocalMediaItem = Prisma.MediaItemGetPayload<{
+    select: {
+      id: true;
+      tmdbId: true;
+      type: true;
+      title: true;
+      posterPath: true;
+      backdropPath: true;
+      year: true;
+      overview: true;
+      videos: true;
+      ratings: true;
+    };
+  }>;
+
+  // Create lookup map
+  const localMap = new Map(localItems.map((item: LocalMediaItem) => [item.id, item]));
+
+  // Build results with hydrated status
+  const results: TrendingResult[] = traktItems.map((traktItem) => {
+    const localId = `tmdb-${traktItem.type}-${traktItem.tmdbId}`;
+    const local = localMap.get(localId);
+    const key = `${traktItem.type}-${traktItem.tmdbId}`;
+
+    const baseResult = local
+      ? mediaItemToTrendingResult(local)
+      : {
+          type: traktItem.type,
+          tmdbId: traktItem.tmdbId,
+          title: traktItem.title,
+          posterPath: traktItem.posterUrl || null,
+          backdropPath: traktItem.fanartUrl || null,
+          year: traktItem.year,
+          voteAverage: 0,
+          overview: "",
+          ratings: undefined,
+          trailerKey: null,
+        };
+
+    // Add hydrated status
+    return {
+      ...baseResult,
+      inLibrary: status.inLibrary[key] || null,
+      requestStatus: status.requestStatus[key] || null,
+    };
+  });
+
+  // Trakt doesn't give us total count, estimate based on whether we got a full page
+  const hasMore = traktItems.length === ITEMS_PER_PAGE;
+  const totalPages = hasMore ? input.page + 1 : input.page;
+  const totalResults = hasMore
+    ? (input.page + 1) * ITEMS_PER_PAGE
+    : input.page * traktItems.length;
+
+  // Upsert cache (create or update)
+  await prisma.traktListCache.upsert({
+    where: {
+      listType_mediaType_page_period_filterHash: {
+        listType: input.listType,
+        mediaType: input.type,
+        page: input.page,
+        period: input.period || "",
+        filterHash: filterHash || "",
+      },
+    },
+    create: {
+      listType: input.listType,
+      mediaType: input.type,
+      page: input.page,
+      period: input.period || "",
+      filterHash: filterHash || "",
+      results: results as unknown as Prisma.InputJsonValue,
+      totalPages,
+      totalResults,
+      expiresAt: new Date(Date.now() + CACHE_TTL_MS),
+    },
+    update: {
+      results: results as unknown as Prisma.InputJsonValue,
+      totalPages,
+      totalResults,
+      expiresAt: new Date(Date.now() + CACHE_TTL_MS),
+    },
+  });
+
+  console.log(
+    `[TraktCache] Updated cache: ${input.listType}/${input.type}/page${input.page} (${results.length} items)`
+  );
+
+  // Queue background job to hydrate items without ratings
+  const itemsToHydrate = traktItems
+    .filter((item) => {
+      const localId = `tmdb-${item.type}-${item.tmdbId}`;
+      const local = localMap.get(localId);
+      return !local || !local.ratings;
+    })
+    .map((item) => ({
+      tmdbId: item.tmdbId,
+      type: item.type as "movie" | "tv",
+    }));
+
+  if (itemsToHydrate.length > 0) {
+    const { getMDBListService } = await import("../services/mdblist.js");
+    const mdblist = getMDBListService();
+    const isMdblistConfigured = await mdblist.isConfigured();
+
+    if (isMdblistConfigured) {
+      const jobQueue = getJobQueueService();
+      jobQueue
+        .addJobIfNotExists(
+          "mdblist:hydrate-discover",
+          { items: itemsToHydrate },
+          `mdblist:hydrate-discover:${input.type}:${input.listType}:${input.page}`,
+          { priority: 1, maxAttempts: 2 }
+        )
+        .catch((err) => {
+          console.error("[Discover] Failed to queue hydration job:", err);
+        });
+    }
+  }
+}
+
+
+/**
+ * Build deterministic MD5 hash of filter parameters for cache key
+ * Returns null if no filters are active (no hash needed)
+ */
+function buildFilterHash(filters: {
+  years?: string;
+  genres?: string[];
+  languages?: string[];
+  countries?: string[];
+  runtimes?: string;
+  certifications?: string[];
+  ratings?: string;
+  tmdbRatings?: string;
+  imdbRatings?: string;
+  rtMeters?: string;
+  rtUserMeters?: string;
+  metascores?: string;
+  query?: string;
+}): string | null {
+  // Check if any filters are active
+  const hasFilters =
+    filters.query ||
+    filters.years ||
+    filters.genres?.length ||
+    filters.languages?.length ||
+    filters.countries?.length ||
+    filters.runtimes ||
+    filters.certifications?.length ||
+    filters.ratings ||
+    filters.tmdbRatings ||
+    filters.imdbRatings ||
+    filters.rtMeters ||
+    filters.rtUserMeters ||
+    filters.metascores;
+
+  if (!hasFilters) {
+    return null;
+  }
+
+  // Sort arrays for consistent hashing
+  const normalized = {
+    certifications: filters.certifications?.sort(),
+    countries: filters.countries?.sort(),
+    genres: filters.genres?.sort(),
+    imdbRatings: filters.imdbRatings,
+    languages: filters.languages?.sort(),
+    metascores: filters.metascores,
+    query: filters.query,
+    ratings: filters.ratings,
+    rtMeters: filters.rtMeters,
+    rtUserMeters: filters.rtUserMeters,
+    runtimes: filters.runtimes,
+    tmdbRatings: filters.tmdbRatings,
+    years: filters.years,
+  };
+
+  const filterString = JSON.stringify(normalized);
+  return crypto.createHash("md5").update(filterString).digest("hex");
+}
 
 // =============================================================================
 // MDBList Rating Type
@@ -302,44 +581,105 @@ export const discoveryRouter = router({
       }
 
       try {
-        // Build filter params
-        const filters = {
+        // Build filter hash for cache key
+        const filterHash = buildFilterHash({
+          query: input.query,
           years: input.years,
-          genres: input.genres?.join(","),
-          languages: input.languages?.join(","),
-          countries: input.countries?.join(","),
+          genres: input.genres,
+          languages: input.languages,
+          countries: input.countries,
           runtimes: input.runtimes,
-          certifications: input.certifications?.join(","),
+          certifications: input.certifications,
           ratings: input.ratings,
-          tmdb_ratings: input.tmdbRatings,
-          imdb_ratings: input.imdbRatings,
-          rt_meters: input.rtMeters,
-          rt_user_meters: input.rtUserMeters,
+          tmdbRatings: input.tmdbRatings,
+          imdbRatings: input.imdbRatings,
+          rtMeters: input.rtMeters,
+          rtUserMeters: input.rtUserMeters,
           metascores: input.metascores,
-        };
+        });
 
-        // Fetch from Trakt - use search endpoint if query provided, otherwise use list endpoint
-        let traktItems: Awaited<ReturnType<typeof trakt.search>>;
-        if (input.query?.trim()) {
-          traktItems = await trakt.search(
-            input.query,
-            input.type,
-            input.page,
-            ITEMS_PER_PAGE,
-            filters
+        // Check database cache
+        const cached = await prisma.traktListCache.findUnique({
+          where: {
+            listType_mediaType_page_period_filterHash: {
+              listType: input.listType,
+              mediaType: input.type,
+              page: input.page,
+              period: input.period || "",
+              filterHash: filterHash || "",
+            },
+          },
+        });
+
+        const now = new Date();
+
+        // If fresh (< 6 hours), return immediately
+        if (cached && cached.expiresAt > now) {
+          console.log(
+            `[TraktCache] Cache hit (fresh): ${input.listType}/${input.type}/page${input.page}`
           );
-        } else {
-          traktItems = await trakt.getList(
-            input.listType,
-            input.type,
-            input.page,
-            ITEMS_PER_PAGE,
-            input.period,
-            filters
-          );
+          return {
+            configured: true,
+            results: cached.results as unknown as TrendingResult[],
+            page: input.page,
+            totalPages: cached.totalPages,
+            totalResults: cached.totalResults,
+            message: null,
+          };
         }
 
-        if (traktItems.length === 0) {
+        // If stale but exists, return stale data and refresh in background
+        if (cached) {
+          console.log(
+            `[TraktCache] Cache hit (stale): ${input.listType}/${input.type}/page${input.page} - queueing refresh`
+          );
+
+          // Queue background refresh job (fire and forget)
+          const jobQueue = getJobQueueService();
+          jobQueue
+            .addJobIfNotExists(
+              "trakt:refresh-list-cache",
+              { input, filterHash },
+              `trakt:refresh:${input.listType}:${input.type}:${input.page}:${input.period}:${filterHash || "none"}`,
+              { priority: 2, maxAttempts: 2 }
+            )
+            .catch((err) => {
+              console.error("[TraktCache] Failed to queue refresh job:", err);
+            });
+
+          return {
+            configured: true,
+            results: cached.results as unknown as TrendingResult[],
+            page: input.page,
+            totalPages: cached.totalPages,
+            totalResults: cached.totalResults,
+            message: null,
+          };
+        }
+
+        // No cache - fetch and hydrate synchronously
+        console.log(
+          `[TraktCache] Cache miss: ${input.listType}/${input.type}/page${input.page} - fetching`
+        );
+
+        // Call the refresh function to fetch, hydrate, and cache
+        await refreshTraktListCache(input, filterHash);
+
+        // Retrieve the newly cached data
+        const newCached = await prisma.traktListCache.findUnique({
+          where: {
+            listType_mediaType_page_period_filterHash: {
+              listType: input.listType,
+              mediaType: input.type,
+              page: input.page,
+              period: input.period || "",
+              filterHash: filterHash || "",
+            },
+          },
+        });
+
+        if (!newCached) {
+          // Should never happen, but handle gracefully
           return {
             configured: true,
             results: [],
@@ -350,113 +690,12 @@ export const discoveryRouter = router({
           };
         }
 
-        // Batch fetch from our database to enrich with ratings and trailer info
-        const mediaItemIds = traktItems.map((item) => `tmdb-${item.type}-${item.tmdbId}`);
-
-        const localItems = await prisma.mediaItem.findMany({
-          where: { id: { in: mediaItemIds } },
-          select: {
-            id: true,
-            tmdbId: true,
-            type: true,
-            title: true,
-            posterPath: true,
-            backdropPath: true,
-            year: true,
-            overview: true,
-            videos: true,
-            ratings: true,
-          },
-        });
-
-        type LocalMediaItem = Prisma.MediaItemGetPayload<{
-          select: {
-            id: true;
-            tmdbId: true;
-            type: true;
-            title: true;
-            posterPath: true;
-            backdropPath: true;
-            year: true;
-            overview: true;
-            videos: true;
-            ratings: true;
-          };
-        }>;
-
-        // Create lookup map
-        const localMap = new Map(localItems.map((item: LocalMediaItem) => [item.id, item]));
-
-        // Build results, enriching with local data when available
-        const results: TrendingResult[] = traktItems.map((traktItem) => {
-          const localId = `tmdb-${traktItem.type}-${traktItem.tmdbId}`;
-          const local = localMap.get(localId);
-
-          if (local) {
-            return mediaItemToTrendingResult(local);
-          }
-
-          // Fall back to Trakt data with images from Trakt
-          return {
-            type: traktItem.type,
-            tmdbId: traktItem.tmdbId,
-            title: traktItem.title,
-            posterPath: traktItem.posterUrl || null,
-            backdropPath: traktItem.fanartUrl || null,
-            year: traktItem.year,
-            voteAverage: 0,
-            overview: "",
-            ratings: undefined,
-            trailerKey: null,
-          };
-        });
-
-        // Trakt doesn't give us total count, estimate based on whether we got a full page
-        const hasMore = traktItems.length === ITEMS_PER_PAGE;
-
-        // Queue background job to hydrate items without ratings
-        // This runs asynchronously and doesn't block the response
-        const itemsToHydrate = traktItems
-          .filter((item) => {
-            const localId = `tmdb-${item.type}-${item.tmdbId}`;
-            const local = localMap.get(localId);
-            // Hydrate if no local data or no ratings
-            return !local || !local.ratings;
-          })
-          .map((item) => ({
-            tmdbId: item.tmdbId,
-            type: item.type as "movie" | "tv",
-          }));
-
-        if (itemsToHydrate.length > 0) {
-          // Fire and forget - queue job in background (only if MDBList is configured)
-          const { getMDBListService } = await import("../services/mdblist.js");
-          const mdblist = getMDBListService();
-          const isMdblistConfigured = await mdblist.isConfigured();
-
-          if (isMdblistConfigured) {
-            const jobQueue = getJobQueueService();
-            jobQueue
-              .addJobIfNotExists(
-                "mdblist:hydrate-discover",
-                { items: itemsToHydrate },
-                `mdblist:hydrate-discover:${input.type}:${input.listType}:${input.page}`,
-                { priority: 1, maxAttempts: 2 }
-              )
-              .catch((err) => {
-                console.error("[Discover] Failed to queue hydration job:", err);
-              });
-          }
-        }
-
         return {
           configured: true,
-          results,
+          results: newCached.results as unknown as TrendingResult[],
           page: input.page,
-          totalPages: hasMore ? input.page + 1 : input.page,
-          totalResults: hasMore
-            ? (input.page + 1) * ITEMS_PER_PAGE
-            : input.page * traktItems.length,
+          totalPages: newCached.totalPages,
+          totalResults: newCached.totalResults,
           message: null,
         };
       } catch (error) {
