@@ -297,7 +297,11 @@ function buildVideoArgs(
   if (hwAccel === "VAAPI") {
     args.push("-c:v", "av1_vaapi");
     args.push("-rc_mode", "CQP");
-    args.push("-qp", String(encodingConfig.crf));
+    // Convert software CRF (18-28) to hardware QP (35-45)
+    // VAAPI AV1 QP scale is different - lower CRF should map to lower QP
+    const vaapiQp = Math.round(encodingConfig.crf + 17);
+    args.push("-qp", String(vaapiQp));
+    console.log(`[Encoder] Converted CRF ${encodingConfig.crf} -> VAAPI QP ${vaapiQp}`);
   } else if (hwAccel === "QSV") {
     args.push("-c:v", "av1_qsv");
     args.push("-global_quality", String(encodingConfig.crf));
@@ -497,6 +501,30 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
   console.log(
     `[Encoder] Input: ${mediaInfo.width}x${mediaInfo.height} @ ${mediaInfo.fps.toFixed(2)}fps, ${(mediaInfo.fileSize / 1024 / 1024 / 1024).toFixed(2)}GB`
   );
+
+  // Check available disk space
+  // Estimate output size: worst case 2x input size for safety margin
+  const estimatedOutputSize = mediaInfo.fileSize * 2;
+  try {
+    const statfs = await import("node:fs");
+    const stats = statfs.statfsSync(outputDir);
+    const availableSpace = stats.bavail * stats.bsize;
+
+    if (availableSpace < estimatedOutputSize) {
+      throw new Error(
+        `Insufficient disk space: need ~${(estimatedOutputSize / 1024 / 1024 / 1024).toFixed(2)}GB, have ${(availableSpace / 1024 / 1024 / 1024).toFixed(2)}GB available`
+      );
+    }
+    console.log(
+      `[Encoder] Disk space check: ${(availableSpace / 1024 / 1024 / 1024).toFixed(2)}GB available, estimated need ${(estimatedOutputSize / 1024 / 1024 / 1024).toFixed(2)}GB`
+    );
+  } catch (e) {
+    if (e instanceof Error && e.message.includes("Insufficient disk space")) {
+      throw e;
+    }
+    // If statfs fails, log warning but continue
+    console.log(`[Encoder] WARNING: Could not check disk space: ${e}`);
+  }
 
   // Build FFmpeg arguments
   const args = buildFfmpegArgs(
