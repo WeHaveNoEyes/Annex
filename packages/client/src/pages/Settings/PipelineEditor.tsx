@@ -90,6 +90,7 @@ function PipelineEditorInner() {
   const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveVersion, setSaveVersion] = useState(0);
 
   const autoSave = useCallback(() => {
     if (!isEditing || !id) return;
@@ -369,7 +370,7 @@ function PipelineEditorInner() {
   const updateNodeData = (nodeId: string, updates: Partial<StepData>) => {
     console.log("[PipelineEditor] updateNodeData called:", { nodeId, updates });
 
-    // Use flushSync to force synchronous re-render so autoSave gets fresh nodes
+    // Use flushSync to force synchronous re-render
     flushSync(() => {
       setNodes((nds) =>
         nds.map((node) => {
@@ -390,10 +391,18 @@ function PipelineEditorInner() {
       );
     });
 
-    // Now autoSave will have the updated nodes from the re-render
-    console.log("[PipelineEditor] Triggering autoSave with updated nodes");
-    autoSave();
+    // Trigger save via state change so it runs after re-render with fresh autoSave
+    console.log("[PipelineEditor] Scheduling save via state change");
+    setSaveVersion((v) => v + 1);
   };
+
+  // Trigger autoSave when saveVersion changes (after node updates)
+  useEffect(() => {
+    if (saveVersion > 0) {
+      console.log("[PipelineEditor] Save version changed, triggering autoSave");
+      autoSave();
+    }
+  }, [saveVersion, autoSave]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
