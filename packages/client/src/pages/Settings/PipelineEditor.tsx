@@ -397,9 +397,11 @@ function PipelineEditorInner() {
   };
 
   // Trigger autoSave when saveVersion changes (after node updates)
+  const lastSaveVersionRef = useRef(0);
   useEffect(() => {
-    if (saveVersion > 0) {
+    if (saveVersion > 0 && saveVersion !== lastSaveVersionRef.current) {
       console.log("[PipelineEditor] Save version changed, triggering autoSave");
+      lastSaveVersionRef.current = saveVersion;
       autoSave();
     }
   }, [saveVersion, autoSave]);
