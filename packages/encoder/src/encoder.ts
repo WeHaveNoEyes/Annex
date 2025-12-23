@@ -304,7 +304,9 @@ function buildVideoArgs(
     // Formula: quality = crf * 2.5 + 10
     const vaapiQuality = Math.round(encodingConfig.crf * 2.5 + 10);
     args.push("-global_quality", String(vaapiQuality));
-    console.log(`[Encoder] Converted CRF ${encodingConfig.crf} -> VAAPI ICQ quality ${vaapiQuality}`);
+    console.log(
+      `[Encoder] Converted CRF ${encodingConfig.crf} -> VAAPI ICQ quality ${vaapiQuality}`
+    );
   } else if (hwAccel === "QSV") {
     args.push("-c:v", "av1_qsv");
     args.push("-global_quality", String(encodingConfig.crf));

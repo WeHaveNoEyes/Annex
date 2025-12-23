@@ -417,6 +417,7 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
   const isQualityUnavailable = status === "quality_unavailable";
   const isFailed = status === "failed";
   const isDownloading = status === "downloading";
+  const isCompleted = status === "completed";
 
   const posterUrl = request.posterPath
     ? request.posterPath.startsWith("http")
@@ -680,6 +681,20 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
                 disabled={retryMutation.isPending}
               >
                 {retryMutation.isPending ? "Retrying..." : "Retry"}
+              </Button>
+            )}
+
+            {isCompleted && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  retryMutation.mutate({ id: request.id });
+                }}
+                disabled={retryMutation.isPending}
+              >
+                {retryMutation.isPending ? "Reprocessing..." : "Reprocess"}
               </Button>
             )}
 
