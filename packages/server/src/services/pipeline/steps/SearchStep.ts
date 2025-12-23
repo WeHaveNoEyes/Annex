@@ -1,5 +1,6 @@
 import { ActivityType, MediaType, type Prisma, RequestStatus, StepType } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
+import { getDownloadService } from "../../download.js";
 import { downloadManager } from "../../downloadManager.js";
 import { getIndexerService } from "../../indexer.js";
 import {
@@ -86,34 +87,49 @@ export class SearchStep extends BaseStep {
 
       if (existingMatch.found && existingMatch.match) {
         const torrentName = existingMatch.match.torrent.name;
-        const meetsQuality = resolutionMeetsRequirement(torrentName, requiredResolution);
+        const torrentHash = existingMatch.match.torrent.hash;
 
-        if (meetsQuality) {
-          await this.logActivity(
-            requestId,
-            ActivityType.SUCCESS,
-            `Found existing download in qBittorrent: ${torrentName}`
-          );
+        // Verify torrent still exists in qBittorrent
+        const qb = getDownloadService();
+        const torrentExists = await qb.getProgress(torrentHash);
 
-          // Return early with existing download info
-          return {
-            success: true,
-            nextStep: "download",
-            data: {
-              search: {
-                existingDownload: {
-                  torrentHash: existingMatch.match.torrent.hash,
-                  isComplete: existingMatch.isComplete,
-                },
-              },
-            },
-          };
-        } else {
+        if (!torrentExists) {
           await this.logActivity(
             requestId,
             ActivityType.WARNING,
-            `Found existing download but quality too low: ${torrentName} (need ${resolutionLabel})`
+            `Found download record but torrent ${torrentHash} no longer exists in qBittorrent, will search for new release`
           );
+          // Fall through to indexer search
+        } else {
+          const meetsQuality = resolutionMeetsRequirement(torrentName, requiredResolution);
+
+          if (meetsQuality) {
+            await this.logActivity(
+              requestId,
+              ActivityType.SUCCESS,
+              `Found existing download in qBittorrent: ${torrentName}`
+            );
+
+            // Return early with existing download info
+            return {
+              success: true,
+              nextStep: "download",
+              data: {
+                search: {
+                  existingDownload: {
+                    torrentHash: existingMatch.match.torrent.hash,
+                    isComplete: existingMatch.isComplete,
+                  },
+                },
+              },
+            };
+          } else {
+            await this.logActivity(
+              requestId,
+              ActivityType.WARNING,
+              `Found existing download but quality too low: ${torrentName} (need ${resolutionLabel})`
+            );
+          }
         }
       }
     }

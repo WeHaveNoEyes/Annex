@@ -62,33 +62,8 @@ export class DownloadStep extends BaseStep {
     let torrentHash: string;
 
     if (existingDownload) {
-      // Use existing download - but verify torrent still exists
+      // Use existing download (already verified by search step)
       torrentHash = existingDownload.torrentHash as string;
-      const qb = getDownloadService();
-      const torrentExists = await qb.getProgress(torrentHash);
-
-      if (!torrentExists) {
-        // Torrent no longer exists - clear the reference and go back to search
-        await this.logActivity(
-          requestId,
-          ActivityType.WARNING,
-          `Torrent ${torrentHash} no longer exists, will search for new release`
-        );
-
-        // Clear the existing download reference so search step picks a new release
-        return {
-          success: false,
-          shouldRetry: true,
-          nextStep: "search",
-          error: "Torrent not found, searching for new release",
-          data: {
-            search: {
-              existingDownload: null,
-            },
-          },
-        };
-      }
-
       const download = await downloadManager.createDownloadFromExisting(
         requestId,
         mediaType as MediaType,
