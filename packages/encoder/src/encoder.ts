@@ -233,6 +233,25 @@ function buildSubtitleMapping(mediaInfo: MediaInfo): {
     return { subArgs: [], hasCompatibleSubs: false };
   }
 
+  // Filter to only English subtitles (forced + regular) to prevent OOM
+  const englishSubs = compatibleSubs.filter((sub) => {
+    const lang = sub.language?.toLowerCase();
+    return lang === "eng" || lang === "en" || lang === "english" || !lang; // Include if English or unknown
+  });
+
+  if (englishSubs.length === 0) {
+    console.log(
+      `[Encoder] No English subtitle streams found in ${compatibleSubs.length} compatible streams`
+    );
+    return { subArgs: [], hasCompatibleSubs: false };
+  }
+
+  // Limit to reasonable number to prevent OOM (was causing 29GB RAM usage with 85 streams)
+  const MAX_SUBTITLE_STREAMS = 10; // Forced + regular English should fit well under this
+  const subsToInclude = englishSubs.slice(0, MAX_SUBTITLE_STREAMS);
+  const subsSkipped = englishSubs.length - subsToInclude.length;
+  const nonEnglishSkipped = compatibleSubs.length - englishSubs.length;
+
   // Log what we're doing
   const skipped = mediaInfo.subtitleStreams.length - compatibleSubs.length;
   if (skipped > 0) {
@@ -243,12 +262,23 @@ function buildSubtitleMapping(mediaInfo: MediaInfo): {
       `[Encoder] Skipping ${skipped} incompatible subtitle stream(s): ${skippedCodecs.join(", ")}`
     );
   }
-  console.log(
-    `[Encoder] Including ${compatibleSubs.length} compatible subtitle stream(s): ${compatibleSubs.map((s) => s.codec).join(", ")}`
-  );
 
-  // Map only compatible subtitle streams
-  for (const sub of compatibleSubs) {
+  if (nonEnglishSkipped > 0) {
+    console.log(`[Encoder] Filtered ${nonEnglishSkipped} non-English subtitle streams`);
+  }
+
+  if (subsSkipped > 0) {
+    console.log(
+      `[Encoder] Including ${subsToInclude.length} of ${englishSubs.length} English subtitle streams (limit: ${MAX_SUBTITLE_STREAMS})`
+    );
+  } else {
+    console.log(
+      `[Encoder] Including ${subsToInclude.length} English subtitle stream(s): ${subsToInclude.map((s) => s.codec).join(", ")}`
+    );
+  }
+
+  // Map only compatible subtitle streams (up to limit)
+  for (const sub of subsToInclude) {
     subArgs.push("-map", `0:${sub.index}`);
   }
 
