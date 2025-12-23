@@ -17,6 +17,7 @@ import { registerPipelineSteps } from "./services/pipeline/registerSteps.js";
 import { getRssAnnounceMonitor } from "./services/rssAnnounce.js";
 import { getSchedulerService } from "./services/scheduler.js";
 import { migrateEnvSecretsIfNeeded } from "./services/secrets.js";
+import { getSshKeyService } from "./services/ssh.js";
 import type { Context } from "./trpc.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -40,6 +41,12 @@ const secretsInitPromise = (async () => {
         `[Startup] Secrets migration complete: ${migrated.length} migrated, ${skipped.length} skipped`
       );
     }
+
+    // Initialize SSH keys for server connections
+    const sshKeys = getSshKeyService();
+    await sshKeys.initialize();
+    const keyInfo = sshKeys.getKeyInfo();
+    console.log(`[Startup] SSH key initialized: ${keyInfo.fingerprint}`);
   } catch (error) {
     console.error("[Startup] Failed to initialize crypto/secrets:", error);
     // Don't exit - the app can still work with env vars
@@ -181,6 +188,26 @@ const server = Bun.serve<WebSocketData>({
       }
       // Reject other WebSocket connections
       return new Response("WebSocket only available at /encoder", { status: 404 });
+    }
+
+    // SSH public key download endpoint
+    if (url.pathname === "/ssh-public-key" || url.pathname === "/ssh-public-key.pub") {
+      try {
+        const sshKeys = getSshKeyService();
+        const publicKey = sshKeys.getPublicKey();
+        return new Response(publicKey, {
+          headers: {
+            "Content-Type": "text/plain",
+            "Content-Disposition": 'inline; filename="annex_id_ed25519.pub"',
+            ...corsHeaders,
+          },
+        });
+      } catch (error) {
+        return new Response(
+          `Error retrieving SSH public key: ${error instanceof Error ? error.message : "Unknown error"}`,
+          { status: 500 }
+        );
+      }
     }
 
     // tRPC HTTP handler

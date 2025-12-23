@@ -14,6 +14,7 @@ import SftpClient from "ssh2-sftp-client";
 import { prisma } from "../db/client.js";
 import { getCryptoService } from "./crypto.js";
 import { triggerPlexLibraryScan } from "./plex.js";
+import { getSshKeyService } from "./ssh.js";
 
 // Decrypt value, falling back to raw value for legacy unencrypted data
 function decryptIfPresent(value: string | null | undefined): string | null {
@@ -359,15 +360,47 @@ class DeliveryService {
     }
 
     try {
-      // Connect
-      await sftp.connect({
+      // Prepare connection options
+      const connectionOptions: {
+        host: string;
+        port: number;
+        username: string;
+        password?: string;
+        privateKey?: string | Buffer;
+        readyTimeout: number;
+      } = {
         host: server.host,
         port: server.port,
         username: server.username,
-        password: server.encryptedPassword || undefined,
-        privateKey: server.encryptedPrivateKey || undefined,
         readyTimeout: 30000,
-      });
+      };
+
+      // Use password if provided
+      const decryptedPassword = decryptIfPresent(server.encryptedPassword);
+      if (decryptedPassword) {
+        connectionOptions.password = decryptedPassword;
+      }
+
+      // Use server-specific private key if provided, otherwise use Annex SSH key
+      const decryptedPrivateKey = decryptIfPresent(server.encryptedPrivateKey);
+      if (decryptedPrivateKey) {
+        connectionOptions.privateKey = decryptedPrivateKey;
+      } else {
+        // Use Annex's SSH key for authentication
+        try {
+          const sshKeys = getSshKeyService();
+          const privateKeyPath = sshKeys.getPrivateKeyPath();
+          const privateKeyContent = await fs.readFile(privateKeyPath, "utf-8");
+          connectionOptions.privateKey = privateKeyContent;
+        } catch (error) {
+          console.warn(
+            `[Delivery] Failed to load Annex SSH key: ${error instanceof Error ? error.message : "Unknown error"}`
+          );
+        }
+      }
+
+      // Connect
+      await sftp.connect(connectionOptions);
 
       // Ensure remote directory exists
       const remoteDir = dirname(remotePath);
@@ -466,13 +499,32 @@ class DeliveryService {
     return new Promise((resolve) => {
       const sshTarget = `${server.username}@${server.host}:${remotePath}`;
 
+      // Get SSH identity file (Annex key or server-specific key)
+      let sshIdentityFile: string | null = null;
+      try {
+        const sshKeys = getSshKeyService();
+        sshIdentityFile = sshKeys.getPrivateKeyPath();
+      } catch (error) {
+        console.warn(
+          `[Delivery] Failed to get SSH key: ${error instanceof Error ? error.message : "Unknown error"}`
+        );
+      }
+
+      const sshOptions = [
+        `-p ${server.port}`,
+        "-o StrictHostKeyChecking=no",
+        sshIdentityFile ? `-i ${sshIdentityFile}` : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+
       const args = [
         "-rltDvz", // Like -a but without -pog (no perms, owner, group)
         "--progress",
         "--partial",
         "--mkpath", // Create parent directories on destination
         "-e",
-        `ssh -p ${server.port} -o StrictHostKeyChecking=no`,
+        `ssh ${sshOptions}`,
         localPath,
         sshTarget,
       ];
