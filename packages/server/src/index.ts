@@ -11,6 +11,7 @@ import {
   type EncoderWebSocketData,
   getEncoderDispatchService,
 } from "./services/encoderDispatch.js";
+import { recoverStuckEncodings } from "./services/encodingRecovery.js";
 import { getIrcAnnounceMonitor } from "./services/ircAnnounce.js";
 import { getJobQueueService } from "./services/jobQueue.js";
 import { registerPipelineSteps } from "./services/pipeline/registerSteps.js";
@@ -418,6 +419,11 @@ scheduler.register(
 // Start the job queue worker (recovers any stuck jobs from previous run)
 jobQueue.start().catch((error) => {
   console.error("[JobQueue] Failed to start:", error);
+});
+
+// Recover stuck encodings from server restarts
+recoverStuckEncodings().catch((error) => {
+  console.error("[EncodingRecovery] Failed to recover stuck encodings:", error);
 });
 
 // Start the IRC announce monitor (if enabled)
