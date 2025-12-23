@@ -128,6 +128,87 @@ export class EncodeStep extends BaseStep {
       };
     }
 
+    // Check if we have a recent completed encoding job for this request
+    // This allows retry to skip re-encoding if the encoded file still exists
+    const recentCompletedJob = await prisma.encoderAssignment.findFirst({
+      where: {
+        jobId: {
+          in: (
+            await prisma.job.findMany({
+              where: {
+                type: "remote:encode",
+                payload: {
+                  path: ["requestId"],
+                  equals: requestId,
+                },
+              },
+              select: { id: true },
+              orderBy: { createdAt: "desc" },
+              take: 5,
+            })
+          ).map((j) => j.id),
+        },
+        status: AssignmentStatus.COMPLETED,
+      },
+      orderBy: { completedAt: "desc" },
+    });
+
+    if (recentCompletedJob?.outputPath) {
+      // Check if encoded file still exists
+      try {
+        const encodedFileExists = await Bun.file(recentCompletedJob.outputPath).exists();
+        if (encodedFileExists) {
+          await this.logActivity(
+            requestId,
+            ActivityType.INFO,
+            "Reusing existing encoded file from previous attempt"
+          );
+
+          await prisma.mediaRequest.update({
+            where: { id: requestId },
+            data: {
+              status: RequestStatus.ENCODING,
+              progress: 90,
+              currentStep: "Encoding complete (reused existing file)",
+            },
+          });
+
+          // Extract target server IDs and codec info
+          const targetServerIds = context.targets.map((t) => t.serverId);
+          const videoEncoder = cfg.videoEncoder || "libsvtav1";
+          const codec =
+            videoEncoder.includes("av1") || videoEncoder.includes("AV1")
+              ? "AV1"
+              : videoEncoder.includes("hevc") || videoEncoder.includes("265")
+                ? "HEVC"
+                : "H264";
+
+          return {
+            success: true,
+            data: {
+              encode: {
+                encodedFiles: [
+                  {
+                    profileId: context.targets[0]?.encodingProfileId || "default",
+                    path: recentCompletedJob.outputPath,
+                    targetServerIds,
+                    resolution: cfg.maxResolution || "1080p",
+                    codec,
+                    size: recentCompletedJob.outputSize
+                      ? Number(recentCompletedJob.outputSize)
+                      : undefined,
+                    compressionRatio: recentCompletedJob.compressionRatio || undefined,
+                  },
+                ],
+              },
+            },
+          };
+        }
+      } catch {
+        // File doesn't exist or error checking, continue to re-encode
+      }
+    }
+
     const pollInterval = cfg.pollInterval || 5000;
     const timeout = cfg.timeout || 12 * 60 * 60 * 1000; // 12 hours
 
