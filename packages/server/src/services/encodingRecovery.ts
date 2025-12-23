@@ -1,5 +1,6 @@
 import { AssignmentStatus, RequestStatus } from "@prisma/client";
 import { prisma } from "../db/client.js";
+import { getPipelineExecutor } from "./pipeline/PipelineExecutor.js";
 
 /**
  * Recovers requests stuck in ENCODING status due to server restarts.
@@ -77,6 +78,29 @@ export async function recoverStuckEncodings(): Promise<void> {
           currentStep: "Encoding complete",
         },
       });
+
+      // Resume pipeline execution if it exists
+      const pipelineExecution = await prisma.pipelineExecution.findFirst({
+        where: {
+          requestId: request.id,
+          status: "RUNNING",
+        },
+        orderBy: { startedAt: "desc" },
+      });
+
+      if (pipelineExecution) {
+        console.log(
+          `[EncodingRecovery] ${request.title}: Resuming pipeline execution ${pipelineExecution.id}`
+        );
+
+        // Resume the pipeline - this will continue from the current step
+        const executor = getPipelineExecutor();
+        await executor.resumeExecution(pipelineExecution.id);
+      } else {
+        console.log(
+          `[EncodingRecovery] ${request.title}: No active pipeline execution found - may need manual retry`
+        );
+      }
 
       recovered++;
     } else if (assignment.status === AssignmentStatus.FAILED) {
