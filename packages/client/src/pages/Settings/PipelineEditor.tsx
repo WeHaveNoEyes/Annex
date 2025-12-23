@@ -100,6 +100,7 @@ function PipelineEditorInner() {
 
     // Debounce for 1 second
     autoSaveTimeoutRef.current = setTimeout(async () => {
+      console.log("[PipelineEditor] AutoSave executing after debounce");
       try {
         setIsSaving(true);
 
@@ -138,6 +139,7 @@ function PipelineEditorInner() {
         };
 
         const steps = buildStepTree();
+        console.log("[PipelineEditor] Built step tree for save:", steps);
 
         await autoSaveMutation.mutateAsync({
           id,
@@ -151,6 +153,7 @@ function PipelineEditorInner() {
           },
         });
 
+        console.log("[PipelineEditor] AutoSave mutation completed successfully");
         setLastSaved(new Date());
       } catch (error) {
         console.error("Auto-save failed:", error);
@@ -363,17 +366,25 @@ function PipelineEditorInner() {
   };
 
   const updateNodeData = (nodeId: string, updates: Partial<StepData>) => {
+    console.log("[PipelineEditor] updateNodeData called:", { nodeId, updates });
     setNodes((nds) =>
       nds.map((node) => {
         if (node.id === nodeId) {
-          return {
+          const updatedNode = {
             ...node,
             data: { ...node.data, ...updates },
           };
+          console.log("[PipelineEditor] Updated node:", {
+            id: nodeId,
+            oldConfig: node.data.config,
+            newConfig: updatedNode.data.config,
+          });
+          return updatedNode;
         }
         return node;
       })
     );
+    console.log("[PipelineEditor] Triggering autoSave");
     autoSave();
   };
 
