@@ -384,8 +384,12 @@ function PipelineEditorInner() {
         return node;
       })
     );
-    console.log("[PipelineEditor] Triggering autoSave");
-    autoSave();
+    // Defer autoSave to next tick to ensure state update has propagated
+    console.log("[PipelineEditor] Scheduling autoSave for next tick");
+    setTimeout(() => {
+      console.log("[PipelineEditor] Triggering autoSave after state update");
+      autoSave();
+    }, 0);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
