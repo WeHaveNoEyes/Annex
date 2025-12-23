@@ -256,17 +256,21 @@ export class EncodeStep extends BaseStep {
         return {
           success: true,
           data: {
-            encodedFiles: [
-              {
-                profileId: context.targets[0]?.encodingProfileId || "default",
-                path: assignmentStatus.outputPath || outputPath,
-                targetServerIds,
-                resolution: encodingConfig.maxResolution,
-                codec,
-                size: assignmentStatus.outputSize ? Number(assignmentStatus.outputSize) : undefined,
-                compressionRatio: assignmentStatus.compressionRatio || undefined,
-              },
-            ],
+            encode: {
+              encodedFiles: [
+                {
+                  profileId: context.targets[0]?.encodingProfileId || "default",
+                  path: assignmentStatus.outputPath || outputPath,
+                  targetServerIds,
+                  resolution: encodingConfig.maxResolution,
+                  codec,
+                  size: assignmentStatus.outputSize
+                    ? Number(assignmentStatus.outputSize)
+                    : undefined,
+                  compressionRatio: assignmentStatus.compressionRatio || undefined,
+                },
+              ],
+            },
           },
         };
       }
