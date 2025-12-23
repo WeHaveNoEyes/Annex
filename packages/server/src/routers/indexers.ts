@@ -1,4 +1,4 @@
-import { type IndexerType, Prisma } from "@prisma/client";
+import type { IndexerType, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db/client.js";
 import { getCryptoService } from "../services/crypto.js";

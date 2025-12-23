@@ -1,5 +1,5 @@
 import type { TrendingResult } from "@annex/shared";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db/client.js";
 import { getJobQueueService } from "../services/jobQueue.js";

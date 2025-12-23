@@ -5,7 +5,7 @@
  */
 
 import type { EncoderAssignmentInfo, RemoteEncoderInfo } from "@annex/shared";
-import { Prisma } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
 import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { prisma } from "../db/client.js";
@@ -161,7 +161,9 @@ export const encodersRouter = router({
         take: input.limit,
       });
 
-      type CompletedEncoderAssignmentData = Prisma.EncoderAssignmentGetPayload<Record<string, never>>;
+      type CompletedEncoderAssignmentData = Prisma.EncoderAssignmentGetPayload<
+        Record<string, never>
+      >;
 
       return assignments.map((a: CompletedEncoderAssignmentData) => ({
         id: a.id,
@@ -312,7 +314,9 @@ export const encodersRouter = router({
     }>((emit) => {
       const events = getJobEventService();
 
-      type AssignmentProgressData = Prisma.EncoderAssignmentGetPayload<Record<string, never>> | null;
+      type AssignmentProgressData = Prisma.EncoderAssignmentGetPayload<
+        Record<string, never>
+      > | null;
 
       const handler = (event: JobUpdateEvent) => {
         if (event.job.type === "remote:encode" && event.eventType === "progress") {

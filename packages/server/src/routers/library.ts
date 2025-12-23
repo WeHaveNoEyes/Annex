@@ -1,4 +1,4 @@
-import { type MediaType, Prisma } from "@prisma/client";
+import type { MediaType, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db/client.js";
 import { publicProcedure, router } from "../trpc.js";
@@ -164,7 +164,14 @@ export const libraryRouter = router({
     ]);
 
     type RecentMediaItem = Prisma.MediaItemGetPayload<{
-      select: { id: true; tmdbId: true; title: true; type: true; posterPath: true; createdAt: true };
+      select: {
+        id: true;
+        tmdbId: true;
+        title: true;
+        type: true;
+        posterPath: true;
+        createdAt: true;
+      };
     }>;
 
     return {
@@ -298,7 +305,9 @@ export const libraryRouter = router({
             episodeCount: episodes.length,
           }))
           .sort((a, b) => a.seasonNumber - b.seasonNumber),
-        totalEpisodes: episodeItems.filter((e: EpisodeLibraryItemWithServer) => e.serverId === server.serverId).length,
+        totalEpisodes: episodeItems.filter(
+          (e: EpisodeLibraryItemWithServer) => e.serverId === server.serverId
+        ).length,
       }));
 
       return {

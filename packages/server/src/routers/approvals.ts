@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { type ApprovalStatus, Prisma } from "@prisma/client";
+import type { ApprovalStatus, Prisma } from "@prisma/client";
 import { observable } from "@trpc/server/observable";
 import { z } from "zod";
 import { prisma } from "../db/client.js";

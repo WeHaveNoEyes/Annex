@@ -306,6 +306,8 @@ class EncoderDispatchService {
       orderBy: [{ currentJobs: "asc" }, { totalJobsCompleted: "desc" }],
     });
 
+    type AvailableEncoderData = Prisma.RemoteEncoderGetPayload<Record<string, never>>;
+
     for (const job of pendingJobs) {
       // Verify input file exists
       if (!existsSync(job.inputPath)) {
@@ -314,7 +316,7 @@ class EncoderDispatchService {
 
       // Find encoder with capacity
       const encoder = availableEncoders.find(
-        (e: any) => e.currentJobs < e.maxConcurrent && this.encoders.has(e.encoderId)
+        (e: AvailableEncoderData) => e.currentJobs < e.maxConcurrent && this.encoders.has(e.encoderId)
       );
 
       if (!encoder) {

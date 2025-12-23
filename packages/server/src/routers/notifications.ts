@@ -1,4 +1,4 @@
-import { type MediaType, type NotificationProvider, Prisma } from "@prisma/client";
+import type { MediaType, NotificationProvider, Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db/client.js";
 import { getNotificationDispatcher } from "../services/notifications/NotificationDispatcher.js";
