@@ -20,18 +20,26 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
 interface ServerAvailability {
   serverId: string;
   serverName: string;
-  [key: string]: unknown;
+  quality: string | null;
+  addedAt: Date | null;
 }
 
 interface Season {
   seasonNumber: number;
+  name: string | null;
+  posterPath: string | null;
+  airDate: string | null;
+  episodeCount: number;
   episodes?: Episode[];
-  [key: string]: unknown;
 }
 
 interface Episode {
   episodeNumber: number;
-  [key: string]: unknown;
+  name: string | null;
+  stillPath: string | null;
+  airDate: string | null;
+  runtime: number | null;
+  overview: string | null;
 }
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
@@ -507,7 +515,7 @@ export default function MediaDetailPage() {
                           {season.posterPath ? (
                             <img
                               src={buildImageUrl(season.posterPath, "w92") ?? ""}
-                              alt={season.name}
+                              alt={season.name ?? ""}
                               className="w-12 h-18 object-cover rounded flex-shrink-0"
                             />
                           ) : (
@@ -589,7 +597,7 @@ export default function MediaDetailPage() {
                                     {episode.stillPath ? (
                                       <img
                                         src={buildImageUrl(episode.stillPath, "w185") ?? ""}
-                                        alt={episode.name}
+                                        alt={episode.name ?? ""}
                                         className="w-32 h-18 object-cover rounded"
                                       />
                                     ) : (

@@ -4,7 +4,11 @@ import { trpc } from "../../trpc";
 
 interface NotificationConfig {
   id: string;
-  [key: string]: unknown;
+  name: string;
+  provider: string;
+  events: string[];
+  mediaType: string | null;
+  enabled: boolean;
 }
 
 export default function Notifications() {

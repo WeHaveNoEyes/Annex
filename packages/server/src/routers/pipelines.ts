@@ -1,4 +1,4 @@
-import type { ExecutionStatus, MediaType, Prisma } from "@prisma/client";
+import { ExecutionStatus, MediaType, type Prisma } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db/client.js";
 import { getPipelineExecutor } from "../services/pipeline/PipelineExecutor.js";

@@ -22,7 +22,18 @@ import Pipelines from "./Settings/Pipelines";
 interface StorageServer {
   id: string;
   name: string;
-  [key: string]: unknown;
+  host: string;
+  port: number;
+  protocol: string;
+  enabled: boolean;
+  mediaServer: {
+    type: string;
+    url: string;
+  } | null;
+  librarySync: {
+    enabled: boolean;
+    intervalMinutes: number;
+  };
 }
 
 interface Indexer {
@@ -32,7 +43,6 @@ interface Indexer {
   priority: number;
   enabled: boolean;
   apiKey?: string;
-  [key: string]: unknown;
 }
 
 interface Job {
@@ -42,11 +52,17 @@ interface Job {
   priority: number;
   attempts: number;
   maxAttempts: number;
-  startedAt?: Date;
-  progressCurrent?: number;
-  progressTotal?: number;
-  progress?: number;
-  [key: string]: unknown;
+  startedAt: Date | null;
+  progressCurrent: number | null;
+  progressTotal: number | null;
+  progress: number | null;
+  lockedBy: string | null;
+  completedAt: Date | null;
+  error: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  payload: unknown;
+  result: unknown;
 }
 
 interface Worker {
@@ -57,7 +73,6 @@ interface Worker {
   status: string;
   startedAt: Date;
   lastHeartbeat: Date;
-  [key: string]: unknown;
 }
 
 const settingsNavItems = [
@@ -2114,7 +2129,9 @@ function IndexersSettings() {
                     size="sm"
                     onClick={() => {
                       if (indexer.type.toUpperCase() === "CARDIGANN") {
-                        navigate(`/settings/indexers/cardigann/edit?indexerId=${indexer.apiKey}`);
+                        navigate(
+                          `/settings/indexers/cardigann/edit?indexerId=${indexer.apiKey ?? ""}`
+                        );
                       } else {
                         setEditingIndexer(indexer.id);
                       }
@@ -2126,7 +2143,7 @@ function IndexersSettings() {
                     variant="ghost"
                     size="sm"
                     onClick={() =>
-                      handleDelete(indexer.id, indexer.name, indexer.type, indexer.apiKey)
+                      handleDelete(indexer.id, indexer.name, indexer.type, indexer.apiKey ?? "")
                     }
                   >
                     Delete
@@ -2491,13 +2508,13 @@ function JobsSettings() {
                         )}
                       </div>
 
-                      {job.type === "sync:full" && job.payload && (
+                      {job.type === "sync:full" && !!job.payload && (
                         <div className="mt-2 text-xs text-white/30">
                           {JSON.stringify(job.payload).slice(0, 100)}
                         </div>
                       )}
 
-                      {job.status === "completed" && job.result && (
+                      {job.status === "completed" && !!job.result && (
                         <div className="mt-2 text-xs text-green-400/50">
                           Result: {JSON.stringify(job.result).slice(0, 150)}
                         </div>

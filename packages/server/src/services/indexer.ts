@@ -5,7 +5,7 @@
  * Aggregates, deduplicates, and scores results by quality.
  */
 
-import type { IndexerType, Prisma } from "@prisma/client";
+import { IndexerType, type Prisma } from "@prisma/client";
 import { XMLParser } from "fast-xml-parser";
 import { prisma } from "../db/client.js";
 import { getCardigannProvider } from "./cardigannProvider.js";

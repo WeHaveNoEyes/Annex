@@ -4,7 +4,13 @@ import { trpc } from "../../trpc";
 
 interface Pipeline {
   id: string;
-  [key: string]: unknown;
+  name: string;
+  description: string | null;
+  mediaType: string;
+  stepCount: number;
+  isDefault: boolean;
+  isPublic: boolean;
+  createdAt: Date;
 }
 
 export default function Pipelines() {

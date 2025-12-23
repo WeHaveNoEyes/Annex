@@ -23,11 +23,10 @@ interface MediaRequest {
   id: string;
   title: string;
   year: number;
-  type: "movie" | "tv";
-  status: RequestStatus;
+  type: string;
+  status: string;
   progress: number;
-  posterPath?: string;
-  [key: string]: unknown;
+  posterPath: string | null;
 }
 
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";

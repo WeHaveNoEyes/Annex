@@ -27,7 +27,7 @@ interface Server {
 interface Pipeline {
   id: string;
   name: string;
-  description?: string;
+  description: string | null;
   stepCount: number;
   isDefault: boolean;
 }

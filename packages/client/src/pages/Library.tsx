@@ -9,7 +9,7 @@ type SortOrder = "Ascending" | "Descending";
 interface Server {
   id: string;
   name: string;
-  [key: string]: unknown;
+  mediaServerType: string | null;
 }
 
 export default function LibraryPage() {

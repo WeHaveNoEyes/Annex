@@ -4,7 +4,20 @@ import { trpc } from "../trpc";
 
 interface Approval {
   id: string;
-  [key: string]: unknown;
+  request: {
+    title: string;
+    year: number;
+    type: string;
+  };
+  status: string;
+  reason: string | null;
+  requiredRole: string;
+  createdAt: Date;
+  timeoutHours: number | null;
+  autoAction: string | null;
+  processedBy: string | null;
+  processedAt: Date | null;
+  comment: string | null;
 }
 
 export default function Approvals() {
