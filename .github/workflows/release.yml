@@ -1,0 +1,317 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  release:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.4"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Calculate new version
+        id: version
+        run: |
+          # Get versions from all packages
+          ROOT_VERSION=$(grep '"version"' package.json | head -1 | sed 's/.*"version": "\([^"]*\)".*/\1/')
+          ENCODER_VERSION=$(grep '"version"' packages/encoder/package.json | head -1 | sed 's/.*"version": "\([^"]*\)".*/\1/')
+
+          echo "Root version: $ROOT_VERSION"
+          echo "Encoder version: $ENCODER_VERSION"
+
+          # Compare versions and take the highest
+          # Simple comparison: split and compare each part
+          IFS='.' read -r root_major root_minor root_patch <<< "$ROOT_VERSION"
+          IFS='.' read -r enc_major enc_minor enc_patch <<< "$ENCODER_VERSION"
+
+          # Determine highest version
+          if [ "$enc_major" -gt "$root_major" ]; then
+            CURRENT_VERSION="$ENCODER_VERSION"
+          elif [ "$enc_major" -eq "$root_major" ] && [ "$enc_minor" -gt "$root_minor" ]; then
+            CURRENT_VERSION="$ENCODER_VERSION"
+          elif [ "$enc_major" -eq "$root_major" ] && [ "$enc_minor" -eq "$root_minor" ] && [ "$enc_patch" -gt "$root_patch" ]; then
+            CURRENT_VERSION="$ENCODER_VERSION"
+          else
+            CURRENT_VERSION="$ROOT_VERSION"
+          fi
+
+          echo "Using highest version: $CURRENT_VERSION"
+
+          # Parse current version
+          IFS='.' read -r major minor patch <<< "$CURRENT_VERSION"
+
+          # Apply version bump
+          case "${{ github.event.inputs.version_bump }}" in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+          esac
+
+          NEW_VERSION="${major}.${minor}.${patch}"
+          echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Update all package versions
+        run: |
+          NEW_VERSION="${{ steps.version.outputs.new_version }}"
+
+          # Update root package.json
+          sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" package.json
+
+          # Update all package package.json files
+          for pkg in packages/*/package.json; do
+            sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"$NEW_VERSION\"/" "$pkg"
+          done
+
+          echo "Updated all packages to version $NEW_VERSION"
+
+          # Verify updates
+          echo "Root version:" && grep '"version"' package.json | head -1
+          echo "Encoder version:" && grep '"version"' packages/encoder/package.json | head -1
+          echo "Server version:" && grep '"version"' packages/server/package.json | head -1
+
+      - name: Build encoder binaries
+        run: |
+          cd packages/encoder
+          bun scripts/build-dist.js
+
+      - name: Build Docker images
+        uses: useblacksmith/build-push-action@v2
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/annex-to/annex:latest
+            ghcr.io/annex-to/annex:${{ steps.version.outputs.new_version }}
+          labels: |
+            org.opencontainers.image.title=Annex
+            org.opencontainers.image.description=Self-hosted media platform combining requests, downloads, AV1 encoding, and library management
+            org.opencontainers.image.version=${{ steps.version.outputs.new_version }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+
+      - name: Build server-only Docker image
+        uses: useblacksmith/build-push-action@v2
+        with:
+          context: .
+          file: Dockerfile.server
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/annex-to/annex-server:latest
+            ghcr.io/annex-to/annex-server:${{ steps.version.outputs.new_version }}
+          labels: |
+            org.opencontainers.image.title=Annex Server
+            org.opencontainers.image.description=Annex server component (database required)
+            org.opencontainers.image.version=${{ steps.version.outputs.new_version }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+
+      - name: Build encoder Docker image
+        uses: useblacksmith/build-push-action@v2
+        with:
+          context: .
+          file: Dockerfile.encoder
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/annex-to/annex-encoder:latest
+            ghcr.io/annex-to/annex-encoder:${{ steps.version.outputs.new_version }}
+          labels: |
+            org.opencontainers.image.title=Annex Encoder
+            org.opencontainers.image.description=Annex remote encoder with FFmpeg and VAAPI support
+            org.opencontainers.image.version=${{ steps.version.outputs.new_version }}
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+
+      - name: Commit version bumps
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json packages/*/package.json
+          git commit -m "chore(release): bump version to ${{ steps.version.outputs.new_version }}"
+
+      - name: Create and push tag
+        run: |
+          git tag "v${{ steps.version.outputs.new_version }}"
+          git push origin "v${{ steps.version.outputs.new_version }}"
+          git push origin main
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found, generating full changelog"
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            echo "Generating changelog since $PREV_TAG"
+            CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          fi
+
+          # Save changelog to file for multiline handling
+          echo "$CHANGELOG" > /tmp/changelog.txt
+          echo "changelog_file=/tmp/changelog.txt" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.version.outputs.new_version }}
+          name: Annex v${{ steps.version.outputs.new_version }}
+          draft: false
+          prerelease: false
+          files: |
+            packages/encoder/dist-binaries/annex-encoder-linux-x64
+            packages/encoder/dist-binaries/annex-encoder-linux-arm64
+            packages/encoder/dist-binaries/annex-encoder-windows-x64.exe
+            packages/encoder/dist-binaries/annex-encoder-darwin-x64
+            packages/encoder/dist-binaries/annex-encoder-darwin-arm64
+            packages/encoder/dist-binaries/manifest.json
+          body: |
+            # Annex v${{ steps.version.outputs.new_version }}
+
+            Complete release including server application and remote encoder binaries.
+
+            ## Docker Images
+
+            Three Docker images are available for different deployment scenarios:
+
+            ### All-in-One (PostgreSQL + Nginx + Server + Encoder)
+            ```bash
+            docker pull ghcr.io/annex-to/annex:${{ steps.version.outputs.new_version }}
+            docker run -p 80:80 -v annex-data:/data ghcr.io/annex-to/annex:${{ steps.version.outputs.new_version }}
+            ```
+
+            ### Server Only (requires external PostgreSQL)
+            ```bash
+            docker pull ghcr.io/annex-to/annex-server:${{ steps.version.outputs.new_version }}
+            docker run -p 3000:3000 \
+              -e DATABASE_URL=postgresql://user:pass@host:5432/annex \
+              ghcr.io/annex-to/annex-server:${{ steps.version.outputs.new_version }}
+            ```
+
+            ### Remote Encoder (distributed GPU encoding)
+            ```bash
+            docker pull ghcr.io/annex-to/annex-encoder:${{ steps.version.outputs.new_version }}
+            docker run --device /dev/dri \
+              -e ENCODER_ID=encoder-1 \
+              -e ENCODER_SERVER_URL=ws://server:3000 \
+              ghcr.io/annex-to/annex-encoder:${{ steps.version.outputs.new_version }}
+            ```
+
+            ## Remote Encoder Binaries
+
+            Self-contained encoder binaries for all platforms. No Bun runtime required.
+
+            ### Linux (x64)
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.new_version }}/annex-encoder-linux-x64 -o annex-encoder
+            chmod +x annex-encoder
+            sudo mv annex-encoder /usr/local/bin/
+            ```
+
+            ### Linux (ARM64)
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.new_version }}/annex-encoder-linux-arm64 -o annex-encoder
+            chmod +x annex-encoder
+            sudo mv annex-encoder /usr/local/bin/
+            ```
+
+            ### Windows
+            ```powershell
+            Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.new_version }}/annex-encoder-windows-x64.exe" -OutFile "annex-encoder.exe"
+            ```
+
+            ### macOS (Intel)
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.new_version }}/annex-encoder-darwin-x64 -o annex-encoder
+            chmod +x annex-encoder
+            sudo mv annex-encoder /usr/local/bin/
+            ```
+
+            ### macOS (Apple Silicon)
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/v${{ steps.version.outputs.new_version }}/annex-encoder-darwin-arm64 -o annex-encoder
+            chmod +x annex-encoder
+            sudo mv annex-encoder /usr/local/bin/
+            ```
+
+            ### Setup Encoder Service
+
+            After installation, generate and install the service:
+
+            ```bash
+            annex-encoder --setup --install
+            ```
+
+            Edit the configuration file and start the service:
+
+            **Linux (systemd):**
+            ```bash
+            sudo nano /etc/annex-encoder.env
+            sudo systemctl start annex-encoder
+            sudo systemctl enable annex-encoder
+            ```
+
+            **macOS (launchd):**
+            ```bash
+            nano ~/Library/LaunchAgents/com.annex.encoder.plist
+            launchctl load ~/Library/LaunchAgents/com.annex.encoder.plist
+            ```
+
+            **Windows (Service):**
+            ```powershell
+            # Edit C:\ProgramData\annex-encoder\config.env
+            Start-Service AnnexEncoder
+            ```
+
+            ## What's Changed
+
+            $(cat ${{ steps.changelog.outputs.changelog_file }})
+
+            ## Checksums
+
+            See `manifest.json` for SHA256 checksums of all encoder binaries.
+
+            **Full Changelog**: https://github.com/${{ github.repository }}/compare/$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "HEAD")...v${{ steps.version.outputs.new_version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
