@@ -511,12 +511,9 @@ class JobQueueService {
     const intervalMs = 6 * 60 * 60 * 1000; // 6 hours
 
     scheduler.register("trakt-cache-cleanup", "Trakt Cache Cleanup", intervalMs, async () => {
-      await this.addJobIfNotExists(
-        "trakt:cleanup-cache",
-        {},
-        "trakt:cleanup-cache",
-        { priority: 3 }
-      );
+      await this.addJobIfNotExists("trakt:cleanup-cache", {}, "trakt:cleanup-cache", {
+        priority: 3,
+      });
     });
 
     console.log("[JobQueue] Registered Trakt cache cleanup task (6h interval)");

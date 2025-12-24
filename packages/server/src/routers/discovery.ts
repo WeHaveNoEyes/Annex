@@ -1,6 +1,6 @@
+import crypto from "node:crypto";
 import type { TrendingResult } from "@annex/shared";
 import type { Prisma } from "@prisma/client";
-import crypto from "node:crypto";
 import { z } from "zod";
 import { prisma } from "../db/client.js";
 import { getJobQueueService } from "../services/jobQueue.js";
@@ -62,13 +62,7 @@ export async function refreshTraktListCache(
   // Fetch from Trakt
   let traktItems: Awaited<ReturnType<typeof trakt.search>>;
   if (input.query?.trim()) {
-    traktItems = await trakt.search(
-      input.query,
-      input.type,
-      input.page,
-      ITEMS_PER_PAGE,
-      filters
-    );
+    traktItems = await trakt.search(input.query, input.type, input.page, ITEMS_PER_PAGE, filters);
   } else {
     traktItems = await trakt.getList(
       input.listType as any, // Type is validated by tRPC input schema
@@ -155,9 +149,7 @@ export async function refreshTraktListCache(
   // Trakt doesn't give us total count, estimate based on whether we got a full page
   const hasMore = traktItems.length === ITEMS_PER_PAGE;
   const totalPages = hasMore ? input.page + 1 : input.page;
-  const totalResults = hasMore
-    ? (input.page + 1) * ITEMS_PER_PAGE
-    : input.page * traktItems.length;
+  const totalResults = hasMore ? (input.page + 1) * ITEMS_PER_PAGE : input.page * traktItems.length;
 
   // Upsert cache (create or update)
   await prisma.traktListCache.upsert({
@@ -225,7 +217,6 @@ export async function refreshTraktListCache(
     }
   }
 }
-
 
 /**
  * Build deterministic MD5 hash of filter parameters for cache key

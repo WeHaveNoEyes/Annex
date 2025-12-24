@@ -533,28 +533,92 @@ export class PipelineExecutor {
     const stuckTimeout = 3600000; // 1 hour in ms
     const cutoff = new Date(Date.now() - stuckTimeout);
 
-    // Find RUNNING executions that started more than 1 hour ago
-    const stuckExecutions = await prisma.pipelineExecution.findMany({
+    // Find RUNNING executions
+    const runningExecutions = await prisma.pipelineExecution.findMany({
       where: {
         status: "RUNNING" as ExecutionStatus,
-        startedAt: { lt: cutoff },
       },
       include: {
-        request: { select: { id: true, title: true } },
+        request: {
+          select: {
+            id: true,
+            title: true,
+            jobs: {
+              where: {
+                type: "remote:encode",
+              },
+              select: {
+                id: true,
+                encoderAssignment: {
+                  select: {
+                    id: true,
+                    status: true,
+                    lastProgressAt: true,
+                    startedAt: true,
+                    progress: true,
+                  },
+                },
+              },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+            },
+          },
+        },
       },
     });
 
-    for (const execution of stuckExecutions) {
-      logger.warn(
-        `[Pipeline] Execution ${execution.id} for "${execution.request?.title}" stuck in RUNNING state for > 1 hour`
-      );
+    const stuckExecutions: typeof runningExecutions = [];
 
-      // Mark execution as failed
+    for (const execution of runningExecutions) {
+      // Check if there's an active encoding job
+      const latestEncodingJob = execution.request?.jobs?.[0];
+      const assignment = latestEncodingJob?.encoderAssignment;
+
+      if (assignment && assignment.status === "ENCODING") {
+        // Actively encoding - check if progress is stalled
+        if (assignment.lastProgressAt && assignment.lastProgressAt < cutoff) {
+          logger.warn(
+            `[Pipeline] Execution ${execution.id} for "${execution.request?.title}" stuck - ` +
+              `encoding progress stalled for > 1 hour (last update: ${assignment.lastProgressAt.toISOString()}, ` +
+              `progress: ${assignment.progress}%)`
+          );
+          stuckExecutions.push(execution);
+        }
+      }
+      // If status is PENDING or ASSIGNED, it's waiting in queue - allow indefinitely
+      // If no encoding job yet, it's in an earlier step - check request updatedAt
+      else if (
+        !assignment ||
+        (assignment.status !== "PENDING" && assignment.status !== "ASSIGNED")
+      ) {
+        // No active encoding, check if the request itself is stalled
+        // Only timeout if request hasn't been updated in over 1 hour
+        const request = await prisma.mediaRequest.findUnique({
+          where: { id: execution.requestId },
+          select: { updatedAt: true, status: true },
+        });
+
+        if (request && request.updatedAt < cutoff) {
+          // Check if in an active status (should be making progress)
+          const activeStatuses = ["SEARCHING", "DOWNLOADING", "DELIVERING"];
+          if (activeStatuses.includes(request.status)) {
+            logger.warn(
+              `[Pipeline] Execution ${execution.id} for "${execution.request?.title}" stuck - ` +
+                `no progress in ${request.status} status for > 1 hour`
+            );
+            stuckExecutions.push(execution);
+          }
+        }
+      }
+    }
+
+    // Mark stuck executions as failed
+    for (const execution of stuckExecutions) {
       await prisma.pipelineExecution.update({
         where: { id: execution.id },
         data: {
           status: "FAILED" as ExecutionStatus,
-          error: "Pipeline execution stuck - exceeded 1 hour timeout",
+          error: "Pipeline execution stuck - no progress for over 1 hour",
           completedAt: new Date(),
         },
       });
@@ -566,7 +630,7 @@ export class PipelineExecutor {
             where: { id: execution.requestId },
             data: {
               status: "FAILED",
-              error: "Pipeline execution stuck - exceeded 1 hour timeout",
+              error: "Pipeline execution stuck - no progress for over 1 hour",
             },
           })
           .catch((err) => logger.error(`Failed to update request ${execution.requestId}:`, err));
