@@ -74,6 +74,87 @@ class DeliveryService {
   }
 
   /**
+   * Check if a file exists on a remote server
+   * Returns true if the file exists, false otherwise
+   */
+  async fileExists(serverId: string, remotePath: string): Promise<boolean> {
+    const server = await this.getServer(serverId);
+    if (!server) {
+      return false;
+    }
+
+    try {
+      switch (server.protocol) {
+        case "SFTP": {
+          const sftp = new SftpClient();
+          try {
+            const sshKeys = getSshKeyService();
+            const password = decryptIfPresent(server.encryptedPassword);
+            const privateKey = decryptIfPresent(server.encryptedPrivateKey);
+
+            await sftp.connect({
+              host: server.host,
+              port: server.port,
+              username: server.username,
+              password: password || undefined,
+              privateKey: privateKey || undefined,
+            });
+
+            const exists = await sftp.exists(remotePath);
+            return exists !== false;
+          } finally {
+            await sftp.end();
+          }
+        }
+
+        case "RSYNC": {
+          // For rsync over SSH, use ssh to check file existence
+          return new Promise((resolve) => {
+            const sshKeys = getSshKeyService();
+            const keyPath = sshKeys.getPrivateKeyPath();
+
+            const sshCmd = [
+              "ssh",
+              "-i",
+              keyPath,
+              "-o",
+              "StrictHostKeyChecking=no",
+              "-p",
+              server.port.toString(),
+              `${server.username}@${server.host}`,
+              `test -f "${remotePath.replace(/"/g, '\\"')}" && echo "exists"`,
+            ];
+
+            const proc = spawn(sshCmd[0], sshCmd.slice(1));
+            let output = "";
+
+            proc.stdout.on("data", (data) => {
+              output += data.toString();
+            });
+
+            proc.on("close", (code) => {
+              resolve(output.trim() === "exists" && code === 0);
+            });
+
+            proc.on("error", () => {
+              resolve(false);
+            });
+          });
+        }
+
+        case "SMB":
+          // SMB file existence check not implemented yet
+          return false;
+
+        default:
+          return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Deliver a file to a storage server
    */
   async deliver(

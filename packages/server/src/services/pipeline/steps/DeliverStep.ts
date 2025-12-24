@@ -53,6 +53,140 @@ export class DeliverStep extends BaseStep {
       };
     }
 
+    // Check if delivery already completed (recovery scenario)
+    // Verify that files exist on all target servers
+    const delivery = getDeliveryService();
+    const naming = getNamingService();
+    let allFilesExist = true;
+    const recoveredServers: string[] = [];
+
+    for (const encodedFile of encodedFiles) {
+      const {
+        path: encodedFilePath,
+        resolution,
+        codec,
+        targetServerIds,
+      } = encodedFile as {
+        path: string;
+        profileId: string;
+        resolution: string;
+        codec: string;
+        targetServerIds: string[];
+      };
+
+      const servers = await prisma.storageServer.findMany({
+        where: { id: { in: targetServerIds } },
+      });
+
+      const container = encodedFilePath.split(".").pop() || "mkv";
+
+      for (const server of servers) {
+        let remotePath: string;
+
+        if (mediaType === MediaType.MOVIE) {
+          remotePath = naming.getMovieDestinationPath(server.pathMovies, {
+            title,
+            year,
+            quality: resolution,
+            codec,
+            container,
+          });
+        } else {
+          const season = context.requestedSeasons?.[0] || 1;
+          remotePath = naming.getTvDestinationPath(server.pathTv, {
+            series: title,
+            year,
+            season,
+            episode: 1,
+            quality: resolution,
+            codec,
+            container,
+          });
+        }
+
+        const fileExists = await delivery.fileExists(server.id, remotePath);
+        if (fileExists) {
+          recoveredServers.push(server.id);
+        } else {
+          allFilesExist = false;
+        }
+      }
+    }
+
+    // If all files already exist on all servers, skip delivery and just create records
+    if (allFilesExist && recoveredServers.length > 0) {
+      await this.logActivity(
+        requestId,
+        ActivityType.INFO,
+        "Files already delivered to all servers, skipping delivery (recovered from restart)"
+      );
+
+      // Create LibraryItem records for all servers
+      for (const encodedFile of encodedFiles) {
+        const { resolution, codec, targetServerIds } = encodedFile as {
+          path: string;
+          profileId: string;
+          resolution: string;
+          codec: string;
+          targetServerIds: string[];
+        };
+
+        for (const serverId of targetServerIds) {
+          await prisma.libraryItem.upsert({
+            where: {
+              tmdbId_type_serverId: {
+                tmdbId,
+                type: mediaType as MediaType,
+                serverId,
+              },
+            },
+            create: {
+              tmdbId,
+              type: mediaType as MediaType,
+              serverId,
+              quality: `${resolution} ${codec}`,
+              addedAt: new Date(),
+            },
+            update: {
+              quality: `${resolution} ${codec}`,
+              syncedAt: new Date(),
+            },
+          });
+        }
+      }
+
+      // Mark request as completed
+      await prisma.mediaRequest.update({
+        where: { id: requestId },
+        data: {
+          status: RequestStatus.COMPLETED,
+          progress: 100,
+          currentStep: null,
+          error: null,
+          completedAt: new Date(),
+        },
+      });
+
+      await this.logActivity(
+        requestId,
+        ActivityType.SUCCESS,
+        "Request completed successfully (recovered)"
+      );
+
+      return {
+        success: true,
+        nextStep: null,
+        data: {
+          deliver: {
+            deliveredServers: recoveredServers,
+            failedServers: [],
+            completedAt: new Date().toISOString(),
+            recovered: true,
+          },
+        },
+      };
+    }
+
     await prisma.mediaRequest.update({
       where: { id: requestId },
       data: {
@@ -61,9 +195,6 @@ export class DeliverStep extends BaseStep {
         currentStep: "Preparing for delivery...",
       },
     });
-
-    const delivery = getDeliveryService();
-    const naming = getNamingService();
 
     const deliveredServers: string[] = [];
     const failedServers: string[] = [];
