@@ -15,6 +15,7 @@ import {
   fetchPlexStats,
   testPlexConnection,
 } from "../services/plex.js";
+import { getSshKeyService } from "../services/ssh.js";
 import { publicProcedure, router } from "../trpc.js";
 
 const mediaServerConfigSchema = z
@@ -1063,5 +1064,14 @@ export const serversRouter = router({
       where: { mediaServerType: "EMBY" },
     });
     return { exists: count > 0 };
+  }),
+
+  /**
+   * Get SSH public key for SFTP server authentication
+   */
+  sshPublicKey: publicProcedure.query(async () => {
+    const sshService = getSshKeyService();
+    const publicKey = sshService.getPublicKey();
+    return { publicKey };
   }),
 });

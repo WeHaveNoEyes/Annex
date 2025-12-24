@@ -3,6 +3,7 @@ import { Route, Routes, useNavigate } from "react-router-dom";
 import {
   Badge,
   Button,
+  Callout,
   Card,
   EmptyState,
   Input,
@@ -1402,6 +1403,7 @@ function ServerCard({
 function ServersSettings() {
   const utils = trpc.useUtils();
   const servers = trpc.servers.list.useQuery();
+  const sshKey = trpc.servers.sshPublicKey.useQuery();
   const [showForm, setShowForm] = useState(false);
   const [editingServer, setEditingServer] = useState<string | null>(null);
 
@@ -1536,6 +1538,20 @@ function ServersSettings() {
         <h2 className="text-xl font-semibold">Storage Servers</h2>
         <Button onClick={() => setShowForm(true)}>Add Server</Button>
       </div>
+
+      {sshKey.data && (
+        <Callout variant="info">
+          <div className="space-y-2">
+            <p className="text-sm font-medium">SFTP Server Setup</p>
+            <p className="text-sm text-white/60">
+              Add Annex's SSH public key to your storage server's authorized hosts:
+            </p>
+            <code className="block rounded bg-black/30 p-2 text-xs font-mono break-all">
+              echo "{sshKey.data.publicKey}" &gt;&gt; ~/.ssh/authorized_keys
+            </code>
+          </div>
+        </Callout>
+      )}
 
       {servers.isLoading && (
         <div className="space-y-4">

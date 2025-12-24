@@ -1,6 +1,7 @@
 export { AlternativesModal } from "./AlternativesModal";
 export { Badge } from "./Badge";
 export { Button } from "./Button";
+export { Callout } from "./Callout";
 export { Card } from "./Card";
 export { DiscoveryModeTabs } from "./DiscoveryModeTabs";
 export { EmptyState } from "./EmptyState";
