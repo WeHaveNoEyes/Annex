@@ -1,6 +1,8 @@
 import { AssignmentStatus, type Prisma, RequestStatus } from "@prisma/client";
 import { prisma } from "../db/client.js";
 import { getPipelineExecutor } from "./pipeline/PipelineExecutor.js";
+import { registerPipelineSteps } from "./pipeline/registerSteps.js";
+import { StepRegistry } from "./pipeline/StepRegistry.js";
 
 /**
  * Recovers requests stuck in ENCODING status due to server restarts.
@@ -14,6 +16,13 @@ import { getPipelineExecutor } from "./pipeline/PipelineExecutor.js";
  */
 export async function recoverStuckEncodings(): Promise<void> {
   console.log("[EncodingRecovery] Checking for stuck encodings...");
+
+  // Ensure pipeline steps are registered before attempting recovery
+  // This prevents "Step type X is not registered" errors during hot reloads
+  if (StepRegistry.getRegisteredTypes().length === 0) {
+    console.log("[EncodingRecovery] Pipeline steps not registered, registering now...");
+    registerPipelineSteps();
+  }
 
   // Find requests stuck in ENCODING status
   const stuckRequests = await prisma.mediaRequest.findMany({
@@ -40,15 +49,19 @@ export async function recoverStuckEncodings(): Promise<void> {
   let stillRunning = 0;
 
   for (const request of stuckRequests) {
-    // Find the encoding job for this request
+    // Find the encoding job for this request with an assignment
     const job = await prisma.job.findFirst({
       where: {
         type: "remote:encode",
-        payload: { path: ["requestId"], equals: request.id },
+        requestId: request.id, // Use requestId column for efficient querying
+        encoderAssignment: {
+          isNot: null, // Only get jobs that have an assignment
+        },
       },
       select: {
         id: true,
         payload: true,
+        encoderAssignment: true,
       },
       orderBy: { createdAt: "desc" },
     });
@@ -58,11 +71,7 @@ export async function recoverStuckEncodings(): Promise<void> {
       continue;
     }
 
-    // Find the most recent assignment for this job
-    const assignment = await prisma.encoderAssignment.findFirst({
-      where: { jobId: job.id },
-      orderBy: { assignedAt: "desc" },
-    });
+    const assignment = job.encoderAssignment;
 
     if (!assignment) {
       console.log(`[EncodingRecovery] ${request.title}: No assignment found`);
@@ -160,7 +169,13 @@ export async function recoverStuckEncodings(): Promise<void> {
 
       // Resume tree-based pipeline execution with updated context
       const executor = getPipelineExecutor();
-      await executor.resumeTreeExecution(pipelineExecution.id);
+      // Resume in background - don't block recovery on pipeline completion
+      executor.resumeTreeExecution(pipelineExecution.id).catch((error) => {
+        console.error(
+          `[EncodingRecovery] ${request.title}: Failed to resume pipeline after completion:`,
+          error
+        );
+      });
 
       recovered++;
     } else if (assignment.status === AssignmentStatus.FAILED) {
@@ -175,8 +190,71 @@ export async function recoverStuckEncodings(): Promise<void> {
       console.log(
         `[EncodingRecovery] ${request.title}: Encoding still in progress (${assignment.progress}%)`
       );
-      stillRunning++;
-      // Don't auto-resume active encodings - they may complete on their own
+
+      // Check if pipeline execution exists and is RUNNING
+      const pipelineExecution = await prisma.pipelineExecution.findFirst({
+        where: {
+          requestId: request.id,
+          status: "RUNNING",
+        },
+        orderBy: { startedAt: "desc" },
+      });
+
+      if (pipelineExecution) {
+        // Reconstruct pipeline context with download step output
+        // This allows EncodeStep to find the existing job and continue polling
+        const context = pipelineExecution.context as {
+          targets?: Array<{ serverId: string; encodingProfileId?: string }>;
+          download?: { sourceFilePath: string };
+        };
+
+        // Get job payload to extract input path
+        const jobPayload = job.payload as {
+          inputPath?: string;
+          encodingConfig?: {
+            videoEncoder?: string;
+            maxResolution?: string;
+          };
+        };
+
+        const inputPath = jobPayload.inputPath || assignment.inputPath;
+
+        // Update context with download step output if not already present
+        if (!context.download?.sourceFilePath && inputPath) {
+          const updatedContext = {
+            ...context,
+            download: {
+              sourceFilePath: inputPath,
+              downloadedAt: assignment.assignedAt.toISOString(),
+            },
+          };
+
+          await prisma.pipelineExecution.update({
+            where: { id: pipelineExecution.id },
+            data: {
+              context: updatedContext as unknown as Prisma.JsonObject,
+            },
+          });
+
+          console.log(
+            `[EncodingRecovery] ${request.title}: Updated context with download path, resuming pipeline`
+          );
+        } else {
+          console.log(
+            `[EncodingRecovery] ${request.title}: Resuming pipeline to restart polling loop`
+          );
+        }
+
+        const executor = getPipelineExecutor();
+        // Resume pipeline in background (don't wait for completion)
+        // The pipeline will handle its own execution and updates
+        executor.resumeTreeExecution(pipelineExecution.id).catch((error) => {
+          console.error(`[EncodingRecovery] ${request.title}: Failed to resume pipeline:`, error);
+        });
+        recovered++;
+      } else {
+        stillRunning++;
+      }
     }
   }
 

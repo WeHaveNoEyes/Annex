@@ -7,11 +7,13 @@ import { initConfig } from "./config/index.js";
 import { appRouter } from "./routers/index.js";
 import { registerAuthTasks, verifySession } from "./services/auth.js";
 import { getCryptoService } from "./services/crypto.js";
+import { recoverStuckDeliveries } from "./services/deliveryRecovery.js";
 import {
   type EncoderWebSocketData,
   getEncoderDispatchService,
 } from "./services/encoderDispatch.js";
 import { recoverStuckEncodings } from "./services/encodingRecovery.js";
+import { recoverFailedJobs } from "./services/failedJobRecovery.js";
 import { getIrcAnnounceMonitor } from "./services/ircAnnounce.js";
 import { getJobQueueService } from "./services/jobQueue.js";
 import { registerPipelineSteps } from "./services/pipeline/registerSteps.js";
@@ -321,18 +323,6 @@ scheduler.register(
   }
 );
 
-// Register stuck pipeline detection task (runs every 5 minutes)
-scheduler.register(
-  "stuck-pipeline-detection",
-  "Stuck Pipeline Detection",
-  5 * 60 * 1000, // 5 minutes
-  async () => {
-    const { getPipelineExecutor } = await import("./services/pipeline/PipelineExecutor.js");
-    const executor = getPipelineExecutor();
-    await executor.detectStuckExecutions();
-  }
-);
-
 // Register download progress sync task (runs every 500ms)
 scheduler.register(
   "download-progress-sync",
@@ -421,10 +411,18 @@ jobQueue.start().catch((error) => {
   console.error("[JobQueue] Failed to start:", error);
 });
 
-// Recover stuck encodings from server restarts
-recoverStuckEncodings().catch((error) => {
-  console.error("[EncodingRecovery] Failed to recover stuck encodings:", error);
-});
+// Recover stuck and failed requests from server restarts
+Promise.all([
+  recoverFailedJobs().catch((error) => {
+    console.error("[FailedJobRecovery] Failed to recover failed jobs:", error);
+  }),
+  recoverStuckEncodings().catch((error) => {
+    console.error("[EncodingRecovery] Failed to recover stuck encodings:", error);
+  }),
+  recoverStuckDeliveries().catch((error) => {
+    console.error("[DeliveryRecovery] Failed to recover stuck deliveries:", error);
+  }),
+]);
 
 // Start the IRC announce monitor (if enabled)
 const ircMonitor = getIrcAnnounceMonitor();

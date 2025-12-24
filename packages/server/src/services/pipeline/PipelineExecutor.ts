@@ -5,6 +5,7 @@ import { type ExecutionStatus, Prisma, type StepStatus, type StepType } from "@p
 import { prisma } from "../../db/client.js";
 import { logger } from "../../utils/logger";
 import type { PipelineContext, StepOutput } from "./PipelineContext";
+import { registerPipelineSteps } from "./registerSteps";
 import { StepRegistry } from "./StepRegistry";
 
 // Tree-based step structure
@@ -493,6 +494,12 @@ export class PipelineExecutor {
 
   // Resume tree-based execution after hot reload or restart
   async resumeTreeExecution(executionId: string): Promise<void> {
+    // Ensure pipeline steps are registered before attempting to resume
+    if (StepRegistry.getRegisteredTypes().length === 0) {
+      logger.info("[Pipeline] Steps not registered, registering now...");
+      registerPipelineSteps();
+    }
+
     try {
       // Load the execution with its current state
       const execution = await prisma.pipelineExecution.findUnique({
@@ -568,121 +575,6 @@ export class PipelineExecutor {
     logger.info(`Cancelled pipeline execution ${executionId}`);
   }
 
-  // Detect and clean up stuck pipeline executions
-  async detectStuckExecutions(): Promise<void> {
-    const stuckTimeout = 3600000; // 1 hour in ms
-    const cutoff = new Date(Date.now() - stuckTimeout);
-
-    // Find RUNNING executions
-    const runningExecutions = await prisma.pipelineExecution.findMany({
-      where: {
-        status: "RUNNING" as ExecutionStatus,
-      },
-      include: {
-        request: {
-          select: {
-            id: true,
-            title: true,
-            jobs: {
-              where: {
-                type: "remote:encode",
-              },
-              select: {
-                id: true,
-                encoderAssignment: {
-                  select: {
-                    id: true,
-                    status: true,
-                    lastProgressAt: true,
-                    startedAt: true,
-                    progress: true,
-                  },
-                },
-              },
-              orderBy: { createdAt: "desc" },
-              take: 1,
-            },
-          },
-        },
-      },
-    });
-
-    const stuckExecutions: typeof runningExecutions = [];
-
-    for (const execution of runningExecutions) {
-      // Check if there's an active encoding job
-      const latestEncodingJob = execution.request?.jobs?.[0];
-      const assignment = latestEncodingJob?.encoderAssignment;
-
-      if (assignment && assignment.status === "ENCODING") {
-        // Actively encoding - check if progress is stalled
-        if (assignment.lastProgressAt && assignment.lastProgressAt < cutoff) {
-          logger.warn(
-            `[Pipeline] Execution ${execution.id} for "${execution.request?.title}" stuck - ` +
-              `encoding progress stalled for > 1 hour (last update: ${assignment.lastProgressAt.toISOString()}, ` +
-              `progress: ${assignment.progress}%)`
-          );
-          stuckExecutions.push(execution);
-        }
-      }
-      // If status is PENDING or ASSIGNED, it's waiting in queue - allow indefinitely
-      // If no encoding job yet, it's in an earlier step - check request updatedAt
-      else if (
-        !assignment ||
-        (assignment.status !== "PENDING" && assignment.status !== "ASSIGNED")
-      ) {
-        // No active encoding, check if the request itself is stalled
-        // Only timeout if request hasn't been updated in over 1 hour
-        const request = await prisma.mediaRequest.findUnique({
-          where: { id: execution.requestId },
-          select: { updatedAt: true, status: true },
-        });
-
-        if (request && request.updatedAt < cutoff) {
-          // Check if in an active status (should be making progress)
-          const activeStatuses = ["SEARCHING", "DOWNLOADING", "DELIVERING"];
-          if (activeStatuses.includes(request.status)) {
-            logger.warn(
-              `[Pipeline] Execution ${execution.id} for "${execution.request?.title}" stuck - ` +
-                `no progress in ${request.status} status for > 1 hour`
-            );
-            stuckExecutions.push(execution);
-          }
-        }
-      }
-    }
-
-    // Mark stuck executions as failed
-    for (const execution of stuckExecutions) {
-      await prisma.pipelineExecution.update({
-        where: { id: execution.id },
-        data: {
-          status: "FAILED" as ExecutionStatus,
-          error: "Pipeline execution stuck - no progress for over 1 hour",
-          completedAt: new Date(),
-        },
-      });
-
-      // Mark request as failed if it exists
-      if (execution.requestId) {
-        await prisma.mediaRequest
-          .update({
-            where: { id: execution.requestId },
-            data: {
-              status: "FAILED",
-              error: "Pipeline execution stuck - no progress for over 1 hour",
-            },
-          })
-          .catch((err) => logger.error(`Failed to update request ${execution.requestId}:`, err));
-      }
-
-      logger.info(`[Pipeline] Marked stuck execution ${execution.id} as FAILED`);
-    }
-
-    if (stuckExecutions.length > 0) {
-      logger.info(`[Pipeline] Cleaned up ${stuckExecutions.length} stuck execution(s)`);
-    }
-  }
 }
 
 // Singleton instance

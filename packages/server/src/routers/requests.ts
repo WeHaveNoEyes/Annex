@@ -437,6 +437,7 @@ export const requestsRouter = router({
           status: true,
           progress: true,
           currentStep: true,
+          currentStepStartedAt: true,
           error: true,
           requiredResolution: true,
           availableReleases: true,
@@ -483,6 +484,7 @@ export const requestsRouter = router({
           status: true;
           progress: true;
           currentStep: true;
+          currentStepStartedAt: true;
           error: true;
           requiredResolution: true;
           availableReleases: true;
@@ -572,6 +574,7 @@ export const requestsRouter = router({
           status: fromRequestStatus(r.status),
           progress: r.progress,
           currentStep: r.currentStep,
+        currentStepStartedAt: new Date(),
           error: r.error,
           requiredResolution: r.requiredResolution,
           hasAlternatives:
@@ -641,6 +644,7 @@ export const requestsRouter = router({
       status: fromRequestStatus(r.status),
       progress: r.progress,
       currentStep: r.currentStep,
+        currentStepStartedAt: new Date(),
       error: r.error,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
@@ -1067,6 +1071,7 @@ export const requestsRouter = router({
           releaseName: (selectedRelease.title as string | undefined) || null,
           progress: 0,
           currentStep: `Accepted lower quality: ${String(selectedRelease.resolution || "unknown")}`,
+        currentStepStartedAt: new Date(),
           error: null,
         },
       });
@@ -1120,6 +1125,7 @@ export const requestsRouter = router({
           selectedRelease: Prisma.JsonNull,
           availableReleases: Prisma.JsonNull,
           currentStep: "Re-searching for quality releases...",
+        currentStepStartedAt: new Date(),
           error: null,
         },
       });

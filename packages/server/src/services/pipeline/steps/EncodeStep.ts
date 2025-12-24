@@ -154,10 +154,7 @@ export class EncodeStep extends BaseStep {
             await prisma.job.findMany({
               where: {
                 type: "remote:encode",
-                payload: {
-                  path: ["requestId"],
-                  equals: requestId,
-                },
+                requestId, // Use requestId column for efficient querying
               },
               select: { id: true },
               orderBy: { createdAt: "desc" },
@@ -187,6 +184,7 @@ export class EncodeStep extends BaseStep {
               status: RequestStatus.ENCODING,
               progress: 90,
               currentStep: "Encoding complete (reused existing file)",
+        currentStepStartedAt: new Date(),
             },
           });
 
@@ -235,6 +233,7 @@ export class EncodeStep extends BaseStep {
         status: RequestStatus.ENCODING,
         progress: 50,
         currentStep: "Encoding...",
+        currentStepStartedAt: new Date(),
       },
     });
 
@@ -260,6 +259,7 @@ export class EncodeStep extends BaseStep {
     const job = await prisma.job.create({
       data: {
         type: "remote:encode",
+        requestId, // Set requestId column for proper querying
         payload: {
           requestId,
           mediaType,
@@ -301,27 +301,39 @@ export class EncodeStep extends BaseStep {
         };
       }
 
-      // Update progress
-      if (assignmentStatus.progress !== null) {
-        const overallProgress = 50 + assignmentStatus.progress * 0.4; // 50-90%
+      // Update progress based on assignment status
+      let currentStep: string;
+      let overallProgress: number;
+
+      if (assignmentStatus.status === AssignmentStatus.PENDING) {
+        currentStep = "Waiting for encoder...";
+        overallProgress = 50;
+      } else if (assignmentStatus.status === AssignmentStatus.ASSIGNED) {
+        currentStep = "Encoder assigned, starting...";
+        overallProgress = 50;
+      } else if (assignmentStatus.progress !== null) {
+        // ENCODING status with progress
+        overallProgress = 50 + assignmentStatus.progress * 0.4; // 50-90%
         const speed = assignmentStatus.speed ? ` - ${assignmentStatus.speed}x` : "";
         const eta = assignmentStatus.eta
           ? ` - ETA: ${this.formatDuration(assignmentStatus.eta)}`
           : "";
-
-        await prisma.mediaRequest.update({
-          where: { id: requestId },
-          data: {
-            progress: overallProgress,
-            currentStep: `Encoding: ${assignmentStatus.progress.toFixed(1)}%${speed}${eta}`,
-          },
-        });
-
-        this.reportProgress(
-          assignmentStatus.progress,
-          `Encoding: ${assignmentStatus.progress.toFixed(1)}%${speed}${eta}`
-        );
+        currentStep = `Encoding: ${assignmentStatus.progress.toFixed(1)}%${speed}${eta}`;
+      } else {
+        // Fallback for other statuses
+        currentStep = "Encoding...";
+        overallProgress = 50;
       }
+
+      await prisma.mediaRequest.update({
+        where: { id: requestId },
+        data: {
+          progress: overallProgress,
+          currentStep,
+        },
+      });
+
+      this.reportProgress(assignmentStatus.progress || 0, currentStep);
 
       // Check if complete
       if (assignmentStatus.status === AssignmentStatus.COMPLETED) {
@@ -336,6 +348,7 @@ export class EncodeStep extends BaseStep {
           data: {
             progress: 90,
             currentStep: "Encoding complete",
+        currentStepStartedAt: new Date(),
           },
         });
 

@@ -87,6 +87,7 @@ export class SearchStep extends BaseStep {
         status: RequestStatus.SEARCHING,
         progress: 5,
         currentStep: "Checking for existing downloads...",
+        currentStepStartedAt: new Date(),
       },
     });
 
@@ -166,6 +167,7 @@ export class SearchStep extends BaseStep {
       data: {
         progress: 10,
         currentStep: "Searching indexers...",
+        currentStepStartedAt: new Date(),
       },
     });
 
@@ -241,6 +243,7 @@ export class SearchStep extends BaseStep {
           status: RequestStatus.AWAITING,
           progress: 0,
           currentStep: "Waiting for release availability",
+        currentStepStartedAt: new Date(),
           error: null,
           qualitySearchedAt: new Date(),
         },
@@ -305,6 +308,7 @@ export class SearchStep extends BaseStep {
             qualitySearchedAt: new Date(),
             progress: 0,
             currentStep: `No ${resolutionLabel} releases found (best: ${bestAvailable})`,
+        currentStepStartedAt: new Date(),
             error: null,
           },
         });
@@ -398,6 +402,7 @@ export class SearchStep extends BaseStep {
         status: RequestStatus.SEARCHING,
         progress: 15,
         currentStep: `Selected: ${bestRelease.title}`,
+        currentStepStartedAt: new Date(),
       },
     });
 

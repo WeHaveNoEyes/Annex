@@ -162,6 +162,7 @@ export class DeliverStep extends BaseStep {
           status: RequestStatus.COMPLETED,
           progress: 100,
           currentStep: null,
+        currentStepStartedAt: new Date(),
           error: null,
           completedAt: new Date(),
         },
@@ -193,6 +194,7 @@ export class DeliverStep extends BaseStep {
         status: RequestStatus.DELIVERING,
         progress: 75,
         currentStep: "Preparing for delivery...",
+        currentStepStartedAt: new Date(),
       },
     });
 
@@ -257,6 +259,7 @@ export class DeliverStep extends BaseStep {
           data: {
             progress: 75 + (serverIndex / servers.length) * 20,
             currentStep: `Transferring to ${server.name}...`,
+        currentStepStartedAt: new Date(),
           },
         });
 
@@ -272,6 +275,7 @@ export class DeliverStep extends BaseStep {
               data: {
                 progress: stageProgress,
                 currentStep: `${server.name}: ${progress.progress.toFixed(1)}% - ${speed} ${eta}`,
+        currentStepStartedAt: new Date(),
               },
             });
           },
@@ -336,6 +340,7 @@ export class DeliverStep extends BaseStep {
           status: RequestStatus.COMPLETED,
           progress: 100,
           currentStep: null,
+        currentStepStartedAt: new Date(),
           error: null,
           completedAt: new Date(),
         },
@@ -392,6 +397,7 @@ export class DeliverStep extends BaseStep {
             status: RequestStatus.COMPLETED,
             progress: 100,
             currentStep: error,
+        currentStepStartedAt: new Date(),
             completedAt: new Date(),
           },
         });

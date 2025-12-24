@@ -132,6 +132,7 @@ export class DownloadStep extends BaseStep {
             status: RequestStatus.PENDING,
             progress: 0,
             currentStep: null,
+        currentStepStartedAt: new Date(),
             error: "Download failed - stale authentication. Please retry the request.",
           },
         });
@@ -162,6 +163,7 @@ export class DownloadStep extends BaseStep {
         status: RequestStatus.DOWNLOADING,
         progress: 20,
         currentStep: "Downloading...",
+        currentStepStartedAt: new Date(),
       },
     });
 
@@ -207,6 +209,7 @@ export class DownloadStep extends BaseStep {
           data: {
             progress: overallProgress,
             currentStep: `Downloading: ${progress.progress.toFixed(1)}% - ${speed} ${eta}`,
+        currentStepStartedAt: new Date(),
           },
         });
       },
@@ -256,6 +259,7 @@ export class DownloadStep extends BaseStep {
         data: {
           progress: 45,
           currentStep: "Extracting archive...",
+        currentStepStartedAt: new Date(),
         },
       });
 
@@ -297,6 +301,7 @@ export class DownloadStep extends BaseStep {
               sourceFilePath: extractedVideoFile.path,
               progress: 50,
               currentStep: "Download complete",
+        currentStepStartedAt: new Date(),
             },
           });
 
@@ -342,6 +347,7 @@ export class DownloadStep extends BaseStep {
         sourceFilePath: videoFile.path,
         progress: 50,
         currentStep: "Download complete",
+        currentStepStartedAt: new Date(),
       },
     });
 

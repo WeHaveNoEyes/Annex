@@ -262,6 +262,7 @@ model MediaRequest {
   status           RequestStatus @default(PENDING)
   progress         Float         @default(0)
   currentStep      String?
+  currentStepStartedAt DateTime?  // Track when current step started
   error            String?
 
   // Pipeline state - allows resuming from where we left off

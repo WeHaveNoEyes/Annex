@@ -374,6 +374,7 @@ interface RequestCardProps {
     status: string;
     progress: number;
     currentStep: string | null;
+    currentStepStartedAt: Date | null;
     error: string | null;
     requiredResolution: string | null;
     hasAlternatives: boolean;
@@ -552,7 +553,14 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
               </span>
             )}
             {request.currentStep && isActive && (
-              <span className="text-xs text-white/40">{request.currentStep}</span>
+              <div className="flex items-center gap-2 text-xs text-white/40">
+                <span>{request.currentStep}</span>
+                {request.currentStepStartedAt && (
+                  <span className="text-white/30">
+                    ({formatRelativeTime(request.currentStepStartedAt)})
+                  </span>
+                )}
+              </div>
             )}
             {request.type === "tv" && request.requestedSeasons.length > 0 && (
               <span className="text-xs text-white/30">
