@@ -325,11 +325,20 @@ export class EncodeStep extends BaseStep {
         overallProgress = 50;
       }
 
+      // Only update currentStepStartedAt if the step actually changed
+      const previousRequest = await prisma.mediaRequest.findUnique({
+        where: { id: requestId },
+        select: { currentStep: true },
+      });
+
       await prisma.mediaRequest.update({
         where: { id: requestId },
         data: {
           progress: overallProgress,
           currentStep,
+          ...(previousRequest?.currentStep !== currentStep && {
+            currentStepStartedAt: new Date(),
+          }),
         },
       });
 
