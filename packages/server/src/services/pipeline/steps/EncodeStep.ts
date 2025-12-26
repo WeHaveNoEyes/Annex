@@ -4,6 +4,7 @@ import {
   type Prisma,
   RequestStatus,
   StepType,
+  TvEpisodeStatus,
 } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { getEncoderDispatchService } from "../../encoderDispatch.js";
@@ -517,7 +518,7 @@ export class EncodeStep extends BaseStep {
       // Update episode status to ENCODING
       await prisma.tvEpisode.update({
         where: { id: ep.episodeId },
-        data: { status: "ENCODING" as never },
+        data: { status: TvEpisodeStatus.ENCODING },
       });
 
       try {

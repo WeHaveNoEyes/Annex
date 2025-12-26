@@ -295,9 +295,16 @@ export class SearchStep extends BaseStep {
         TvEpisodeStatus.SKIPPED,
       ]);
 
-      const neededEpisodes = allEpisodes
-        .filter((ep) => !completedStatuses.has(ep.status))
-        .map((ep) => ({ season: ep.season, episode: ep.episode }));
+      const neededEpisodes = allEpisodes.filter((ep) => !completedStatuses.has(ep.status));
+
+      // Mark needed episodes as SEARCHING
+      await prisma.tvEpisode.updateMany({
+        where: {
+          id: { in: neededEpisodes.map((ep) => ep.id) },
+          status: TvEpisodeStatus.PENDING,
+        },
+        data: { status: TvEpisodeStatus.SEARCHING },
+      });
 
       const neededSet = new Set(neededEpisodes.map((ep) => `S${ep.season}E${ep.episode}`));
 
@@ -419,6 +426,16 @@ export class SearchStep extends BaseStep {
 
               if (download) {
                 createdDownloads++;
+
+                // Mark episode as DOWNLOADING
+                await prisma.tvEpisode.update({
+                  where: { id: ep.id },
+                  data: {
+                    status: TvEpisodeStatus.DOWNLOADING,
+                    downloadId: download.id,
+                  },
+                });
+
                 await this.logActivity(
                   requestId,
                   ActivityType.INFO,

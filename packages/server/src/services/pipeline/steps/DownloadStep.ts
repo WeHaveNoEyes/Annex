@@ -211,6 +211,46 @@ export class DownloadStep extends BaseStep {
 
       downloadId = download.id;
       torrentHash = download.torrentHash;
+
+      // For TV shows, mark episodes as DOWNLOADING
+      if (mediaType === MediaType.TV) {
+        // Parse episode info from torrent name or mark all PENDING episodes as DOWNLOADING
+        const episodeMatches = download.torrentName.matchAll(/S(\d{1,2})E(\d{1,2})/gi);
+        const releaseEpisodes = Array.from(episodeMatches, (match) => ({
+          season: Number.parseInt(match[1], 10),
+          episode: Number.parseInt(match[2], 10),
+        }));
+
+        if (releaseEpisodes.length > 0) {
+          // Individual episode(s) or specific episodes - mark them as DOWNLOADING
+          for (const ep of releaseEpisodes) {
+            await prisma.tvEpisode.updateMany({
+              where: {
+                requestId,
+                season: ep.season,
+                episode: ep.episode,
+                status: { in: [TvEpisodeStatus.PENDING, TvEpisodeStatus.SEARCHING] },
+              },
+              data: {
+                status: TvEpisodeStatus.DOWNLOADING,
+                downloadId: download.id,
+              },
+            });
+          }
+        } else {
+          // Season pack - mark all PENDING/SEARCHING episodes as DOWNLOADING
+          await prisma.tvEpisode.updateMany({
+            where: {
+              requestId,
+              status: { in: [TvEpisodeStatus.PENDING, TvEpisodeStatus.SEARCHING] },
+            },
+            data: {
+              status: TvEpisodeStatus.DOWNLOADING,
+              downloadId: download.id,
+            },
+          });
+        }
+      }
     } else {
       return {
         success: false,

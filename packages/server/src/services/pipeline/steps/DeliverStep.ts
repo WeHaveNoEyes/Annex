@@ -281,6 +281,14 @@ export class DeliverStep extends BaseStep {
           `Delivering ${displayName} to ${server.name}: ${remotePath}`
         );
 
+        // Mark episode as DELIVERING if this is a TV episode
+        if (episodeId) {
+          await prisma.tvEpisode.update({
+            where: { id: episodeId },
+            data: { status: TvEpisodeStatus.DELIVERING },
+          });
+        }
+
         await prisma.mediaRequest.update({
           where: { id: requestId },
           data: {
