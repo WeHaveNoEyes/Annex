@@ -85,6 +85,67 @@ export class DownloadStep extends BaseStep {
       };
     }
 
+    // Check if SearchStep was skipped (episodes already downloaded)
+    const skippedSearch = (context.search as { skippedSearch?: boolean })?.skippedSearch;
+    if (skippedSearch && mediaType === MediaType.TV) {
+      // Episodes are already DOWNLOADED - extract files and continue to encoding
+      const downloadedEpisodes = await prisma.tvEpisode.findMany({
+        where: {
+          requestId,
+          status: { in: [TvEpisodeStatus.DOWNLOADED, TvEpisodeStatus.ENCODING, TvEpisodeStatus.ENCODED] },
+        },
+        select: {
+          season: true,
+          episode: true,
+          sourceFilePath: true,
+          id: true,
+        },
+      });
+
+      if (downloadedEpisodes.length === 0) {
+        return {
+          success: false,
+          shouldRetry: false,
+          nextStep: null,
+          error: "No downloaded episodes found",
+        };
+      }
+
+      await this.logActivity(
+        requestId,
+        ActivityType.INFO,
+        `Found ${downloadedEpisodes.length} downloaded episodes, continuing to encoding`
+      );
+
+      // Build episode files array from downloaded episodes
+      const episodeFiles = downloadedEpisodes.map((ep) => ({
+        season: ep.season,
+        episode: ep.episode,
+        path: ep.sourceFilePath!,
+        size: 0, // Size not needed for encoding
+        episodeId: ep.id,
+      }));
+
+      await prisma.mediaRequest.update({
+        where: { id: requestId },
+        data: {
+          progress: 50,
+          currentStep: `Proceeding to encoding (${episodeFiles.length} episodes)`,
+        },
+      });
+
+      return {
+        success: true,
+        nextStep: "encode",
+        data: {
+          download: {
+            episodeFiles,
+            downloadedAt: new Date().toISOString(),
+          },
+        },
+      };
+    }
+
     // Check if we have an existing download or need to create a new one
     const existingDownload = context.search?.existingDownload;
     const selectedRelease = context.search?.selectedRelease;
