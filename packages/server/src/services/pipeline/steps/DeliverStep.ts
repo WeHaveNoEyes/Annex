@@ -1,6 +1,7 @@
 import {
   ActivityType,
   MediaType,
+  Prisma,
   RequestStatus,
   StepType,
   TvEpisodeStatus,
@@ -384,19 +385,88 @@ export class DeliverStep extends BaseStep {
     const success = requireAllSuccess ? failedServers.length === 0 : deliveredServers.length > 0;
 
     if (success) {
-      await prisma.mediaRequest.update({
-        where: { id: requestId },
-        data: {
-          status: RequestStatus.COMPLETED,
-          progress: 100,
-          currentStep: null,
-          currentStepStartedAt: new Date(),
-          error: null,
-          completedAt: new Date(),
-        },
-      });
+      // For TV shows, check if all episodes are complete before marking request done
+      let allEpisodesComplete = true;
+      let remainingEpisodes = 0;
 
-      await this.logActivity(requestId, ActivityType.SUCCESS, "Request completed successfully");
+      if (mediaType === MediaType.TV) {
+        const episodeStats = await prisma.tvEpisode.groupBy({
+          by: ["status"],
+          where: { requestId },
+          _count: { status: true },
+        });
+
+        const totalEpisodes = episodeStats.reduce((sum, stat) => sum + stat._count.status, 0);
+        const completedEpisodes = episodeStats
+          .filter(
+            (stat) =>
+              stat.status === TvEpisodeStatus.COMPLETED || stat.status === TvEpisodeStatus.SKIPPED
+          )
+          .reduce((sum, stat) => sum + stat._count.status, 0);
+
+        remainingEpisodes = totalEpisodes - completedEpisodes;
+        allEpisodesComplete = remainingEpisodes === 0;
+
+        await this.logActivity(
+          requestId,
+          ActivityType.INFO,
+          `Episode progress: ${completedEpisodes}/${totalEpisodes} complete`,
+          { completedEpisodes, totalEpisodes, remainingEpisodes }
+        );
+      }
+
+      if (allEpisodesComplete) {
+        // All episodes done (or this is a movie) - mark request as complete
+        await prisma.mediaRequest.update({
+          where: { id: requestId },
+          data: {
+            status: RequestStatus.COMPLETED,
+            progress: 100,
+            currentStep: null,
+            currentStepStartedAt: new Date(),
+            error: null,
+            completedAt: new Date(),
+          },
+        });
+
+        await this.logActivity(requestId, ActivityType.SUCCESS, "Request completed successfully");
+      } else {
+        // More episodes needed - reset to pending to search for remaining episodes
+        await prisma.mediaRequest.update({
+          where: { id: requestId },
+          data: {
+            status: RequestStatus.PENDING,
+            progress: 50,
+            currentStep: `${remainingEpisodes} episode${remainingEpisodes !== 1 ? "s" : ""} remaining`,
+            currentStepStartedAt: new Date(),
+            error: null,
+            // Clear selected release to force new search
+            selectedRelease: Prisma.JsonNull,
+          },
+        });
+
+        await this.logActivity(
+          requestId,
+          ActivityType.INFO,
+          `Delivered episode(s), ${remainingEpisodes} more needed - continuing search`
+        );
+
+        // Restart pipeline execution for remaining episodes
+        const execution = await prisma.pipelineExecution.findUnique({
+          where: { requestId },
+        });
+
+        if (execution) {
+          const { getPipelineExecutor } = await import("../PipelineExecutor.js");
+          const executor = getPipelineExecutor();
+          // Schedule continuation after a brief delay to allow current execution to complete
+          setTimeout(() => {
+            executor.startExecution(requestId, execution.templateId).catch((error) => {
+              console.error(`Failed to continue pipeline for request ${requestId}:`, error);
+            });
+          }, 2000);
+        }
+      }
 
       // Clean up encoded files (keep source files for seeding)
       for (const encodedFile of encodedFiles) {

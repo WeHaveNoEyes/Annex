@@ -1,4 +1,11 @@
-import { ActivityType, MediaType, type Prisma, RequestStatus, StepType } from "@prisma/client";
+import {
+  ActivityType,
+  MediaType,
+  type Prisma,
+  RequestStatus,
+  StepType,
+  TvEpisodeStatus,
+} from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { getDownloadService } from "../../download.js";
 import { downloadManager } from "../../downloadManager.js";
@@ -222,21 +229,85 @@ export class SearchStep extends BaseStep {
       }
     );
 
+    // For TV shows, filter out releases for episodes we already have
+    let filteredReleases = searchResult.releases;
+    if (mediaType === MediaType.TV) {
+      const completedEpisodes = await prisma.tvEpisode.findMany({
+        where: {
+          requestId,
+          status: {
+            in: [
+              TvEpisodeStatus.DOWNLOADED,
+              TvEpisodeStatus.ENCODING,
+              TvEpisodeStatus.ENCODED,
+              TvEpisodeStatus.DELIVERING,
+              TvEpisodeStatus.COMPLETED,
+              TvEpisodeStatus.SKIPPED,
+            ],
+          },
+        },
+        select: { season: true, episode: true },
+      });
+
+      const completedSet = new Set(
+        completedEpisodes.map((ep) => `S${ep.season}E${ep.episode}`)
+      );
+
+      if (completedEpisodes.length > 0) {
+        await this.logActivity(
+          requestId,
+          ActivityType.INFO,
+          `Filtering out releases for ${completedEpisodes.length} already-downloaded episode(s)`
+        );
+
+        // Filter releases to exclude those that ONLY contain episodes we already have
+        filteredReleases = searchResult.releases.filter((release) => {
+          // Parse episode info from release title
+          const episodeMatches = release.title.matchAll(/S(\d{1,2})E(\d{1,2})/gi);
+          const releaseEpisodes = Array.from(episodeMatches, (match) => {
+            const season = Number.parseInt(match[1], 10);
+            const episode = Number.parseInt(match[2], 10);
+            return `S${season}E${episode}`;
+          });
+
+          // If we can't parse episodes (might be a season pack), keep it
+          if (releaseEpisodes.length === 0) {
+            return true;
+          }
+
+          // Keep release if it contains at least one episode we don't have
+          const hasNeededEpisode = releaseEpisodes.some((ep) => !completedSet.has(ep));
+          if (!hasNeededEpisode) {
+            console.log(
+              `[Search] Filtering out ${release.title} - all episodes already downloaded`
+            );
+          }
+          return hasNeededEpisode;
+        });
+
+        await this.logActivity(
+          requestId,
+          ActivityType.INFO,
+          `After filtering: ${filteredReleases.length} releases remain (${searchResult.releases.length - filteredReleases.length} excluded)`
+        );
+      }
+    }
+
     // Log all releases found for debugging
-    if (searchResult.releases.length > 0) {
-      console.log(`[Search] Found ${searchResult.releases.length} total releases:`);
-      searchResult.releases.slice(0, 10).forEach((release, idx) => {
+    if (filteredReleases.length > 0) {
+      console.log(`[Search] Found ${filteredReleases.length} total releases:`);
+      filteredReleases.slice(0, 10).forEach((release, idx) => {
         console.log(
           `[Search]   ${idx + 1}. ${release.title} | ${release.resolution || "Unknown"} | ${release.size || "Unknown"} | ${release.seeders || 0} seeders | ${release.indexerName}`
         );
       });
-      if (searchResult.releases.length > 10) {
-        console.log(`[Search]   ... and ${searchResult.releases.length - 10} more`);
+      if (filteredReleases.length > 10) {
+        console.log(`[Search]   ... and ${filteredReleases.length - 10} more`);
       }
     }
 
     // Filter and rank releases by quality
-    if (searchResult.releases.length === 0) {
+    if (filteredReleases.length === 0) {
       await prisma.mediaRequest.update({
         where: { id: requestId },
         data: {
@@ -263,7 +334,7 @@ export class SearchStep extends BaseStep {
     }
 
     const { matching, belowQuality } = filterReleasesByQuality(
-      searchResult.releases,
+      filteredReleases,
       requiredResolution
     );
 
