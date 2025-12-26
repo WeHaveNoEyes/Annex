@@ -318,8 +318,8 @@ function RequestDialog({
                       onClick={onClose}
                     >
                       View full details
-                    </Link>
-                    {" "}for granular season/episode selection.
+                    </Link>{" "}
+                    for granular season/episode selection.
                   </p>
                 </div>
               )}
@@ -329,12 +329,14 @@ function RequestDialog({
                   <p className="text-white/90 font-medium mb-1">Selected Episodes:</p>
                   <p className="text-white/70">
                     {seasons && seasons.length > 0 && (
-                      <span>{seasons.length} full season{seasons.length !== 1 ? 's' : ''}</span>
+                      <span>
+                        {seasons.length} full season{seasons.length !== 1 ? "s" : ""}
+                      </span>
                     )}
                     {episodes && episodes.length > 0 && (
                       <span>
-                        {seasons && seasons.length > 0 && ', '}
-                        {episodes.length} individual episode{episodes.length !== 1 ? 's' : ''}
+                        {seasons && seasons.length > 0 && ", "}
+                        {episodes.length} individual episode{episodes.length !== 1 ? "s" : ""}
                       </span>
                     )}
                   </p>

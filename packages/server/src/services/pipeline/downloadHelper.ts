@@ -1,7 +1,7 @@
 import { TvEpisodeStatus } from "@prisma/client";
 import { prisma } from "../../db/client.js";
-import { getDownloadService } from "../download.js";
 import { isSampleFile } from "../archive.js";
+import { getDownloadService } from "../download.js";
 
 /**
  * Extract episode files from a completed download

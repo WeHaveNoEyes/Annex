@@ -249,11 +249,7 @@ export class SearchStep extends BaseStep {
       let totalIndexersFailed = 0;
 
       for (const season of seasonsToSearch) {
-        await this.logActivity(
-          requestId,
-          ActivityType.INFO,
-          `Searching for Season ${season}...`
-        );
+        await this.logActivity(requestId, ActivityType.INFO, `Searching for Season ${season}...`);
         console.log(`[Search] Searching for ${title} Season ${season}`);
 
         const seasonResult = await indexer.searchTvSeason({
@@ -268,9 +264,7 @@ export class SearchStep extends BaseStep {
         totalIndexersQueried = Math.max(totalIndexersQueried, seasonResult.indexersQueried);
         totalIndexersFailed = Math.max(totalIndexersFailed, seasonResult.indexersFailed);
 
-        console.log(
-          `[Search] Season ${season}: Found ${seasonResult.releases.length} releases`
-        );
+        console.log(`[Search] Season ${season}: Found ${seasonResult.releases.length} releases`);
       }
 
       searchResult = {
@@ -320,7 +314,7 @@ export class SearchStep extends BaseStep {
         if (!episodeServerMap.has(key)) {
           episodeServerMap.set(key, new Set());
         }
-        episodeServerMap.get(key)!.add(lib.serverId);
+        episodeServerMap.get(key)?.add(lib.serverId);
       }
 
       // Mark episodes as SKIPPED if they're on all target servers
@@ -372,9 +366,7 @@ export class SearchStep extends BaseStep {
 
       if (neededEpisodes.length === 0) {
         // All episodes are already downloaded or beyond - skip search and continue pipeline
-        const downloadedOrBeyond = allEpisodes.filter((ep) =>
-          completedStatuses.has(ep.status)
-        );
+        const downloadedOrBeyond = allEpisodes.filter((ep) => completedStatuses.has(ep.status));
 
         await this.logActivity(
           requestId,
@@ -439,13 +431,140 @@ export class SearchStep extends BaseStep {
         `[Search] Categorized: ${seasonPacks.length} season packs, ${individualEpisodes.length} individual episodes`
       );
 
-      // Strategy 1: Prefer season pack if it likely covers all needed episodes
+      // Strategy 1: Prefer season packs - download multiple seasons in parallel
       if (seasonPacks.length > 0) {
         await this.logActivity(
           requestId,
           ActivityType.INFO,
-          `Found ${seasonPacks.length} season pack(s) - preferring complete season download`
+          `Found ${seasonPacks.length} season pack(s) - selecting best pack for each season`
         );
+
+        // Parse season number from each pack and group by season
+        const packsBySeason = new Map<number, typeof searchResult.releases>();
+
+        for (const pack of seasonPacks) {
+          // Match season number like "S01", "S02", "Season 1", etc.
+          const seasonMatch = pack.title.match(/(?:S|Season\s*)(\d{1,2})(?:\D|$)/i);
+          if (seasonMatch) {
+            const season = Number.parseInt(seasonMatch[1], 10);
+            if (!packsBySeason.has(season)) {
+              packsBySeason.set(season, []);
+            }
+            packsBySeason.get(season)?.push(pack);
+          }
+        }
+
+        console.log(
+          `[Search] Grouped season packs: ${Array.from(packsBySeason.keys())
+            .sort()
+            .map((s) => `S${s}: ${packsBySeason.get(s)?.length} packs`)
+            .join(", ")}`
+        );
+
+        // Determine which seasons we need
+        const neededSeasons = new Set<number>();
+        for (const ep of neededEpisodes) {
+          neededSeasons.add(ep.season);
+        }
+
+        console.log(
+          `[Search] Need ${neededSeasons.size} season(s): ${Array.from(neededSeasons).sort().join(", ")}`
+        );
+
+        // Select best pack for each needed season and create downloads
+        const downloadManager = (await import("../../downloadManager.js")).downloadManager;
+        let createdDownloads = 0;
+        const selectedPacks: Array<{ season: number; release: unknown }> = [];
+
+        for (const season of Array.from(neededSeasons).sort()) {
+          const packsForSeason = packsBySeason.get(season);
+
+          if (packsForSeason && packsForSeason.length > 0) {
+            // Rank and select best pack for this season
+            const { matching: ranked } = rankReleasesWithQualityFilter(
+              packsForSeason,
+              requiredResolution,
+              1
+            );
+
+            if (ranked.length > 0) {
+              const bestPack = ranked[0].release;
+              selectedPacks.push({ season, release: bestPack });
+
+              // Create download for this season pack
+              const download = await downloadManager.createDownload({
+                requestId,
+                mediaType: MediaType.TV,
+                release: bestPack as unknown as Release,
+              });
+
+              if (download) {
+                createdDownloads++;
+
+                // Mark all episodes in this season as DOWNLOADING
+                const episodesInSeason = neededEpisodes.filter((ep) => ep.season === season);
+                for (const ep of episodesInSeason) {
+                  await prisma.tvEpisode.update({
+                    where: { id: ep.id },
+                    data: {
+                      status: TvEpisodeStatus.DOWNLOADING,
+                      downloadId: download.id,
+                    },
+                  });
+                }
+
+                await this.logActivity(
+                  requestId,
+                  ActivityType.INFO,
+                  `Queued Season ${season}: ${bestPack.title}`,
+                  {
+                    season,
+                    episodes: episodesInSeason.length,
+                    seeders: bestPack.seeders,
+                  }
+                );
+
+                console.log(
+                  `[Search] Created download for Season ${season}: ${download.id} - ${bestPack.title}`
+                );
+              }
+            }
+          }
+        }
+
+        if (createdDownloads > 0) {
+          await this.logActivity(
+            requestId,
+            ActivityType.SUCCESS,
+            `Queued ${createdDownloads} season pack(s) - all downloading in parallel`
+          );
+
+          // Update request progress
+          await prisma.mediaRequest.update({
+            where: { id: requestId },
+            data: {
+              status: RequestStatus.DOWNLOADING,
+              progress: 20,
+              currentStep: `Downloading ${createdDownloads} season pack(s)`,
+              currentStepStartedAt: new Date(),
+            },
+          });
+
+          // Mark that we already created downloads so DownloadStep can skip
+          return {
+            success: true,
+            nextStep: "download",
+            data: {
+              search: {
+                bulkDownloadsCreated: true,
+                downloadCount: createdDownloads,
+                selectedPacks,
+              },
+            },
+          };
+        }
+
+        // No quality packs found, fall through to normal selection
         filteredReleases = seasonPacks;
       } else if (individualEpisodes.length > 0) {
         // Strategy 2: For individual episodes, select best release for EACH needed episode
@@ -470,7 +589,7 @@ export class SearchStep extends BaseStep {
               if (!releasesByEpisode.has(ep)) {
                 releasesByEpisode.set(ep, []);
               }
-              releasesByEpisode.get(ep)!.push(release);
+              releasesByEpisode.get(ep)?.push(release);
             }
           }
         }

@@ -767,8 +767,9 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
 
                   {/* Episode Count (TV only) */}
                   {(() => {
-                    const episodeCount = (request.releaseMetadata as unknown as { episodeCount?: number | null })
-                      .episodeCount;
+                    const episodeCount = (
+                      request.releaseMetadata as unknown as { episodeCount?: number | null }
+                    ).episodeCount;
                     return (
                       episodeCount !== null &&
                       episodeCount !== undefined &&

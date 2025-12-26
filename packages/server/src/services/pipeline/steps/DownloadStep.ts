@@ -92,7 +92,9 @@ export class DownloadStep extends BaseStep {
       const downloadedEpisodes = await prisma.tvEpisode.findMany({
         where: {
           requestId,
-          status: { in: [TvEpisodeStatus.DOWNLOADED, TvEpisodeStatus.ENCODING, TvEpisodeStatus.ENCODED] },
+          status: {
+            in: [TvEpisodeStatus.DOWNLOADED, TvEpisodeStatus.ENCODING, TvEpisodeStatus.ENCODED],
+          },
         },
         select: {
           season: true,
@@ -118,13 +120,15 @@ export class DownloadStep extends BaseStep {
       );
 
       // Build episode files array from downloaded episodes
-      const episodeFiles = downloadedEpisodes.map((ep) => ({
-        season: ep.season,
-        episode: ep.episode,
-        path: ep.sourceFilePath!,
-        size: 0, // Size not needed for encoding
-        episodeId: ep.id,
-      }));
+      const episodeFiles = downloadedEpisodes
+        .filter((ep) => ep.sourceFilePath !== null)
+        .map((ep) => ({
+          season: ep.season,
+          episode: ep.episode,
+          path: ep.sourceFilePath as string,
+          size: 0, // Size not needed for encoding
+          episodeId: ep.id,
+        }));
 
       await prisma.mediaRequest.update({
         where: { id: requestId },

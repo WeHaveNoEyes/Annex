@@ -210,14 +210,14 @@ export default function MediaDetailPage() {
     if (selectedSeasons.has(seasonNumber)) return true;
 
     const seasonEpisodes = Array.from({ length: episodeCount }, (_, i) => i + 1);
-    return seasonEpisodes.every(ep => selectedEpisodes.has(`${seasonNumber}-${ep}`));
+    return seasonEpisodes.every((ep) => selectedEpisodes.has(`${seasonNumber}-${ep}`));
   };
 
   const isSeasonPartiallySelected = (seasonNumber: number, episodeCount: number): boolean => {
     if (selectedSeasons.has(seasonNumber)) return false;
 
     const seasonEpisodes = Array.from({ length: episodeCount }, (_, i) => i + 1);
-    return seasonEpisodes.some(ep => selectedEpisodes.has(`${seasonNumber}-${ep}`));
+    return seasonEpisodes.some((ep) => selectedEpisodes.has(`${seasonNumber}-${ep}`));
   };
 
   const toggleSeasonSelection = (seasonNumber: number, episodeCount: number) => {
@@ -241,7 +241,11 @@ export default function MediaDetailPage() {
     setSelectedEpisodes(newSelectedEpisodes);
   };
 
-  const toggleEpisodeSelection = (seasonNumber: number, episodeNumber: number, episodeCount: number) => {
+  const toggleEpisodeSelection = (
+    seasonNumber: number,
+    episodeNumber: number,
+    episodeCount: number
+  ) => {
     const newSelectedSeasons = new Set(selectedSeasons);
     const newSelectedEpisodes = new Set(selectedEpisodes);
     const key = `${seasonNumber}-${episodeNumber}`;
@@ -277,7 +281,7 @@ export default function MediaDetailPage() {
     }
 
     for (const key of selectedEpisodes) {
-      const [season] = key.split('-').map(Number);
+      const [season] = key.split("-").map(Number);
       if (!selectedSeasons.has(season)) {
         totalEpisodes++;
       }
@@ -291,7 +295,7 @@ export default function MediaDetailPage() {
     const episodes: Array<{ season: number; episode: number }> = [];
 
     for (const key of selectedEpisodes) {
-      const [season, episode] = key.split('-').map(Number);
+      const [season, episode] = key.split("-").map(Number);
       if (!selectedSeasons.has(season)) {
         episodes.push({ season, episode });
       }
@@ -616,28 +620,47 @@ export default function MediaDetailPage() {
                           <div
                             onClick={(e) => {
                               e.stopPropagation();
-                              toggleSeasonSelection(season.seasonNumber, season.episodes?.length || season.episodeCount || 0);
+                              toggleSeasonSelection(
+                                season.seasonNumber,
+                                season.episodes?.length || season.episodeCount || 0
+                              );
                             }}
                             className={`
                               w-4 h-4 rounded border flex items-center justify-center flex-shrink-0
                               transition-colors cursor-pointer
                               ${
-                                selectedSeasons.has(season.seasonNumber) || isSeasonFullySelected(season.seasonNumber, season.episodes?.length || season.episodeCount || 0)
+                                selectedSeasons.has(season.seasonNumber) ||
+                                isSeasonFullySelected(
+                                  season.seasonNumber,
+                                  season.episodes?.length || season.episodeCount || 0
+                                )
                                   ? "bg-annex-500 border-annex-500 text-white"
-                                  : isSeasonPartiallySelected(season.seasonNumber, season.episodes?.length || season.episodeCount || 0)
-                                  ? "bg-annex-500/50 border-annex-500 text-white"
-                                  : "border-white/20 bg-white/5 hover:border-white/40"
+                                  : isSeasonPartiallySelected(
+                                        season.seasonNumber,
+                                        season.episodes?.length || season.episodeCount || 0
+                                      )
+                                    ? "bg-annex-500/50 border-annex-500 text-white"
+                                    : "border-white/20 bg-white/5 hover:border-white/40"
                               }
                             `}
                           >
-                            {(selectedSeasons.has(season.seasonNumber) || isSeasonFullySelected(season.seasonNumber, season.episodes?.length || season.episodeCount || 0)) && (
+                            {(selectedSeasons.has(season.seasonNumber) ||
+                              isSeasonFullySelected(
+                                season.seasonNumber,
+                                season.episodes?.length || season.episodeCount || 0
+                              )) && (
                               <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                <path
+                                  fillRule="evenodd"
+                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                  clipRule="evenodd"
+                                />
                               </svg>
                             )}
-                            {isSeasonPartiallySelected(season.seasonNumber, season.episodes?.length || season.episodeCount || 0) && (
-                              <div className="w-2 h-0.5 bg-current" />
-                            )}
+                            {isSeasonPartiallySelected(
+                              season.seasonNumber,
+                              season.episodes?.length || season.episodeCount || 0
+                            ) && <div className="w-2 h-0.5 bg-current" />}
                           </div>
 
                           {/* Season Poster */}
@@ -723,24 +746,40 @@ export default function MediaDetailPage() {
                                 >
                                   {/* Episode checkbox */}
                                   <div
-                                    onClick={() => toggleEpisodeSelection(
-                                      season.seasonNumber,
-                                      episode.episodeNumber,
-                                      season.episodes?.length || 0
-                                    )}
+                                    onClick={() =>
+                                      toggleEpisodeSelection(
+                                        season.seasonNumber,
+                                        episode.episodeNumber,
+                                        season.episodes?.length || 0
+                                      )
+                                    }
                                     className={`
                                       w-4 h-4 rounded border flex items-center justify-center flex-shrink-0 mt-1
                                       transition-colors cursor-pointer
                                       ${
-                                        selectedSeasons.has(season.seasonNumber) || selectedEpisodes.has(`${season.seasonNumber}-${episode.episodeNumber}`)
+                                        selectedSeasons.has(season.seasonNumber) ||
+                                        selectedEpisodes.has(
+                                          `${season.seasonNumber}-${episode.episodeNumber}`
+                                        )
                                           ? "bg-annex-500 border-annex-500 text-white"
                                           : "border-white/20 bg-white/5 hover:border-white/40"
                                       }
                                     `}
                                   >
-                                    {(selectedSeasons.has(season.seasonNumber) || selectedEpisodes.has(`${season.seasonNumber}-${episode.episodeNumber}`)) && (
-                                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                    {(selectedSeasons.has(season.seasonNumber) ||
+                                      selectedEpisodes.has(
+                                        `${season.seasonNumber}-${episode.episodeNumber}`
+                                      )) && (
+                                      <svg
+                                        className="w-3 h-3"
+                                        fill="currentColor"
+                                        viewBox="0 0 20 20"
+                                      >
+                                        <path
+                                          fillRule="evenodd"
+                                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                                          clipRule="evenodd"
+                                        />
                                       </svg>
                                     )}
                                   </div>
@@ -851,10 +890,12 @@ export default function MediaDetailPage() {
                           }
                           return (
                             <p className="text-sm text-white/90">
-                              <span className="font-medium text-annex-400">{episodes}</span> episode{episodes !== 1 ? 's' : ''} selected
+                              <span className="font-medium text-annex-400">{episodes}</span> episode
+                              {episodes !== 1 ? "s" : ""} selected
                               {seasons > 0 && (
                                 <span className="text-white/50">
-                                  {' '}({seasons} full season{seasons !== 1 ? 's' : ''})
+                                  {" "}
+                                  ({seasons} full season{seasons !== 1 ? "s" : ""})
                                 </span>
                               )}
                             </p>
@@ -1055,7 +1096,7 @@ export default function MediaDetailPage() {
         title={data.title}
         year={data.year ?? 0}
         posterPath={data.posterPath}
-        {...(showRequestWithSelections && type === 'tv' ? buildRequestPayload() : {})}
+        {...(showRequestWithSelections && type === "tv" ? buildRequestPayload() : {})}
       />
     </div>
   );
