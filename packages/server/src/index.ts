@@ -8,6 +8,7 @@ import { appRouter } from "./routers/index.js";
 import { registerAuthTasks, verifySession } from "./services/auth.js";
 import { getCryptoService } from "./services/crypto.js";
 import { recoverStuckDeliveries } from "./services/deliveryRecovery.js";
+import { recoverStuckDownloadExtractions } from "./services/downloadExtractionRecovery.js";
 import {
   type EncoderWebSocketData,
   getEncoderDispatchService,
@@ -468,6 +469,19 @@ scheduler.register(
   }
 );
 
+// Register stuck download extraction recovery task (runs every 2 minutes)
+scheduler.register(
+  "stuck-download-extraction-recovery",
+  "Stuck Download Extraction Recovery",
+  120000, // 2 minutes
+  async () => {
+    const { recoverStuckDownloadExtractions } = await import(
+      "./services/downloadExtractionRecovery.js"
+    );
+    await recoverStuckDownloadExtractions();
+  }
+);
+
 // Start the job queue worker (recovers any stuck jobs from previous run)
 jobQueue.start().catch((error) => {
   console.error("[JobQueue] Failed to start:", error);
@@ -477,6 +491,12 @@ jobQueue.start().catch((error) => {
 Promise.all([
   recoverFailedJobs().catch((error) => {
     console.error("[FailedJobRecovery] Failed to recover failed jobs:", error);
+  }),
+  recoverStuckDownloadExtractions().catch((error) => {
+    console.error(
+      "[DownloadExtractionRecovery] Failed to recover stuck download extractions:",
+      error
+    );
   }),
   recoverStuckEncodings().catch((error) => {
     console.error("[EncodingRecovery] Failed to recover stuck encodings:", error);
