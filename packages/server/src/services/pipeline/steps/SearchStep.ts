@@ -202,21 +202,83 @@ export class SearchStep extends BaseStep {
     }
 
     const indexer = getIndexerService();
-    const searchResult =
-      mediaType === MediaType.MOVIE
-        ? await indexer.searchMovie({
-            tmdbId,
-            imdbId,
-            title,
-            year,
-          })
-        : await indexer.searchTvSeason({
-            tmdbId,
-            imdbId,
-            title,
-            year,
-            season: context.requestedSeasons?.[0] || 1,
-          });
+
+    // For TV shows, determine which seasons need searching
+    let seasonsToSearch: number[] = [];
+    if (mediaType === MediaType.TV) {
+      // Get all episodes for this request and their statuses
+      const allEpisodes = await prisma.tvEpisode.findMany({
+        where: { requestId },
+        select: { id: true, season: true, episode: true, status: true },
+      });
+
+      const completedStatuses = new Set<TvEpisodeStatus>([
+        TvEpisodeStatus.DOWNLOADED,
+        TvEpisodeStatus.ENCODING,
+        TvEpisodeStatus.ENCODED,
+        TvEpisodeStatus.DELIVERING,
+        TvEpisodeStatus.COMPLETED,
+        TvEpisodeStatus.SKIPPED,
+      ]);
+
+      const neededEpisodes = allEpisodes.filter((ep) => !completedStatuses.has(ep.status));
+
+      // Get unique seasons from needed episodes
+      seasonsToSearch = [...new Set(neededEpisodes.map((ep) => ep.season))].sort();
+      console.log(`[Search] Seasons to search: ${seasonsToSearch.join(", ")}`);
+    }
+
+    // Perform searches
+    let searchResult: {
+      releases: Release[];
+      indexersQueried: number;
+      indexersFailed: number;
+    };
+
+    if (mediaType === MediaType.MOVIE) {
+      searchResult = await indexer.searchMovie({
+        tmdbId,
+        imdbId,
+        title,
+        year,
+      });
+    } else {
+      // TV show - search each season separately and combine results
+      const allReleases: Release[] = [];
+      let totalIndexersQueried = 0;
+      let totalIndexersFailed = 0;
+
+      for (const season of seasonsToSearch) {
+        await this.logActivity(
+          requestId,
+          ActivityType.INFO,
+          `Searching for Season ${season}...`
+        );
+        console.log(`[Search] Searching for ${title} Season ${season}`);
+
+        const seasonResult = await indexer.searchTvSeason({
+          tmdbId,
+          imdbId,
+          title,
+          year,
+          season,
+        });
+
+        allReleases.push(...seasonResult.releases);
+        totalIndexersQueried = Math.max(totalIndexersQueried, seasonResult.indexersQueried);
+        totalIndexersFailed = Math.max(totalIndexersFailed, seasonResult.indexersFailed);
+
+        console.log(
+          `[Search] Season ${season}: Found ${seasonResult.releases.length} releases`
+        );
+      }
+
+      searchResult = {
+        releases: allReleases,
+        indexersQueried: totalIndexersQueried,
+        indexersFailed: totalIndexersFailed,
+      };
+    }
 
     await this.logActivity(
       requestId,
