@@ -548,7 +548,7 @@ export class DownloadStep extends BaseStep {
       const fullPath = `${progress.savePath}/${file.name}`;
 
       // Find existing TvEpisode record (created during request creation)
-      const tvEpisode = await prisma.tvEpisode.findUnique({
+      let tvEpisode = await prisma.tvEpisode.findUnique({
         where: {
           requestId_season_episode: {
             requestId,
@@ -558,38 +558,47 @@ export class DownloadStep extends BaseStep {
         },
       });
 
-      if (tvEpisode) {
-        // Update existing TvEpisode with download info
-        await prisma.tvEpisode.update({
-          where: { id: tvEpisode.id },
+      // If TvEpisode doesn't exist (e.g., Trakt API failed during request creation),
+      // create it now so the episode can be tracked
+      if (!tvEpisode) {
+        console.log(
+          `[DownloadStep] Creating missing TvEpisode record for S${season}E${episode} in request ${requestId}`
+        );
+        tvEpisode = await prisma.tvEpisode.create({
           data: {
-            downloadId: download.id,
-            sourceFilePath: fullPath,
-            status: TvEpisodeStatus.DOWNLOADED,
-            downloadedAt: new Date(),
+            requestId,
+            season,
+            episode,
+            status: TvEpisodeStatus.PENDING,
           },
         });
-
-        episodeFiles.push({
-          season,
-          episode,
-          path: fullPath,
-          size: file.size,
-          episodeId: tvEpisode.id,
-        });
-
-        await this.logActivity(
-          requestId,
-          ActivityType.INFO,
-          `Found episode S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}: ${file.name}`,
-          { season, episode, size: file.size }
-        );
-      } else {
-        // Episode found in download but not in request - log warning
-        console.warn(
-          `[DownloadStep] Episode S${season}E${episode} found in download but not in request ${requestId}`
-        );
       }
+
+      // Update TvEpisode with download info
+      await prisma.tvEpisode.update({
+        where: { id: tvEpisode.id },
+        data: {
+          downloadId: download.id,
+          sourceFilePath: fullPath,
+          status: TvEpisodeStatus.DOWNLOADED,
+          downloadedAt: new Date(),
+        },
+      });
+
+      episodeFiles.push({
+        season,
+        episode,
+        path: fullPath,
+        size: file.size,
+        episodeId: tvEpisode.id,
+      });
+
+      await this.logActivity(
+        requestId,
+        ActivityType.INFO,
+        `Found episode S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")}: ${file.name}`,
+        { season, episode, size: file.size }
+      );
     }
 
     // Sort by season then episode
