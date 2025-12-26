@@ -515,31 +515,27 @@ export class EncodeStep extends BaseStep {
     const pollInterval = cfg.pollInterval || 2000;
     const timeout = cfg.timeout || 7200000; // 2 hours default per episode
 
-    // Encode each episode sequentially
-    for (let i = 0; i < episodeFiles.length; i++) {
-      const ep = episodeFiles[i];
+    // Create and queue ALL encoding jobs immediately (parallel encoding)
+    const encoderService = getEncoderDispatchService();
+    const assignments: Array<{
+      episodeId: string;
+      assignmentId: string;
+      epNum: string;
+      season: number;
+      episode: number;
+      outputPath: string;
+      startTime: number;
+    }> = [];
+
+    await this.logActivity(
+      requestId,
+      ActivityType.INFO,
+      `Queuing ${episodeFiles.length} episode(s) for encoding`
+    );
+
+    // Queue all episodes
+    for (const ep of episodeFiles) {
       const epNum = `S${String(ep.season).padStart(2, "0")}E${String(ep.episode).padStart(2, "0")}`;
-
-      await this.logActivity(
-        requestId,
-        ActivityType.INFO,
-        `Encoding ${epNum} (${i + 1}/${episodeFiles.length})`
-      );
-
-      await prisma.mediaRequest.update({
-        where: { id: requestId },
-        data: {
-          progress: 50 + (i / episodeFiles.length) * 30, // 50-80% for encoding
-          currentStep: `Encoding ${epNum} (${i + 1}/${episodeFiles.length})`,
-          currentStepStartedAt: new Date(),
-        },
-      });
-
-      // Update episode status to ENCODING
-      await prisma.tvEpisode.update({
-        where: { id: ep.episodeId },
-        data: { status: TvEpisodeStatus.ENCODING },
-      });
 
       try {
         // Create Job record
@@ -564,8 +560,7 @@ export class EncodeStep extends BaseStep {
         const inputDir = ep.path.substring(0, ep.path.lastIndexOf("/"));
         const outputPath = `${inputDir}/encoded_${epNum}_${Date.now()}.mkv`;
 
-        // Queue encoding job with encoder dispatch service
-        const encoderService = getEncoderDispatchService();
+        // Queue encoding job
         const assignment = await encoderService.queueEncodingJob(
           job.id,
           ep.path,
@@ -573,129 +568,212 @@ export class EncodeStep extends BaseStep {
           encodingConfig
         );
 
-        // Monitor encoding progress
-        const startTime = Date.now();
-        const endTime = startTime + timeout;
-
-        while (Date.now() < endTime) {
-          const assignmentStatus = await prisma.encoderAssignment.findUnique({
-            where: { id: assignment.id },
-          });
-
-          if (!assignmentStatus) {
-            throw new Error("Encoding assignment not found");
-          }
-
-          // Update progress
-          let currentStep: string;
-          let overallProgress: number;
-
-          if (assignmentStatus.status === AssignmentStatus.PENDING) {
-            currentStep = `${epNum}: Waiting for encoder...`;
-            overallProgress = 50 + (i / episodeFiles.length) * 30;
-          } else if (assignmentStatus.status === AssignmentStatus.ASSIGNED) {
-            currentStep = `${epNum}: Encoder assigned, starting...`;
-            overallProgress = 50 + (i / episodeFiles.length) * 30;
-          } else if (assignmentStatus.progress !== null) {
-            const episodeProgress = assignmentStatus.progress;
-            overallProgress = 50 + ((i + episodeProgress / 100) / episodeFiles.length) * 30;
-            const speed = assignmentStatus.speed ? ` - ${assignmentStatus.speed}x` : "";
-            const eta = assignmentStatus.eta
-              ? ` - ETA: ${this.formatDuration(assignmentStatus.eta)}`
-              : "";
-            currentStep = `${epNum}: ${episodeProgress.toFixed(1)}%${speed}${eta}`;
-          } else {
-            currentStep = `${epNum}: Encoding...`;
-            overallProgress = 50 + (i / episodeFiles.length) * 30;
-          }
-
-          const previousRequest = await prisma.mediaRequest.findUnique({
-            where: { id: requestId },
-            select: { currentStep: true },
-          });
-
-          await prisma.mediaRequest.update({
-            where: { id: requestId },
-            data: {
-              progress: overallProgress,
-              currentStep,
-              ...(previousRequest?.currentStep !== currentStep && {
-                currentStepStartedAt: new Date(),
-              }),
-            },
-          });
-
-          // Check if complete
-          if (assignmentStatus.status === AssignmentStatus.COMPLETED) {
-            await this.logActivity(
-              requestId,
-              ActivityType.SUCCESS,
-              `Encoded ${epNum} in ${this.formatDuration((Date.now() - startTime) / 1000)}`
-            );
-
-            encodedFiles.push({
-              profileId: context.targets[0]?.encodingProfileId || "default",
-              path: assignmentStatus.outputPath || outputPath,
-              targetServerIds,
-              resolution: encodingConfig.maxResolution,
-              codec,
-              season: ep.season,
-              episode: ep.episode,
-              episodeId: ep.episodeId,
-              size: assignmentStatus.outputSize ? Number(assignmentStatus.outputSize) : undefined,
-              compressionRatio: assignmentStatus.compressionRatio || undefined,
-            });
-
-            // Update episode status to ENCODED
-            await prisma.tvEpisode.update({
-              where: { id: ep.episodeId },
-              data: {
-                status: TvEpisodeStatus.ENCODED,
-                encodedAt: new Date(),
-              },
-            });
-
-            break;
-          }
-
-          // Check if failed
-          if (assignmentStatus.status === AssignmentStatus.FAILED) {
-            throw new Error(assignmentStatus.error || "Encoding failed");
-          }
-
-          // Check if cancelled
-          if (assignmentStatus.status === AssignmentStatus.CANCELLED) {
-            throw new Error("Encoding job was cancelled");
-          }
-
-          // Wait before next poll
-          await new Promise((resolve) => setTimeout(resolve, pollInterval));
-        }
-
-        // Check for timeout
-        const finalAssignment = await prisma.encoderAssignment.findUnique({
-          where: { id: assignment.id },
-        });
-
-        if (finalAssignment?.status !== AssignmentStatus.COMPLETED) {
-          throw new Error(`Encoding timeout after ${timeout / 1000 / 60} minutes`);
-        }
-      } catch (error) {
-        // Mark episode as failed but continue with others
+        // Update episode status to ENCODING
         await prisma.tvEpisode.update({
           where: { id: ep.episodeId },
-          data: {
-            status: TvEpisodeStatus.FAILED,
-            error: error instanceof Error ? error.message : "Encoding failed",
-          },
+          data: { status: TvEpisodeStatus.ENCODING },
         });
 
+        assignments.push({
+          episodeId: ep.episodeId,
+          assignmentId: assignment.id,
+          epNum,
+          season: ep.season,
+          episode: ep.episode,
+          outputPath,
+          startTime: Date.now(),
+        });
+
+        await this.logActivity(requestId, ActivityType.INFO, `Queued ${epNum} for encoding`);
+      } catch (error) {
         await this.logActivity(
           requestId,
           ActivityType.ERROR,
-          `Failed to encode ${epNum}: ${error instanceof Error ? error.message : "Unknown error"}`
+          `Failed to queue ${epNum}: ${error instanceof Error ? error.message : "Unknown error"}`
         );
       }
+    }
+
+    await prisma.mediaRequest.update({
+      where: { id: requestId },
+      data: {
+        progress: 50,
+        currentStep: `Encoding ${assignments.length} episode(s) in parallel...`,
+        currentStepStartedAt: new Date(),
+      },
+    });
+
+    // Monitor all assignments collectively
+    const startTime = Date.now();
+    const endTime = startTime + timeout * episodeFiles.length; // Total timeout for all episodes
+
+    while (Date.now() < endTime && assignments.length > 0) {
+      // Get status of all pending assignments
+      const statuses = await prisma.encoderAssignment.findMany({
+        where: {
+          id: { in: assignments.map((a) => a.assignmentId) },
+        },
+      });
+
+      // Track completion/failures
+      const toRemove: string[] = [];
+
+      for (const status of statuses) {
+        const assignment = assignments.find((a) => a.assignmentId === status.id);
+        if (!assignment) continue;
+
+        // Update episode progress during encoding
+        if (
+          status.status === AssignmentStatus.ASSIGNED ||
+          status.status === AssignmentStatus.ENCODING
+        ) {
+          const episodeProgress = status.progress || 0;
+          await prisma.tvEpisode.update({
+            where: { id: assignment.episodeId },
+            data: {
+              progress: episodeProgress,
+            },
+          });
+        }
+
+        // Handle completed
+        if (status.status === AssignmentStatus.COMPLETED) {
+          encodedFiles.push({
+            profileId: context.targets[0]?.encodingProfileId || "default",
+            path: status.outputPath || assignment.outputPath,
+            targetServerIds,
+            resolution: encodingConfig.maxResolution,
+            codec,
+            season: assignment.season,
+            episode: assignment.episode,
+            episodeId: assignment.episodeId,
+            size: status.outputSize ? Number(status.outputSize) : undefined,
+            compressionRatio: status.compressionRatio || undefined,
+          });
+
+          await prisma.tvEpisode.update({
+            where: { id: assignment.episodeId },
+            data: {
+              status: TvEpisodeStatus.ENCODED,
+              encodedAt: new Date(),
+            },
+          });
+
+          await this.logActivity(
+            requestId,
+            ActivityType.SUCCESS,
+            `Encoded ${assignment.epNum} in ${this.formatDuration((Date.now() - assignment.startTime) / 1000)}`
+          );
+
+          toRemove.push(assignment.assignmentId);
+        }
+
+        // Handle failed
+        if (status.status === AssignmentStatus.FAILED) {
+          await prisma.tvEpisode.update({
+            where: { id: assignment.episodeId },
+            data: {
+              status: TvEpisodeStatus.FAILED,
+              error: status.error || "Encoding failed",
+            },
+          });
+
+          await this.logActivity(
+            requestId,
+            ActivityType.ERROR,
+            `Failed to encode ${assignment.epNum}: ${status.error || "Unknown error"}`
+          );
+
+          toRemove.push(assignment.assignmentId);
+        }
+
+        // Handle cancelled
+        if (status.status === AssignmentStatus.CANCELLED) {
+          await prisma.tvEpisode.update({
+            where: { id: assignment.episodeId },
+            data: {
+              status: TvEpisodeStatus.FAILED,
+              error: "Encoding cancelled",
+            },
+          });
+
+          toRemove.push(assignment.assignmentId);
+        }
+      }
+
+      // Remove completed/failed assignments
+      for (const id of toRemove) {
+        const index = assignments.findIndex((a) => a.assignmentId === id);
+        if (index !== -1) {
+          assignments.splice(index, 1);
+        }
+      }
+
+      // Update progress based on encoded count
+      const completed = encodedFiles.length;
+      const total = episodeFiles.length;
+      const overallProgress = 50 + (completed / total) * 30; // 50-80% for encoding
+
+      // Find most interesting status to show
+      const activeStatuses = statuses.filter(
+        (s) => s.status === AssignmentStatus.ASSIGNED || s.status === AssignmentStatus.ENCODING
+      );
+      const showStatus = activeStatuses.find((s) => s.progress !== null) || activeStatuses[0];
+
+      let currentStep: string;
+      if (showStatus && assignments.length > 0) {
+        const assignment = assignments.find((a) => a.assignmentId === showStatus.id);
+        if (assignment && showStatus.progress !== null) {
+          const speed = showStatus.speed ? ` - ${showStatus.speed}x` : "";
+          const eta = showStatus.eta ? ` - ETA: ${this.formatDuration(showStatus.eta)}` : "";
+          currentStep = `${assignment.epNum}: ${showStatus.progress.toFixed(1)}%${speed}${eta} (${completed}/${total} done)`;
+        } else if (assignment) {
+          currentStep = `${assignment.epNum}: Encoding... (${completed}/${total} done)`;
+        } else {
+          currentStep = `Encoding ${assignments.length} episode(s)... (${completed}/${total} done)`;
+        }
+      } else if (assignments.length > 0) {
+        currentStep = `Waiting for encoders... (${completed}/${total} done)`;
+      } else {
+        currentStep = `Encoding complete (${completed}/${total} episodes)`;
+      }
+
+      const previousRequest = await prisma.mediaRequest.findUnique({
+        where: { id: requestId },
+        select: { currentStep: true },
+      });
+
+      await prisma.mediaRequest.update({
+        where: { id: requestId },
+        data: {
+          progress: overallProgress,
+          currentStep,
+          ...(previousRequest?.currentStep !== currentStep && {
+            currentStepStartedAt: new Date(),
+          }),
+        },
+      });
+
+      // Exit if all done
+      if (assignments.length === 0) {
+        break;
+      }
+
+      // Wait before next poll
+      await new Promise((resolve) => setTimeout(resolve, pollInterval));
+    }
+
+    // Handle any remaining timeouts
+    for (const assignment of assignments) {
+      await prisma.tvEpisode.update({
+        where: { id: assignment.episodeId },
+        data: {
+          status: TvEpisodeStatus.FAILED,
+          error: `Encoding timeout after ${timeout / 1000 / 60} minutes`,
+        },
+      });
+
+      await this.logActivity(requestId, ActivityType.ERROR, `${assignment.epNum} encoding timeout`);
     }
 
     if (encodedFiles.length === 0) {
