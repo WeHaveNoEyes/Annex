@@ -9,7 +9,7 @@ import {
 import { prisma } from "../../../db/client.js";
 import { getDownloadService } from "../../download.js";
 import { downloadManager } from "../../downloadManager.js";
-import { getIndexerService } from "../../indexer.js";
+import { getIndexerService, type Release } from "../../indexer.js";
 import {
   deriveRequiredResolution,
   filterReleasesByQuality,
@@ -364,13 +364,89 @@ export class SearchStep extends BaseStep {
         );
         filteredReleases = seasonPacks;
       } else if (individualEpisodes.length > 0) {
-        // Strategy 2: Fall back to individual episodes
+        // Strategy 2: For individual episodes, select best release for EACH needed episode
         await this.logActivity(
           requestId,
           ActivityType.INFO,
-          `No season packs found - using ${individualEpisodes.length} individual episode release(s)`
+          `No season packs found - selecting releases for ${neededEpisodes.length} individual episodes`
         );
-        filteredReleases = individualEpisodes;
+
+        // Group releases by episode
+        const releasesByEpisode = new Map<string, typeof searchResult.releases>();
+        for (const release of individualEpisodes) {
+          const episodeMatches = release.title.matchAll(/S(\d{1,2})E(\d{1,2})/gi);
+          const releaseEpisodes = Array.from(episodeMatches, (match) => {
+            const season = Number.parseInt(match[1], 10);
+            const episode = Number.parseInt(match[2], 10);
+            return `S${season}E${episode}`;
+          });
+
+          for (const ep of releaseEpisodes) {
+            if (neededSet.has(ep)) {
+              if (!releasesByEpisode.has(ep)) {
+                releasesByEpisode.set(ep, []);
+              }
+              releasesByEpisode.get(ep)!.push(release);
+            }
+          }
+        }
+
+        // Select best release for each needed episode and create downloads
+        const downloadManager = (await import("../../downloadManager.js")).downloadManager;
+        let createdDownloads = 0;
+
+        for (const ep of neededEpisodes) {
+          const key = `S${ep.season}E${ep.episode}`;
+          const releasesForEp = releasesByEpisode.get(key);
+
+          if (releasesForEp && releasesForEp.length > 0) {
+            // Rank releases for this episode and pick the best
+            const { matching: ranked } = rankReleasesWithQualityFilter(
+              releasesForEp,
+              requiredResolution,
+              1
+            );
+
+            if (ranked.length > 0) {
+              const bestRelease = ranked[0].release;
+
+              // Create download immediately
+              const download = await downloadManager.createDownload({
+                requestId,
+                mediaType: MediaType.TV,
+                release: bestRelease as unknown as Release,
+              });
+
+              if (download) {
+                createdDownloads++;
+                await this.logActivity(
+                  requestId,
+                  ActivityType.INFO,
+                  `Queued ${key}: ${bestRelease.title}`,
+                  { episode: key, seeders: bestRelease.seeders }
+                );
+              }
+            }
+          }
+        }
+
+        await this.logActivity(
+          requestId,
+          ActivityType.SUCCESS,
+          `Queued ${createdDownloads} episode download(s) - all downloading in parallel`
+        );
+
+        // Return early - downloads are already created and started
+        return {
+          success: true,
+          nextStep: "encode", // Skip download step since we already created downloads
+          data: {
+            search: {
+              bulkDownloadsCreated: true,
+              downloadCount: createdDownloads,
+            },
+          },
+        };
       } else {
         await this.logActivity(
           requestId,
