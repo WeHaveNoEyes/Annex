@@ -496,6 +496,25 @@ export class EncodeStep extends BaseStep {
           ? "HEVC"
           : "H264";
 
+    // Build encoding config
+    const encodingConfig = {
+      videoEncoder: cfg.videoEncoder || "av1_qsv",
+      crf: cfg.crf || 23,
+      maxResolution: cfg.maxResolution || "1080p",
+      maxBitrate: cfg.maxBitrate,
+      hwAccel: cfg.hwAccel || "NONE",
+      hwDevice: cfg.hwDevice,
+      videoFlags: cfg.videoFlags || {},
+      preset: cfg.preset || "medium",
+      audioEncoder: cfg.audioEncoder || "copy",
+      audioFlags: cfg.audioFlags || {},
+      subtitlesMode: cfg.subtitlesMode || "COPY",
+      container: cfg.container || "MKV",
+    };
+
+    const pollInterval = cfg.pollInterval || 2000;
+    const timeout = cfg.timeout || 7200000; // 2 hours default per episode
+
     // Encode each episode sequentially
     for (let i = 0; i < episodeFiles.length; i++) {
       const ep = episodeFiles[i];
@@ -512,6 +531,7 @@ export class EncodeStep extends BaseStep {
         data: {
           progress: 50 + (i / episodeFiles.length) * 30, // 50-80% for encoding
           currentStep: `Encoding ${epNum} (${i + 1}/${episodeFiles.length})`,
+          currentStepStartedAt: new Date(),
         },
       });
 
@@ -522,47 +542,150 @@ export class EncodeStep extends BaseStep {
       });
 
       try {
-        // For now, just mark as encoded without actual encoding
-        // Full encoding implementation would create job and monitor it
-        // This is a placeholder to make the pipeline functional
-        const inputDir = ep.path.substring(0, ep.path.lastIndexOf("/"));
-        const _outputPath = `${inputDir}/encoded_${epNum}_${Date.now()}.mkv`;
-
-        // TODO: Implement actual encoding job creation and monitoring
-        // For now, just copy the source file as a placeholder
-        await this.logActivity(
-          requestId,
-          ActivityType.INFO,
-          `Placeholder: ${epNum} encoding (actual encoding to be implemented)`
-        );
-
-        encodedFiles.push({
-          profileId: context.targets[0]?.encodingProfileId || "default",
-          path: ep.path, // Using source for now - would be outputPath after encoding
-          targetServerIds,
-          resolution: cfg.maxResolution || "1080p",
-          codec,
-          season: ep.season,
-          episode: ep.episode,
-          episodeId: ep.episodeId,
-        });
-
-        // Update episode status to ENCODED
-        await prisma.tvEpisode.update({
-          where: { id: ep.episodeId },
+        // Create Job record
+        const job = await prisma.job.create({
           data: {
-            status: "ENCODED" as never,
-            encodedAt: new Date(),
+            type: "remote:encode",
+            requestId,
+            payload: {
+              requestId,
+              mediaType: "TV",
+              inputPath: ep.path,
+              season: ep.season,
+              episode: ep.episode,
+              episodeId: ep.episodeId,
+              encodingConfig,
+            } as Prisma.JsonObject,
+            dedupeKey: `encode:${requestId}:${epNum}`,
           },
         });
 
-        await this.logActivity(requestId, ActivityType.SUCCESS, `Encoded ${epNum}`);
+        // Determine output path
+        const inputDir = ep.path.substring(0, ep.path.lastIndexOf("/"));
+        const outputPath = `${inputDir}/encoded_${epNum}_${Date.now()}.mkv`;
+
+        // Queue encoding job with encoder dispatch service
+        const encoderService = getEncoderDispatchService();
+        const assignment = await encoderService.queueEncodingJob(
+          job.id,
+          ep.path,
+          outputPath,
+          encodingConfig
+        );
+
+        // Monitor encoding progress
+        const startTime = Date.now();
+        const endTime = startTime + timeout;
+
+        while (Date.now() < endTime) {
+          const assignmentStatus = await prisma.encoderAssignment.findUnique({
+            where: { id: assignment.id },
+          });
+
+          if (!assignmentStatus) {
+            throw new Error("Encoding assignment not found");
+          }
+
+          // Update progress
+          let currentStep: string;
+          let overallProgress: number;
+
+          if (assignmentStatus.status === AssignmentStatus.PENDING) {
+            currentStep = `${epNum}: Waiting for encoder...`;
+            overallProgress = 50 + (i / episodeFiles.length) * 30;
+          } else if (assignmentStatus.status === AssignmentStatus.ASSIGNED) {
+            currentStep = `${epNum}: Encoder assigned, starting...`;
+            overallProgress = 50 + (i / episodeFiles.length) * 30;
+          } else if (assignmentStatus.progress !== null) {
+            const episodeProgress = assignmentStatus.progress;
+            overallProgress = 50 + ((i + episodeProgress / 100) / episodeFiles.length) * 30;
+            const speed = assignmentStatus.speed ? ` - ${assignmentStatus.speed}x` : "";
+            const eta = assignmentStatus.eta
+              ? ` - ETA: ${this.formatDuration(assignmentStatus.eta)}`
+              : "";
+            currentStep = `${epNum}: ${episodeProgress.toFixed(1)}%${speed}${eta}`;
+          } else {
+            currentStep = `${epNum}: Encoding...`;
+            overallProgress = 50 + (i / episodeFiles.length) * 30;
+          }
+
+          const previousRequest = await prisma.mediaRequest.findUnique({
+            where: { id: requestId },
+            select: { currentStep: true },
+          });
+
+          await prisma.mediaRequest.update({
+            where: { id: requestId },
+            data: {
+              progress: overallProgress,
+              currentStep,
+              ...(previousRequest?.currentStep !== currentStep && {
+                currentStepStartedAt: new Date(),
+              }),
+            },
+          });
+
+          // Check if complete
+          if (assignmentStatus.status === AssignmentStatus.COMPLETED) {
+            await this.logActivity(
+              requestId,
+              ActivityType.SUCCESS,
+              `Encoded ${epNum} in ${this.formatDuration((Date.now() - startTime) / 1000)}`
+            );
+
+            encodedFiles.push({
+              profileId: context.targets[0]?.encodingProfileId || "default",
+              path: assignmentStatus.outputPath || outputPath,
+              targetServerIds,
+              resolution: encodingConfig.maxResolution,
+              codec,
+              season: ep.season,
+              episode: ep.episode,
+              episodeId: ep.episodeId,
+              size: assignmentStatus.outputSize ? Number(assignmentStatus.outputSize) : undefined,
+              compressionRatio: assignmentStatus.compressionRatio || undefined,
+            });
+
+            // Update episode status to ENCODED
+            await prisma.tvEpisode.update({
+              where: { id: ep.episodeId },
+              data: {
+                status: TvEpisodeStatus.ENCODED,
+                encodedAt: new Date(),
+              },
+            });
+
+            break;
+          }
+
+          // Check if failed
+          if (assignmentStatus.status === AssignmentStatus.FAILED) {
+            throw new Error(assignmentStatus.error || "Encoding failed");
+          }
+
+          // Check if cancelled
+          if (assignmentStatus.status === AssignmentStatus.CANCELLED) {
+            throw new Error("Encoding job was cancelled");
+          }
+
+          // Wait before next poll
+          await new Promise((resolve) => setTimeout(resolve, pollInterval));
+        }
+
+        // Check for timeout
+        const finalAssignment = await prisma.encoderAssignment.findUnique({
+          where: { id: assignment.id },
+        });
+
+        if (finalAssignment?.status !== AssignmentStatus.COMPLETED) {
+          throw new Error(`Encoding timeout after ${timeout / 1000 / 60} minutes`);
+        }
       } catch (error) {
         // Mark episode as failed but continue with others
         await prisma.tvEpisode.update({
           where: { id: ep.episodeId },
           data: {
-            status: "FAILED" as never,
+            status: TvEpisodeStatus.FAILED,
             error: error instanceof Error ? error.message : "Encoding failed",
           },
         });
