@@ -442,9 +442,13 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
     params;
   const qb = getDownloadService();
 
-  // Check if a download already exists for this request
+  // Check if this specific torrent is already being downloaded
+  // For TV shows, we may have multiple downloads per request (one per episode)
   const existingDownload = await prisma.download.findFirst({
-    where: { requestId },
+    where: {
+      requestId,
+      torrentName: release.title,
+    },
     orderBy: { startedAt: "desc" },
   });
 

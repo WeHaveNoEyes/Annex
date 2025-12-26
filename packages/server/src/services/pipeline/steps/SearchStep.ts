@@ -410,7 +410,7 @@ export class SearchStep extends BaseStep {
             if (ranked.length > 0) {
               const bestRelease = ranked[0].release;
 
-              // Create download immediately
+              // Create download for this episode
               const download = await downloadManager.createDownload({
                 requestId,
                 mediaType: MediaType.TV,
@@ -439,7 +439,7 @@ export class SearchStep extends BaseStep {
         // Return early - downloads are already created and started
         return {
           success: true,
-          nextStep: "encode", // Skip download step since we already created downloads
+          nextStep: "encode", // Skip download step since downloads already created
           data: {
             search: {
               bulkDownloadsCreated: true,
