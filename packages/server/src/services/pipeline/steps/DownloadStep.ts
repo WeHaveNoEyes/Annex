@@ -574,6 +574,23 @@ export class DownloadStep extends BaseStep {
         });
       }
 
+      // Skip episode if it's already completed or delivered
+      if (
+        tvEpisode.status === TvEpisodeStatus.COMPLETED ||
+        tvEpisode.status === TvEpisodeStatus.SKIPPED
+      ) {
+        console.log(
+          `[DownloadStep] Skipping S${season}E${episode} - already ${tvEpisode.status.toLowerCase()}`
+        );
+        await this.logActivity(
+          requestId,
+          ActivityType.INFO,
+          `Skipped S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")} - already on storage server`,
+          { season, episode, status: tvEpisode.status }
+        );
+        continue;
+      }
+
       // Update TvEpisode with download info
       await prisma.tvEpisode.update({
         where: { id: tvEpisode.id },
