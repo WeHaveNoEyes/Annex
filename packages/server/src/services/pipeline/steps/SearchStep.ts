@@ -263,10 +263,16 @@ export class SearchStep extends BaseStep {
         };
       }
 
+      const neededList = Array.from(neededSet).sort().join(", ");
       await this.logActivity(
         requestId,
         ActivityType.INFO,
-        `Need ${neededEpisodes.length} episode(s): ${Array.from(neededSet).slice(0, 5).join(", ")}${neededEpisodes.length > 5 ? "..." : ""}`
+        `Need ${neededEpisodes.length} episode(s): ${neededList}`
+      );
+      console.log(`[Search] Needed episodes for request ${requestId}: ${neededList}`);
+      console.log(
+        `[Search] Episode statuses:`,
+        allEpisodes.map((ep) => `S${ep.season}E${ep.episode}=${ep.status}`).join(", ")
       );
 
       // Categorize releases as season packs or individual episodes
@@ -288,6 +294,9 @@ export class SearchStep extends BaseStep {
         } else {
           // Individual episode release
           const hasNeededEpisode = releaseEpisodes.some((ep) => neededSet.has(ep));
+          console.log(
+            `[Search] Release "${release.title.substring(0, 60)}" episodes: [${releaseEpisodes.join(", ")}], needed: ${hasNeededEpisode}`
+          );
           if (hasNeededEpisode) {
             individualEpisodes.push(release);
           }
