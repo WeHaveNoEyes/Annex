@@ -371,12 +371,27 @@ export class SearchStep extends BaseStep {
       const neededSet = new Set(neededEpisodes.map((ep) => `S${ep.season}E${ep.episode}`));
 
       if (neededEpisodes.length === 0) {
-        await this.logActivity(requestId, ActivityType.INFO, "All episodes already downloaded");
+        // All episodes are already downloaded or beyond - skip search and continue pipeline
+        const downloadedOrBeyond = allEpisodes.filter((ep) =>
+          completedStatuses.has(ep.status)
+        );
+
+        await this.logActivity(
+          requestId,
+          ActivityType.INFO,
+          `Skipping search - ${downloadedOrBeyond.length} episodes already downloaded or complete`
+        );
+
         return {
-          success: false,
-          shouldRetry: false,
-          nextStep: null,
-          error: "All episodes already downloaded",
+          success: true,
+          nextStep: "download", // Continue to download step which will handle downloaded episodes
+          data: {
+            search: {
+              selectedRelease: null,
+              qualityMet: true,
+              skippedSearch: true,
+            },
+          },
         };
       }
 
