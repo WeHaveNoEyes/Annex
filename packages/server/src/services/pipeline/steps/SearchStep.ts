@@ -436,10 +436,10 @@ export class SearchStep extends BaseStep {
           `Queued ${createdDownloads} episode download(s) - all downloading in parallel`
         );
 
-        // Return early - downloads are already created and started
+        // Mark that we already created downloads so DownloadStep can skip
         return {
           success: true,
-          nextStep: "encode", // Skip download step since downloads already created
+          nextStep: "download",
           data: {
             search: {
               bulkDownloadsCreated: true,

@@ -56,6 +56,24 @@ export class DownloadStep extends BaseStep {
     const pollInterval = cfg.pollInterval || 5000;
     const timeout = cfg.timeout || 24 * 60 * 60 * 1000; // 24 hours
 
+    // Check if SearchStep already created downloads in bulk (TV multi-episode mode)
+    const bulkDownloadsCreated = (context.search as { bulkDownloadsCreated?: boolean })
+      ?.bulkDownloadsCreated;
+    if (bulkDownloadsCreated) {
+      await this.logActivity(
+        requestId,
+        ActivityType.INFO,
+        "Downloads already created by SearchStep, monitoring will happen per-episode"
+      );
+
+      // Skip to next step - downloads will be monitored individually per episode
+      return {
+        success: true,
+        nextStep: "encode",
+        data: {},
+      };
+    }
+
     // Check if we have an existing download or need to create a new one
     const existingDownload = context.search?.existingDownload;
     const selectedRelease = context.search?.selectedRelease;
