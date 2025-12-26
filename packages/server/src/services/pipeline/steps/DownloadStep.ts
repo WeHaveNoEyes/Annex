@@ -7,6 +7,7 @@ import {
   StepType,
   TvEpisodeStatus,
 } from "@prisma/client";
+import ptt from "parse-torrent-title";
 import { prisma } from "../../../db/client.js";
 import { detectRarArchive, extractRar, isSampleFile } from "../../archive.js";
 import { getDownloadService } from "../../download.js";
@@ -214,54 +215,20 @@ export class DownloadStep extends BaseStep {
 
       // For TV shows, mark episodes as DOWNLOADING
       if (mediaType === MediaType.TV) {
-        // Parse episode info from torrent name or mark all PENDING episodes as DOWNLOADING
-        const episodeMatches = download.torrentName.matchAll(/S(\d{1,2})E(\d{1,2})/gi);
-        const releaseEpisodes = Array.from(episodeMatches, (match) => ({
-          season: Number.parseInt(match[1], 10),
-          episode: Number.parseInt(match[2], 10),
-        }));
+        // Parse torrent name to get season/episode info
+        const parsed = ptt.parse(download.torrentName);
 
-        if (releaseEpisodes.length > 0) {
-          // Individual episode(s) or specific episodes - mark them as DOWNLOADING
-          for (const ep of releaseEpisodes) {
-            await prisma.tvEpisode.updateMany({
-              where: {
-                requestId,
-                season: ep.season,
-                episode: ep.episode,
-                status: { in: [TvEpisodeStatus.PENDING, TvEpisodeStatus.SEARCHING] },
-              },
-              data: {
-                status: TvEpisodeStatus.DOWNLOADING,
-                downloadId: download.id,
-              },
-            });
-          }
-        } else {
-          // Season pack - parse season number and mark only that season's episodes
-          const seasonMatch = download.torrentName.match(/S(\d{1,2})/i);
+        if (parsed.episode !== undefined) {
+          // Individual episode(s) - mark specific episodes as DOWNLOADING
+          const episodes = Array.isArray(parsed.episode) ? parsed.episode : [parsed.episode];
+          const season = parsed.season || 1;
 
-          if (seasonMatch) {
-            const season = Number.parseInt(seasonMatch[1], 10);
+          for (const episode of episodes) {
             await prisma.tvEpisode.updateMany({
               where: {
                 requestId,
                 season,
-                status: { in: [TvEpisodeStatus.PENDING, TvEpisodeStatus.SEARCHING] },
-              },
-              data: {
-                status: TvEpisodeStatus.DOWNLOADING,
-                downloadId: download.id,
-              },
-            });
-          } else {
-            // No season number found - mark all PENDING/SEARCHING episodes (fallback)
-            console.warn(
-              `[DownloadStep] No season number found in torrent name: ${download.torrentName}`
-            );
-            await prisma.tvEpisode.updateMany({
-              where: {
-                requestId,
+                episode,
                 status: { in: [TvEpisodeStatus.PENDING, TvEpisodeStatus.SEARCHING] },
               },
               data: {
@@ -270,6 +237,34 @@ export class DownloadStep extends BaseStep {
               },
             });
           }
+        } else if (parsed.season !== undefined) {
+          // Season pack - mark all episodes in this season as DOWNLOADING
+          await prisma.tvEpisode.updateMany({
+            where: {
+              requestId,
+              season: parsed.season,
+              status: { in: [TvEpisodeStatus.PENDING, TvEpisodeStatus.SEARCHING] },
+            },
+            data: {
+              status: TvEpisodeStatus.DOWNLOADING,
+              downloadId: download.id,
+            },
+          });
+        } else {
+          // No season/episode info found - mark all PENDING/SEARCHING episodes (fallback)
+          console.warn(
+            `[DownloadStep] No season/episode info found in torrent name: ${download.torrentName}`
+          );
+          await prisma.tvEpisode.updateMany({
+            where: {
+              requestId,
+              status: { in: [TvEpisodeStatus.PENDING, TvEpisodeStatus.SEARCHING] },
+            },
+            data: {
+              status: TvEpisodeStatus.DOWNLOADING,
+              downloadId: download.id,
+            },
+          });
         }
       }
     } else {
