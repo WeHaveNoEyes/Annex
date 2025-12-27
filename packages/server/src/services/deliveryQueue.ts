@@ -149,12 +149,89 @@ class DeliveryQueueService {
 
       this.processingEpisodeId = null;
 
+      // Check if all episodes for this request are complete
+      await this.updateRequestStatus(job.requestId);
+
       // Small delay between deliveries to avoid overwhelming servers
       await new Promise((resolve) => setTimeout(resolve, 2000));
     }
 
     this.processing = false;
     console.log("[DeliveryQueue] Queue processing complete");
+  }
+
+  /**
+   * Update request status based on episode completion
+   */
+  private async updateRequestStatus(requestId: string): Promise<void> {
+    const episodes = await prisma.tvEpisode.findMany({
+      where: { requestId },
+      select: { status: true },
+    });
+
+    if (episodes.length === 0) {
+      return;
+    }
+
+    const statusCounts = episodes.reduce(
+      (acc, ep) => {
+        acc[ep.status] = (acc[ep.status] || 0) + 1;
+        return acc;
+      },
+      {} as Record<string, number>
+    );
+
+    const completed = statusCounts.COMPLETED || 0;
+    const failed = statusCounts.FAILED || 0;
+    const skipped = statusCounts.SKIPPED || 0;
+    const delivering = statusCounts.DELIVERING || 0;
+    const total = episodes.length;
+
+    // All episodes done (completed, failed, or skipped)
+    if (completed + failed + skipped === total) {
+      if (completed > 0) {
+        // At least some episodes succeeded
+        await prisma.mediaRequest.update({
+          where: { id: requestId },
+          data: {
+            status: "COMPLETED",
+            progress: 100,
+            currentStep: `Delivered ${completed} episode(s)`,
+            completedAt: new Date(),
+          },
+        });
+        console.log(
+          `[DeliveryQueue] Request ${requestId} completed: ${completed} delivered, ${failed} failed, ${skipped} skipped`
+        );
+      } else {
+        // All episodes failed or skipped
+        await prisma.mediaRequest.update({
+          where: { id: requestId },
+          data: {
+            status: "FAILED",
+            progress: 0,
+            currentStep: "All episodes failed delivery",
+            error: "All episodes failed or were skipped",
+          },
+        });
+        console.log(
+          `[DeliveryQueue] Request ${requestId} failed: ${failed} failed, ${skipped} skipped`
+        );
+      }
+    } else {
+      // Still delivering - update progress
+      const progress = Math.floor(
+        ((completed + failed + skipped) / total) * 100
+      );
+      await prisma.mediaRequest.update({
+        where: { id: requestId },
+        data: {
+          status: "DELIVERING",
+          progress,
+          currentStep: `Delivered ${completed}/${total} episodes (${delivering} in queue)`,
+        },
+      });
+    }
   }
 
   /**
