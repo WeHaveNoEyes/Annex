@@ -50,13 +50,13 @@ export function setDownloadConfig(newConfig: Partial<DownloadConfig>): void {
 // =============================================================================
 
 /**
- * Normalize a title for comparison
+ * Simple title normalization for legacy matching functions
+ * For new code, use parsedTorrentsMatch() instead
  */
-export function normalizeTitle(title: string): string {
+function normalizeTitle(title: string): string {
   return title
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, "")
-    .replace(/\s+/g, " ")
+    .replace(/[^a-z0-9]/g, "")
     .trim();
 }
 
@@ -65,6 +65,83 @@ export function normalizeTitle(title: string): string {
  */
 export function parseTorrentName(name: string): ParsedTorrent {
   return ptt.parse(name) as ParsedTorrent;
+}
+
+/**
+ * Compare two parsed torrents to see if they match
+ * Compares essential fields while allowing for format variations
+ */
+export function parsedTorrentsMatch(
+  release: ParsedTorrent,
+  torrent: ParsedTorrent,
+  mediaType: MediaType
+): boolean {
+  // For TV shows, must match: title, season
+  if (mediaType === MediaType.TV) {
+    // Title must match (case-insensitive, normalized)
+    const releaseTitle = (release.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const torrentTitle = (torrent.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (releaseTitle !== torrentTitle) {
+      return false;
+    }
+
+    // Season must match
+    if (release.season !== torrent.season) {
+      return false;
+    }
+
+    // Resolution should match (if both have it)
+    if (release.resolution && torrent.resolution) {
+      const releaseRes = release.resolution.replace(/p$/i, "");
+      const torrentRes = torrent.resolution.replace(/p$/i, "");
+      if (releaseRes !== torrentRes) {
+        return false;
+      }
+    }
+
+    // Codec should match (if both have it)
+    if (release.codec && torrent.codec) {
+      const releaseCodec = release.codec.toLowerCase();
+      const torrentCodec = torrent.codec.toLowerCase();
+      // Allow x264/h264 and x265/h265/hevc to match
+      const normalizeCodec = (c: string) => {
+        if (c === "h264") return "x264";
+        if (c === "h265" || c === "hevc") return "x265";
+        return c;
+      };
+      if (normalizeCodec(releaseCodec) !== normalizeCodec(torrentCodec)) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  // For movies, must match: title, year
+  if (mediaType === MediaType.MOVIE) {
+    const releaseTitle = (release.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const torrentTitle = (torrent.title || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (releaseTitle !== torrentTitle) {
+      return false;
+    }
+
+    if (release.year !== torrent.year) {
+      return false;
+    }
+
+    // Resolution should match (if both have it)
+    if (release.resolution && torrent.resolution) {
+      const releaseRes = release.resolution.replace(/p$/i, "");
+      const torrentRes = torrent.resolution.replace(/p$/i, "");
+      if (releaseRes !== torrentRes) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  return false;
 }
 
 // =============================================================================
@@ -532,18 +609,21 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
   let torrentHash = addResult.hash;
 
   // If adding failed (e.g., "Fails." from qBittorrent), the torrent might already exist
-  // Search for an existing torrent with matching name
+  // Search for an existing torrent with matching parsed metadata
   if (!addResult.success || !torrentHash) {
     console.log(
       `[DownloadManager] Failed to add torrent or no hash returned (${addResult.error}), searching for existing torrent`
     );
     const allTorrents = await qb.getAllTorrents();
-    const normalizedRelease = normalizeTitle(release.title);
-    const existing = allTorrents.find((t) => normalizeTitle(t.name) === normalizedRelease);
+    const parsedRelease = parseTorrentName(release.title);
+    const existing = allTorrents.find((t) => {
+      const parsedTorrent = parseTorrentName(t.name);
+      return parsedTorrentsMatch(parsedRelease, parsedTorrent, mediaType);
+    });
 
     if (existing) {
       console.log(
-        `[DownloadManager] Found existing torrent with matching name: ${existing.name} (${existing.hash})`
+        `[DownloadManager] Found existing torrent with matching metadata: ${existing.name} (${existing.hash})`
       );
       torrentHash = existing.hash;
 
@@ -569,14 +649,30 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
       torrentHash = torrent.hash;
       console.log(`[DownloadManager] Found torrent by tag: ${torrent.hash}`);
     } else {
-      // Fallback: search by name (for duplicate detection or qBittorrent versions without tag support)
-      console.log(`[DownloadManager] Tag search failed, searching by name: ${release.title}`);
+      // Fallback: search by parsed metadata (for duplicate detection or qBittorrent versions without tag support)
+      console.log(
+        `[DownloadManager] Tag search failed, searching by parsed metadata: ${release.title}`
+      );
       const allTorrents = await qb.getAllTorrents();
-      const normalizedRelease = normalizeTitle(release.title);
-      const existing = allTorrents.find((t) => normalizeTitle(t.name) === normalizedRelease);
+      const parsedRelease = parseTorrentName(release.title);
+      console.log(
+        `[DownloadManager] Parsed release: title="${parsedRelease.title}", season=${parsedRelease.season}, resolution=${parsedRelease.resolution}, codec=${parsedRelease.codec}`
+      );
+      console.log(
+        `[DownloadManager] Existing torrents:\n${allTorrents
+          .map((t) => {
+            const parsed = parseTorrentName(t.name);
+            return `  - title="${parsed.title}", season=${parsed.season}, res=${parsed.resolution}, codec=${parsed.codec} (${t.name})`;
+          })
+          .join("\n")}`
+      );
+      const existing = allTorrents.find((t) => {
+        const parsedTorrent = parseTorrentName(t.name);
+        return parsedTorrentsMatch(parsedRelease, parsedTorrent, mediaType);
+      });
       if (existing) {
         console.log(
-          `[DownloadManager] Found existing torrent with matching name: ${existing.hash}`
+          `[DownloadManager] Found existing torrent with matching metadata: ${existing.name} (${existing.hash})`
         );
         torrentHash = existing.hash;
 
@@ -598,9 +694,10 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
   // Get initial torrent info
   const progress = await qb.getProgress(torrentHash);
 
-  // Create Download record
-  const download = await prisma.download.create({
-    data: {
+  // Create or update Download record (upsert for reused torrents)
+  const download = await prisma.download.upsert({
+    where: { torrentHash },
+    create: {
       requestId,
       torrentHash,
       torrentName: release.title,
@@ -620,6 +717,14 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
       alternativeReleases: alternativeReleases
         ? JSON.parse(JSON.stringify(alternativeReleases))
         : undefined,
+    },
+    update: {
+      requestId, // Update to new request
+      status: DownloadStatus.DOWNLOADING,
+      progress: progress?.progress || 0,
+      lastProgressAt: new Date(),
+      seedCount: progress?.seeds || null,
+      peerCount: progress?.peers || null,
     },
   });
 

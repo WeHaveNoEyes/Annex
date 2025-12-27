@@ -530,8 +530,7 @@ export class SearchStep extends BaseStep {
         );
 
         // Select best pack for each needed season and spawn episode branch pipelines
-        const executor = getPipelineExecutor();
-        let spawnedBranches = 0;
+        const spawnedBranches = 0;
         const selectedPacks: Array<{ season: number; release: unknown }> = [];
 
         for (const season of Array.from(neededSeasons).sort()) {
@@ -549,44 +548,14 @@ export class SearchStep extends BaseStep {
               const bestPack = ranked[0].release;
               selectedPacks.push({ season, release: bestPack });
 
-              // Spawn a branch pipeline for each episode in this season
+              // DON'T spawn branch pipelines yet - season pack needs to download and extract first
+              // The download monitor will spawn branches after extraction completes
               const episodesInSeason = neededEpisodes.filter((ep) => ep.season === season);
-              for (const ep of episodesInSeason) {
-                // Spawn branch pipeline for this episode
-                const branchId = await executor.spawnBranchExecution(
-                  parentExecutionId,
-                  requestId,
-                  ep.id,
-                  "episode-branch-pipeline",
-                  {
-                    search: {
-                      selectedRelease: bestPack,
-                      qualityMet: true,
-                    },
-                    season: ep.season,
-                    episode: ep.episode,
-                  } as Partial<PipelineContext>
-                );
-
-                spawnedBranches++;
-
-                // Mark episode as DOWNLOADING (branch will handle it)
-                await prisma.tvEpisode.update({
-                  where: { id: ep.id },
-                  data: {
-                    status: TvEpisodeStatus.DOWNLOADING,
-                  },
-                });
-
-                console.log(
-                  `[Search] Spawned branch ${branchId} for S${ep.season}E${ep.episode} using ${bestPack.title}`
-                );
-              }
 
               await this.logActivity(
                 requestId,
                 ActivityType.INFO,
-                `Spawned ${episodesInSeason.length} branch pipeline(s) for Season ${season}: ${bestPack.title}`,
+                `Found season pack for Season ${season}: ${bestPack.title} (${episodesInSeason.length} episodes)`,
                 {
                   season,
                   episodes: episodesInSeason.length,
@@ -595,6 +564,28 @@ export class SearchStep extends BaseStep {
               );
             }
           }
+        }
+
+        // If we found season packs, create downloads for all of them and continue to download step
+        if (selectedPacks.length > 0) {
+          await this.logActivity(
+            requestId,
+            ActivityType.SUCCESS,
+            `Selected ${selectedPacks.length} season pack(s) - downloads will process in parallel`
+          );
+
+          // Store all selected season packs for the Download step to create bulk downloads
+          return {
+            success: true,
+            nextStep: "download",
+            data: {
+              search: {
+                selectedPacks, // Array of {season, release}
+                bulkDownloadsForSeasonPacks: true,
+                qualityMet: true,
+              },
+            },
+          };
         }
 
         if (spawnedBranches > 0) {

@@ -681,15 +681,17 @@ export const requestsRouter = router({
    * Cancel a request
    */
   cancel: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
-    // Find and cancel the pipeline execution
-    const execution = await prisma.pipelineExecution.findFirst({
-      where: { requestId: input.id, parentExecutionId: null },
-      orderBy: { startedAt: "desc" },
+    // Find all pipeline executions for this request (parent + branches)
+    const executions = await prisma.pipelineExecution.findMany({
+      where: { requestId: input.id },
     });
 
-    if (execution && execution.status === "RUNNING") {
-      const executor = getPipelineExecutor();
-      await executor.cancelExecution(execution.id);
+    // Cancel all running executions
+    const executor = getPipelineExecutor();
+    for (const execution of executions) {
+      if (execution.status === "RUNNING") {
+        await executor.cancelExecution(execution.id);
+      }
     }
 
     // Update request status
@@ -714,15 +716,16 @@ export const requestsRouter = router({
       return { success: false, error: "Request not found" };
     }
 
-    // Cancel any running pipeline execution first
-    const execution = await prisma.pipelineExecution.findFirst({
-      where: { requestId: input.id, parentExecutionId: null },
-      orderBy: { startedAt: "desc" },
+    // Cancel any running pipeline executions first (parent + branches)
+    const executions = await prisma.pipelineExecution.findMany({
+      where: { requestId: input.id },
     });
 
-    if (execution && execution.status === "RUNNING") {
-      const executor = getPipelineExecutor();
-      await executor.cancelExecution(execution.id);
+    const executor = getPipelineExecutor();
+    for (const execution of executions) {
+      if (execution.status === "RUNNING") {
+        await executor.cancelExecution(execution.id);
+      }
     }
 
     // TODO: Cancel torrent downloads and delete downloaded media from qBittorrent
@@ -774,6 +777,17 @@ export const requestsRouter = router({
 
     if (!execution) {
       throw new Error("No pipeline execution found for this request");
+    }
+
+    // If the found execution is a branch pipeline (e.g., episode-branch-pipeline),
+    // use the default template instead since branch templates can't run as parent pipelines
+    let templateId = execution.templateId;
+    if (templateId === "episode-branch-pipeline" || templateId.includes("branch")) {
+      const mediaType = request.type === MediaType.MOVIE ? "MOVIE" : "TV";
+      templateId = await getDefaultTemplate(mediaType);
+      console.log(
+        `[Retry] Found branch template ${execution.templateId}, using default ${mediaType} template ${templateId} instead`
+      );
     }
 
     // Analyze current state to determine where to resume from
@@ -829,7 +843,7 @@ export const requestsRouter = router({
 
     // Start a new pipeline execution
     const executor = getPipelineExecutor();
-    executor.startExecution(request.id, execution.templateId).catch(async (error) => {
+    executor.startExecution(request.id, templateId).catch(async (error) => {
       console.error(`Pipeline retry failed for request ${request.id}:`, error);
       await prisma.mediaRequest.update({
         where: { id: request.id },

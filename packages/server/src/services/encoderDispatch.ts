@@ -502,7 +502,9 @@ class EncoderDispatchService {
       return;
     }
 
-    console.log(`[EncoderDispatch] Syncing progress for ${encodingEpisodes.length} ENCODING episodes`);
+    console.log(
+      `[EncoderDispatch] Syncing progress for ${encodingEpisodes.length} ENCODING episodes`
+    );
 
     // Get all active encoding assignments with progress (including completed)
     const assignments = await prisma.encoderAssignment.findMany({
@@ -533,12 +535,11 @@ class EncoderDispatchService {
           where: { id: a.jobId },
           select: { payload: true },
         });
-        const payload =
-          job?.payload as {
-            season?: number;
-            episode?: number;
-            episodeId?: string;
-          } | null;
+        const payload = job?.payload as {
+          season?: number;
+          episode?: number;
+          episodeId?: string;
+        } | null;
         console.log(
           `[EncoderDispatch]   Assignment: S${payload?.season}E${payload?.episode} (episodeId: ${payload?.episodeId}) - ${a.progress.toFixed(1)}%`
         );

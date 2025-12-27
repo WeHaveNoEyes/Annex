@@ -53,39 +53,46 @@ export class DownloadStep extends BaseStep {
     this.validateConfig(config);
     const cfg = (config as DownloadStepConfig | undefined) || {};
 
-    const { requestId, mediaType } = context;
+    const { requestId, mediaType, episodeId, executionId } = context;
     const pollInterval = cfg.pollInterval || 5000;
     const timeout = cfg.timeout || 24 * 60 * 60 * 1000; // 24 hours
 
-    // Check if SearchStep already created downloads in bulk (TV multi-episode mode)
-    const bulkDownloadsCreated = (context.search as { bulkDownloadsCreated?: boolean })
-      ?.bulkDownloadsCreated;
-    if (bulkDownloadsCreated) {
-      await this.logActivity(
-        requestId,
-        ActivityType.INFO,
-        "Multiple episodes downloading in parallel - will encode/deliver each as it completes"
-      );
-
-      // Update request status to DOWNLOADING
-      await prisma.mediaRequest.update({
-        where: { id: requestId },
-        data: {
-          status: RequestStatus.DOWNLOADING,
-          currentStep: "Downloading multiple episodes in parallel...",
-          progress: 30,
-        },
+    // For episode branch pipelines: Check if episode file is already extracted
+    console.log(
+      `[DownloadStep] Episode recovery check: episodeId=${episodeId}, mediaType=${mediaType}`
+    );
+    if (episodeId && mediaType === MediaType.TV) {
+      const episode = await prisma.tvEpisode.findUnique({
+        where: { id: episodeId as string },
+        select: { sourceFilePath: true, season: true, episode: true },
       });
 
-      // End pipeline - episodes will be processed individually via download monitor
-      return {
-        success: true,
-        nextStep: null, // End pipeline, download monitor will handle per-episode processing
-        data: {},
-      };
+      console.log(
+        `[DownloadStep] Episode ${episodeId} sourceFilePath: ${episode?.sourceFilePath || "null"}`
+      );
+
+      if (episode?.sourceFilePath) {
+        // File already extracted - skip download and proceed to encoding
+        await this.logActivity(
+          requestId,
+          ActivityType.INFO,
+          `Episode S${String(episode.season).padStart(2, "0")}E${String(episode.episode).padStart(2, "0")} already extracted, proceeding to encoding`
+        );
+
+        return {
+          success: true,
+          data: {
+            download: {
+              sourceFilePath: episode.sourceFilePath,
+              downloadedAt: new Date().toISOString(),
+            },
+          },
+        };
+      }
     }
 
     // Check if SearchStep was skipped (episodes already downloaded)
+    // IMPORTANT: This must be checked BEFORE bulkDownloadsCreated to handle retries correctly
     const skippedSearch = (context.search as { skippedSearch?: boolean })?.skippedSearch;
     if (skippedSearch && mediaType === MediaType.TV) {
       // Episodes are already DOWNLOADED - extract files and continue to encoding
@@ -116,35 +123,175 @@ export class DownloadStep extends BaseStep {
       await this.logActivity(
         requestId,
         ActivityType.INFO,
-        `Found ${downloadedEpisodes.length} downloaded episodes, continuing to encoding`
+        `Found ${downloadedEpisodes.length} downloaded episodes, spawning branch pipelines`
       );
 
-      // Build episode files array from downloaded episodes
-      const episodeFiles = downloadedEpisodes
-        .filter((ep) => ep.sourceFilePath !== null)
-        .map((ep) => ({
-          season: ep.season,
-          episode: ep.episode,
-          path: ep.sourceFilePath as string,
-          size: 0, // Size not needed for encoding
-          episodeId: ep.id,
-        }));
+      // Spawn branch pipeline for each downloaded episode
+      const { getPipelineExecutor } = await import("../PipelineExecutor.js");
+      const executor = getPipelineExecutor();
+      let spawnedBranches = 0;
+
+      // Get parent execution ID for spawning branch pipelines
+      const parentExecution = await prisma.pipelineExecution.findFirst({
+        where: { requestId, parentExecutionId: null },
+        select: { id: true },
+      });
+
+      if (!parentExecution) {
+        return {
+          success: false,
+          shouldRetry: false,
+          nextStep: null,
+          error: "Cannot spawn branch pipelines: parent execution not found",
+        };
+      }
+
+      const parentExecutionId = parentExecution.id;
+
+      for (const ep of downloadedEpisodes.filter((e) => e.sourceFilePath !== null)) {
+        try {
+          await executor.spawnBranchExecution(
+            parentExecutionId,
+            requestId,
+            ep.id,
+            "episode-branch-pipeline",
+            {
+              download: {
+                torrentHash: "", // Empty hash for already-downloaded episodes
+                sourceFilePath: ep.sourceFilePath as string,
+                episodeFiles: [
+                  {
+                    season: ep.season,
+                    episode: ep.episode,
+                    path: ep.sourceFilePath as string,
+                    size: 0,
+                    episodeId: ep.id,
+                  },
+                ],
+                skipDownload: true, // Episode already downloaded
+              },
+              season: ep.season,
+              episode: ep.episode,
+            } as Partial<PipelineContext>
+          );
+
+          spawnedBranches++;
+
+          await this.logActivity(
+            requestId,
+            ActivityType.INFO,
+            `Spawned branch for S${ep.season}E${ep.episode}`,
+            { season: ep.season, episode: ep.episode }
+          );
+
+          // Rate limit: small delay between spawns to avoid overwhelming database
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        } catch (error) {
+          await this.logActivity(
+            requestId,
+            ActivityType.ERROR,
+            `Failed to spawn branch for S${ep.season}E${ep.episode}: ${error}`,
+            { season: ep.season, episode: ep.episode }
+          );
+        }
+      }
+
+      await this.logActivity(
+        requestId,
+        ActivityType.SUCCESS,
+        `Spawned ${spawnedBranches} episode branch pipeline(s) for extracted episodes`
+      );
 
       await prisma.mediaRequest.update({
         where: { id: requestId },
         data: {
           progress: 50,
-          currentStep: `Proceeding to encoding (${episodeFiles.length} episodes)`,
+          currentStep: `Processing ${spawnedBranches} episode(s) in parallel`,
         },
       });
 
+      // Return success - branches are now running independently
       return {
         success: true,
-        nextStep: "encode",
+        nextStep: null, // No next step - branches handle everything
         data: {
           download: {
-            episodeFiles,
-            downloadedAt: new Date().toISOString(),
+            branchesSpawned: true,
+            branchCount: spawnedBranches,
+          },
+        },
+      };
+    }
+
+    // Check if SearchStep already created downloads in bulk (TV multi-episode mode)
+    const bulkDownloadsCreated = (context.search as { bulkDownloadsCreated?: boolean })
+      ?.bulkDownloadsCreated;
+    if (bulkDownloadsCreated) {
+      await this.logActivity(
+        requestId,
+        ActivityType.INFO,
+        "Multiple episodes downloading in parallel - will encode/deliver each as it completes"
+      );
+
+      // Update request status to DOWNLOADING
+      await prisma.mediaRequest.update({
+        where: { id: requestId },
+        data: {
+          status: RequestStatus.DOWNLOADING,
+          currentStep: "Downloading multiple episodes in parallel...",
+          progress: 30,
+        },
+      });
+
+      // End pipeline - episodes will be processed individually via download monitor
+      return {
+        success: true,
+        nextStep: null, // End pipeline, download monitor will handle per-episode processing
+        data: {},
+      };
+    }
+
+    // Check if SearchStep selected multiple season packs for bulk download
+    const bulkDownloadsForSeasonPacks = (
+      context.search as { bulkDownloadsForSeasonPacks?: boolean }
+    )?.bulkDownloadsForSeasonPacks;
+    const selectedPacks = (
+      context.search as { selectedPacks?: Array<{ season: number; release: Release }> }
+    )?.selectedPacks;
+
+    if (bulkDownloadsForSeasonPacks && selectedPacks && selectedPacks.length > 0) {
+      // Create downloads for all season packs in parallel
+      await this.logActivity(
+        requestId,
+        ActivityType.INFO,
+        `Creating downloads for ${selectedPacks.length} season pack(s)`
+      );
+
+      const downloadPromises = selectedPacks.map((pack) =>
+        downloadManager.createDownload({
+          requestId,
+          mediaType: mediaType as MediaType,
+          release: pack.release,
+          alternativeReleases: undefined,
+        })
+      );
+
+      await Promise.all(downloadPromises);
+
+      await this.logActivity(
+        requestId,
+        ActivityType.SUCCESS,
+        `Started ${selectedPacks.length} season pack download(s) - will extract episodes when complete`
+      );
+
+      // Return success - download monitor will handle extraction and branch spawning
+      return {
+        success: true,
+        nextStep: null, // Download monitor will spawn branches after extraction
+        data: {
+          search: {
+            bulkDownloadsCreated: true,
+            downloadCount: selectedPacks.length,
           },
         },
       };

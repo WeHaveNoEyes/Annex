@@ -2,7 +2,6 @@ import { RequestStatus, TvEpisodeStatus } from "@prisma/client";
 import { prisma } from "../db/client.js";
 import { registerPipelineSteps } from "./pipeline/registerSteps.js";
 import { StepRegistry } from "./pipeline/StepRegistry.js";
-import { getPipelineExecutor } from "./pipeline/PipelineExecutor.js";
 
 /**
  * Recovers requests stuck in DELIVERING status.
@@ -244,17 +243,12 @@ export async function recoverFailedEpisodeDeliveries(): Promise<void> {
     });
 
     // Create new branch pipeline for delivery retry
-    const executor = getPipelineExecutor();
-    try {
-      // Note: This would need the parent pipeline to spawn a new branch
-      // For now, just log that we would retry
-      console.log(
-        `[DeliveryRecovery] ${epNum}: Reset to DOWNLOADED status for manual retry (auto-retry not yet implemented)`
-      );
-      retried++;
-    } catch (error) {
-      console.error(`[DeliveryRecovery] ${epNum}: Failed to create retry pipeline:`, error);
-    }
+    // Note: This would need the parent pipeline to spawn a new branch
+    // For now, just log that we would retry
+    console.log(
+      `[DeliveryRecovery] ${epNum}: Reset to DOWNLOADED status for manual retry (auto-retry not yet implemented)`
+    );
+    retried++;
   }
 
   if (retried > 0) {
