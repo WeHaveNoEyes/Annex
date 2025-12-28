@@ -15,69 +15,69 @@ datasource db {
 // =============================================================================
 
 model User {
-  id        String   @id @default(cuid())
-  email     String?  @unique
-  username  String
-  avatar    String?
-  isAdmin   Boolean  @default(false)
-  enabled   Boolean  @default(true)
+  id       String  @id @default(cuid())
+  email    String? @unique
+  username String
+  avatar   String?
+  isAdmin  Boolean @default(false)
+  enabled  Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  plexAccount  PlexAccount?
-  embyAccount  EmbyAccount?
-  sessions     Session[]
-  requests     MediaRequest[]
-  pipelineTemplates PipelineTemplate[]
+  plexAccount         PlexAccount?
+  embyAccount         EmbyAccount?
+  sessions            Session[]
+  requests            MediaRequest[]
+  pipelineTemplates   PipelineTemplate[]
   notificationConfigs NotificationConfig[]
 }
 
 model PlexAccount {
-  id                String   @id @default(cuid())
-  plexId            String   @unique  // Plex user ID
-  plexUsername      String
-  plexEmail         String?
-  plexThumb         String?           // Avatar URL
-  plexToken         String?           // Encrypted Plex access token
+  id           String  @id @default(cuid())
+  plexId       String  @unique // Plex user ID
+  plexUsername String
+  plexEmail    String?
+  plexThumb    String? // Avatar URL
+  plexToken    String? // Encrypted Plex access token
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId            String   @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
 }
 
 model EmbyAccount {
-  id                String   @id @default(cuid())
-  embyId            String   @unique  // Emby user ID
-  embyUsername      String
-  embyServerId      String?           // Connected Emby server ID
-  embyToken         String?           // Encrypted Emby access token
+  id           String  @id @default(cuid())
+  embyId       String  @unique // Emby user ID
+  embyUsername String
+  embyServerId String? // Connected Emby server ID
+  embyToken    String? // Encrypted Emby access token
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId            String   @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
 }
 
 model Session {
-  id            String    @id @default(cuid())
-  token         String    @unique  // Session token (hashed)
-  expiresAt     DateTime
-  userAgent     String?
-  ipAddress     String?
-  lastActiveAt  DateTime  @default(now())
+  id           String   @id @default(cuid())
+  token        String   @unique // Session token (hashed)
+  expiresAt    DateTime
+  userAgent    String?
+  ipAddress    String?
+  lastActiveAt DateTime @default(now())
 
-  createdAt     DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   // Relations
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId        String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
 
   @@index([token])
   @@index([expiresAt])
@@ -88,39 +88,39 @@ model Session {
 // =============================================================================
 
 model StorageServer {
-  id                    String   @id @default(cuid())
-  name                  String
-  host                  String
-  port                  Int
-  protocol              Protocol
-  username              String
-  encryptedPassword     String?
-  encryptedPrivateKey   String?
-  pathMovies            String
-  pathTv                String
-  maxResolution         Resolution
-  maxFileSize           BigInt?  // bytes, null = unlimited
-  preferredCodec        Codec
-  maxBitrate            Int?     // kbps
+  id                  String     @id @default(cuid())
+  name                String
+  host                String
+  port                Int
+  protocol            Protocol
+  username            String
+  encryptedPassword   String?
+  encryptedPrivateKey String?
+  pathMovies          String
+  pathTv              String
+  maxResolution       Resolution
+  maxFileSize         BigInt? // bytes, null = unlimited
+  preferredCodec      Codec
+  maxBitrate          Int? // kbps
 
   // Media Server Integration
-  mediaServerType       MediaServerType @default(NONE)
-  mediaServerUrl        String?
-  mediaServerApiKey     String?
+  mediaServerType          MediaServerType @default(NONE)
+  mediaServerUrl           String?
+  mediaServerApiKey        String?
   mediaServerLibraryMovies String[] // Library IDs
   mediaServerLibraryTv     String[] // Library IDs
 
   // Library Sync Settings
-  librarySyncEnabled    Boolean  @default(true)
-  librarySyncInterval   Int      @default(5) // minutes
+  librarySyncEnabled  Boolean @default(true)
+  librarySyncInterval Int     @default(5) // minutes
 
-  enabled               Boolean  @default(true)
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  libraryItems          LibraryItem[]
-  episodeLibraryItems   EpisodeLibraryItem[]
+  libraryItems        LibraryItem[]
+  episodeLibraryItems EpisodeLibraryItem[]
 
   @@index([enabled])
 }
@@ -157,22 +157,22 @@ enum MediaServerType {
 // =============================================================================
 
 model Indexer {
-  id               String      @id @default(cuid())
-  name             String
-  type             IndexerType
-  url              String
-  apiKey           String
-  categoriesMovies Int[]       // Torznab category IDs
-  categoriesTv     Int[]       // Torznab category IDs
-  priority         Int         @default(50)
-  enabled          Boolean     @default(true)
-  rateLimitEnabled    Boolean  @default(false)
-  rateLimitMax        Int?     // Max requests in time window
-  rateLimitWindowSecs Int?     // Time window in seconds
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  id                  String      @id @default(cuid())
+  name                String
+  type                IndexerType
+  url                 String
+  apiKey              String
+  categoriesMovies    Int[] // Torznab category IDs
+  categoriesTv        Int[] // Torznab category IDs
+  priority            Int         @default(50)
+  enabled             Boolean     @default(true)
+  rateLimitEnabled    Boolean     @default(false)
+  rateLimitMax        Int? // Max requests in time window
+  rateLimitWindowSecs Int? // Time window in seconds
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
 
-  rateLimitRequests   IndexerRateLimitRequest[]
+  rateLimitRequests IndexerRateLimitRequest[]
 
   @@index([enabled, priority])
   @@index([type, enabled])
@@ -200,29 +200,29 @@ model IndexerRateLimitRequest {
 
 // Cardigann indexers (uses YML definitions from repository)
 model CardigannIndexer {
-  id               String   @id @default(cuid())
-  definitionId     String   // ID of the definition from CardigannRepository
-  name             String   // User-friendly name (can override definition name)
+  id           String @id @default(cuid())
+  definitionId String // ID of the definition from CardigannRepository
+  name         String // User-friendly name (can override definition name)
 
   // User-specific configuration (matches settings fields from Cardigann definition)
   // Example: { username: "user", password: "pass", cookie: "..." }
-  settings         Json     @default("{}")
+  settings Json @default("{}")
 
   // Indexer configuration
-  categoriesMovies Int[]    // Torznab category IDs for movies
-  categoriesTv     Int[]    // Torznab category IDs for TV
-  priority         Int      @default(50)
-  enabled          Boolean  @default(true)
+  categoriesMovies Int[] // Torznab category IDs for movies
+  categoriesTv     Int[] // Torznab category IDs for TV
+  priority         Int     @default(50)
+  enabled          Boolean @default(true)
 
   // Rate limiting
-  rateLimitEnabled    Boolean  @default(false)
-  rateLimitMax        Int?     // Max requests in time window
-  rateLimitWindowSecs Int?     // Time window in seconds
+  rateLimitEnabled    Boolean @default(false)
+  rateLimitMax        Int? // Max requests in time window
+  rateLimitWindowSecs Int? // Time window in seconds
 
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  rateLimitRequests   CardigannIndexerRateLimitRequest[]
+  rateLimitRequests CardigannIndexerRateLimitRequest[]
 
   @@index([enabled, priority])
   @@index([definitionId])
@@ -231,10 +231,10 @@ model CardigannIndexer {
 
 // Rate limit tracking for Cardigann indexers
 model CardigannIndexerRateLimitRequest {
-  id          String   @id @default(cuid())
+  id          String           @id @default(cuid())
   indexerId   String
   indexer     CardigannIndexer @relation(fields: [indexerId], references: [id], onDelete: Cascade)
-  requestedAt DateTime @default(now())
+  requestedAt DateTime         @default(now())
 
   @@index([indexerId, requestedAt])
   @@index([requestedAt])
@@ -245,70 +245,76 @@ model CardigannIndexerRateLimitRequest {
 // =============================================================================
 
 model MediaRequest {
-  id               String        @id @default(cuid())
-  type             MediaType
-  tmdbId           Int
-  title            String
-  year             Int
-  posterPath       String?       // Store for list display
-  requestedSeasons Int[]         // For TV shows (empty = all seasons)
-  requestedEpisodes Json?        // For specific episodes: [{season: 1, episode: 1}]
+  id                String    @id @default(cuid())
+  type              MediaType
+  tmdbId            Int
+  title             String
+  year              Int
+  posterPath        String? // Store for list display
+  requestedSeasons  Int[] // For TV shows (empty = all seasons)
+  requestedEpisodes Json? // For specific episodes: [{season: 1, episode: 1}]
 
   // Target servers with optional per-server encoding profile overrides
   // Format: [{serverId: "...", encodingProfileId?: "..."}]
   // If encodingProfileId is omitted, uses server's default profile
-  targets          Json          @default("[]")
+  targets Json @default("[]")
 
-  status           RequestStatus @default(PENDING)
-  progress         Float         @default(0)
-  currentStep      String?
-  currentStepStartedAt DateTime?  // Track when current step started
-  error            String?
+  status               RequestStatus @default(PENDING)
+  progress             Float         @default(0)
+  currentStep          String?
+  currentStepStartedAt DateTime? // Track when current step started
+  error                String?
 
   // Pipeline state - allows resuming from where we left off
-  selectedRelease  Json?         // The release selected from indexer search
-  torrentHash      String?       // qBittorrent torrent hash (deprecated - use Download model)
-  sourceFilePath   String?       // Path to downloaded source file
-  encodedFiles     Json?         // [{profileId, path, targetServerIds}] - encoded files ready for delivery
+  selectedRelease Json? // The release selected from indexer search
+  torrentHash     String? // qBittorrent torrent hash (deprecated - use Download model)
+  sourceFilePath  String? // Path to downloaded source file
+  encodedFiles    Json? // [{profileId, path, targetServerIds}] - encoded files ready for delivery
 
   // Torrent metadata (captured at time of selection)
-  releaseFileSize      BigInt?       // Bytes
-  releaseIndexerName   String?       // Name of indexer
-  releaseSeeders       Int?          // Initial seeders
-  releaseLeechers      Int?          // Initial leechers
-  releaseResolution    String?       // e.g., "1080p", "2160p"
-  releaseSource        String?       // e.g., "BluRay", "WEB-DL"
-  releaseCodec         String?       // e.g., "HEVC", "H264"
-  releaseScore         Int?          // Quality score
-  releasePublishDate   DateTime?     // When release was published
-  releaseName          String?       // Full release name/title
+  releaseFileSize    BigInt? // Bytes
+  releaseIndexerName String? // Name of indexer
+  releaseSeeders     Int? // Initial seeders
+  releaseLeechers    Int? // Initial leechers
+  releaseResolution  String? // e.g., "1080p", "2160p"
+  releaseSource      String? // e.g., "BluRay", "WEB-DL"
+  releaseCodec       String? // e.g., "HEVC", "H264"
+  releaseScore       Int? // Quality score
+  releasePublishDate DateTime? // When release was published
+  releaseName        String? // Full release name/title
 
   // Quality requirements (derived from target servers)
-  requiredResolution  String?    // e.g., "2160p", "1080p" - minimum required resolution
-  availableReleases   Json?      // Lower-quality alternatives when quality unavailable
-  qualitySearchedAt   DateTime?  // When we last searched for quality releases
+  requiredResolution String? // e.g., "2160p", "1080p" - minimum required resolution
+  availableReleases  Json? // Lower-quality alternatives when quality unavailable
+  qualitySearchedAt  DateTime? // When we last searched for quality releases
 
   // TV monitoring - for automatically downloading new episodes
-  monitoring       Boolean       @default(false)  // Keep watching for new episodes (legacy)
-  subscribe        Boolean       @default(false)  // Subscribe to future episode releases
-  lastCheckedAt    DateTime?     // Last time we checked for new episodes
+  monitoring    Boolean   @default(false) // Keep watching for new episodes (legacy)
+  subscribe     Boolean   @default(false) // Subscribe to future episode releases
+  lastCheckedAt DateTime? // Last time we checked for new episodes
 
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  completedAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  // Aggregate status (computed from ProcessingItems)
+  totalItems     Int @default(0)
+  completedItems Int @default(0)
+  failedItems    Int @default(0)
 
   // Relations
-  user             User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
-  userId           String?
-  activityLog      ActivityLog[]
-  tvEpisodes       TvEpisode[]   // Track individual episode status for TV shows
-  downloads        Download[]    // All downloads associated with this request
-  jobs             Job[]         // All jobs associated with this request
-  pipelineExecutions PipelineExecution[]  // Main execution + episode branches
-  approvalQueue    ApprovalQueue[]
+  user               User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId             String?
+  activityLog        ActivityLog[]
+  tvEpisodes         TvEpisode[] // Track individual episode status for TV shows (LEGACY - being replaced by ProcessingItem)
+  downloads          Download[] // All downloads associated with this request
+  jobs               Job[] // All jobs associated with this request
+  pipelineExecutions PipelineExecution[] // Main execution + episode branches (LEGACY - being replaced)
+  processingItems    ProcessingItem[] // NEW: Universal work tracking
+  approvalQueue      ApprovalQueue[]
 
   @@index([userId])
-  @@index([monitoring, type])  // For finding monitored TV shows
+  @@index([monitoring, type]) // For finding monitored TV shows
   @@index([status])
   @@index([createdAt])
   @@index([status, createdAt])
@@ -319,49 +325,50 @@ model MediaRequest {
 // =============================================================================
 
 model Download {
-  id              String         @id @default(cuid())
-  requestId       String
-  request         MediaRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  id        String       @id @default(cuid())
+  requestId String
+  request   MediaRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   // qBittorrent tracking
-  torrentHash     String         @unique  // qBittorrent identifier
-  torrentName     String                  // Original torrent name
-  magnetUri       String?                 // Magnet link used to add (for recovery)
+  torrentHash String  @unique // qBittorrent identifier
+  torrentName String // Original torrent name
+  magnetUri   String? // Magnet link used to add (for recovery)
 
   // Paths
-  savePath        String?                 // qBittorrent save_path
-  contentPath     String?                 // qBittorrent content_path
+  savePath    String? // qBittorrent save_path
+  contentPath String? // qBittorrent content_path
 
   // Status & Progress
-  status          DownloadStatus @default(PENDING)
-  progress        Float          @default(0)  // 0-100
-  size            BigInt?                     // Total size in bytes
-  error           String?
-  failureReason   String?                     // Why last attempt failed
+  status        DownloadStatus @default(PENDING)
+  progress      Float          @default(0) // 0-100
+  size          BigInt? // Total size in bytes
+  error         String?
+  failureReason String? // Why last attempt failed
 
   // Type info - determines how to process
-  mediaType       MediaType                   // MOVIE or TV
-  isSeasonPack    Boolean        @default(false)
-  season          Int?                        // For TV season packs
+  mediaType    MediaType // MOVIE or TV
+  isSeasonPack Boolean   @default(false)
+  season       Int? // For TV season packs
 
   // Retry tracking
-  attemptCount          Int        @default(1)
-  lastAttemptAt         DateTime?
-  alternativeReleases   Json?                  // Array of backup releases to try
+  attemptCount        Int       @default(1)
+  lastAttemptAt       DateTime?
+  alternativeReleases Json? // Array of backup releases to try
 
   // Health tracking
-  lastProgressAt        DateTime?              // Last time progress increased
-  seedCount             Int?                   // Current seed count
-  peerCount             Int?                   // Current peer count
+  lastProgressAt DateTime? // Last time progress increased
+  seedCount      Int? // Current seed count
+  peerCount      Int? // Current peer count
 
   // Timestamps
-  startedAt       DateTime?
-  completedAt     DateTime?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   // Relations
-  tvEpisodes      TvEpisode[]    // For TV: episodes this download provides
+  tvEpisodes      TvEpisode[] // For TV: episodes this download provides (LEGACY)
+  processingItems ProcessingItem[] // NEW: Processing items using this download
   events          DownloadEvent[]
 
   @@index([requestId])
@@ -370,27 +377,27 @@ model Download {
 }
 
 enum DownloadStatus {
-  PENDING       // Queued, not yet started
-  DOWNLOADING   // Active in qBittorrent
-  COMPLETED     // Download finished, ready for processing
-  IMPORTING     // File mapping / import in progress
-  PROCESSED     // All files encoded and delivered
-  CLEANED       // Torrent removed, source files deleted
-  FAILED        // Error occurred
-  CANCELLED     // User cancelled
-  STALLED       // No progress, awaiting recovery
+  PENDING // Queued, not yet started
+  DOWNLOADING // Active in qBittorrent
+  COMPLETED // Download finished, ready for processing
+  IMPORTING // File mapping / import in progress
+  PROCESSED // All files encoded and delivered
+  CLEANED // Torrent removed, source files deleted
+  FAILED // Error occurred
+  CANCELLED // User cancelled
+  STALLED // No progress, awaiting recovery
 }
 
 // Download event log for audit trail
 model DownloadEvent {
-  id          String   @id @default(cuid())
-  downloadId  String
-  download    Download @relation(fields: [downloadId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  downloadId String
+  download   Download @relation(fields: [downloadId], references: [id], onDelete: Cascade)
 
-  event       String   // "started", "progress", "completed", "failed", "retried", "cleaned"
-  details     Json?    // Event-specific data
+  event   String // "started", "progress", "completed", "failed", "retried", "cleaned"
+  details Json? // Event-specific data
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([downloadId])
   @@index([event, createdAt])
@@ -401,42 +408,42 @@ model DownloadEvent {
 // =============================================================================
 
 model TvEpisode {
-  id              String              @id @default(cuid())
-  requestId       String
-  request         MediaRequest        @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  id        String       @id @default(cuid())
+  requestId String
+  request   MediaRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
   // Episode identity
-  season          Int
-  episode         Int
-  title           String?             // Episode title from TMDB
-  airDate         DateTime?           // When episode airs
+  season  Int
+  episode Int
+  title   String? // Episode title from TMDB
+  airDate DateTime? // When episode airs
 
   // Link to download (set when download is created/assigned)
-  downloadId      String?
-  download        Download?           @relation(fields: [downloadId], references: [id], onDelete: SetNull)
+  downloadId String?
+  download   Download? @relation(fields: [downloadId], references: [id], onDelete: SetNull)
 
   // File mapping (set when download completes)
-  sourceFilePath  String?             // Specific file within the download for this episode
+  sourceFilePath String? // Specific file within the download for this episode
 
   // Processing status
-  status          TvEpisodeStatus     @default(PENDING)
-  progress        Float               @default(0)  // 0-100 encoding progress
-  error           String?
+  status   TvEpisodeStatus @default(PENDING)
+  progress Float           @default(0) // 0-100 encoding progress
+  error    String?
 
   // Quality tracking per episode
-  qualityMet          Boolean         @default(false)  // Did we find matching quality?
-  availableReleases   Json?           // Lower-quality alternatives for this episode
+  qualityMet        Boolean @default(false) // Did we find matching quality?
+  availableReleases Json? // Lower-quality alternatives for this episode
 
   // Timestamps
-  downloadedAt    DateTime?           // When source file became available
-  encodedAt       DateTime?           // When encoding completed
-  deliveredAt     DateTime?           // When delivered to all targets
+  downloadedAt DateTime? // When source file became available
+  encodedAt    DateTime? // When encoding completed
+  deliveredAt  DateTime? // When delivered to all targets
 
   // Branch pipeline execution for this episode
   branchExecution PipelineExecution?
 
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([requestId, season, episode])
   @@index([requestId, status])
@@ -444,18 +451,89 @@ model TvEpisode {
 }
 
 enum TvEpisodeStatus {
-  PENDING               // Not yet started
-  AWAITING              // Not aired yet / no release found
-  QUALITY_UNAVAILABLE   // Releases found but none meet quality requirements
-  SEARCHING             // Looking for release
-  DOWNLOADING           // Download in progress (linked to Download)
-  DOWNLOADED            // File available, awaiting encoding
-  ENCODING              // Encoding in progress
-  ENCODED               // Encoding done, awaiting delivery
-  DELIVERING            // Transfer in progress
-  COMPLETED             // Done
-  FAILED                // Error occurred
-  SKIPPED               // Already in library
+  PENDING // Not yet started
+  AWAITING // Not aired yet / no release found
+  QUALITY_UNAVAILABLE // Releases found but none meet quality requirements
+  SEARCHING // Looking for release
+  DOWNLOADING // Download in progress (linked to Download)
+  DOWNLOADED // File available, awaiting encoding
+  ENCODING // Encoding in progress
+  ENCODED // Encoding done, awaiting delivery
+  DELIVERING // Transfer in progress
+  COMPLETED // Done
+  FAILED // Error occurred
+  SKIPPED // Already in library
+}
+
+// =============================================================================
+// Processing Items - Universal Work Tracking (NEW PIPELINE SYSTEM)
+// =============================================================================
+
+// ProcessingItem represents a single unit of work in the pipeline
+// Can be a movie or a single TV episode - unified abstraction
+model ProcessingItem {
+  id        String @id @default(cuid())
+  requestId String
+
+  // What we're processing
+  type    ProcessingType
+  tmdbId  Int
+  title   String
+  year    Int?
+  season  Int? // For EPISODE type only
+  episode Int? // For EPISODE type only
+
+  // Pipeline state
+  status      ProcessingStatus
+  currentStep String?
+  stepContext Json             @default("{}") // Step-specific state data
+
+  // Retry handling
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  lastError   String?
+  nextRetryAt DateTime?
+
+  // Progress tracking
+  progress    Int       @default(0) // 0-100
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  // External references
+  downloadId    String?
+  encodingJobId String?
+
+  // Relations
+  request  MediaRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  download Download?    @relation(fields: [downloadId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([requestId])
+  @@index([status])
+  @@index([status, nextRetryAt])
+  @@index([requestId, status])
+  @@index([type, status])
+}
+
+enum ProcessingType {
+  MOVIE
+  EPISODE
+}
+
+enum ProcessingStatus {
+  PENDING // Initial state
+  SEARCHING // Looking for releases
+  FOUND // Release selected
+  DOWNLOADING // Download in progress
+  DOWNLOADED // Download complete, file validated
+  ENCODING // Encoding in progress
+  ENCODED // Encoding complete, file validated
+  DELIVERING // Delivery in progress
+  COMPLETED // Delivered to all targets
+  FAILED // Permanent failure
+  CANCELLED // User cancelled
 }
 
 // =============================================================================
@@ -463,35 +541,35 @@ enum TvEpisodeStatus {
 // =============================================================================
 
 model QualityProfile {
-  id                    String   @id @default(cuid())
-  name                  String   @unique
+  id   String @id @default(cuid())
+  name String @unique
 
   // Resolution preferences (in order)
-  preferredResolutions  String[] // ["2160p", "1080p", "720p"]
-  minResolution         String   @default("720p")
+  preferredResolutions String[] // ["2160p", "1080p", "720p"]
+  minResolution        String   @default("720p")
 
   // Source preferences (in order)
-  preferredSources      String[] // ["BluRay", "WEB-DL", "WEBRip", "HDTV"]
+  preferredSources String[] // ["BluRay", "WEB-DL", "WEBRip", "HDTV"]
 
   // Codec preferences
-  preferredCodecs       String[] // ["x265", "x264", "AV1"]
+  preferredCodecs String[] // ["x265", "x264", "AV1"]
 
   // Size limits
-  minSizeGB             Float?   // Reject if smaller (likely bad quality)
-  maxSizeGB             Float?   // Reject if larger
+  minSizeGB Float? // Reject if smaller (likely bad quality)
+  maxSizeGB Float? // Reject if larger
 
   // Release group preferences
-  preferredGroups       String[] // Trusted release groups
-  bannedGroups          String[] // Known bad groups
+  preferredGroups String[] // Trusted release groups
+  bannedGroups    String[] // Known bad groups
 
   // Upgrade settings
-  allowUpgrades         Boolean  @default(true)
+  allowUpgrades          Boolean @default(true)
   upgradeUntilResolution String? // Stop upgrading once we have this
 
-  isDefault             Boolean  @default(false)
+  isDefault Boolean @default(false)
 
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // =============================================================================
@@ -499,13 +577,13 @@ model QualityProfile {
 // =============================================================================
 
 model BadRelease {
-  id          String   @id @default(cuid())
-  torrentHash String?  @unique // If we know the hash
-  title       String?          // Release title pattern
-  indexer     String?          // Which indexer it came from
-  reason      String           // Why it's bad (content_mismatch, corrupt, etc.)
+  id          String  @id @default(cuid())
+  torrentHash String? @unique // If we know the hash
+  title       String? // Release title pattern
+  indexer     String? // Which indexer it came from
+  reason      String // Why it's bad (content_mismatch, corrupt, etc.)
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([title])
 }
@@ -517,14 +595,17 @@ enum MediaType {
 
 enum RequestStatus {
   PENDING
+  PROCESSING // NEW: At least one item is being processed
   SEARCHING
-  AWAITING              // No releases found, waiting for availability
-  QUALITY_UNAVAILABLE   // Releases found but none meet quality requirements
+  AWAITING // No releases found, waiting for availability
+  QUALITY_UNAVAILABLE // Releases found but none meet quality requirements
   DOWNLOADING
   ENCODING
   DELIVERING
   COMPLETED
+  PARTIAL // NEW: Some items completed, some failed
   FAILED
+  CANCELLED // NEW: User cancelled
 }
 
 // =============================================================================
@@ -532,27 +613,27 @@ enum RequestStatus {
 // =============================================================================
 
 model SyncState {
-  id            String    @id @default("default")  // Single row, use fixed ID
+  id String @id @default("default") // Single row, use fixed ID
 
   // MDBList sync state (fullSync)
-  mdblistJobId          String?   // Current job ID if running
-  mdblistMovieExportUrl String?   // TMDB export URL being used
-  mdblistTvExportUrl    String?   // TMDB export URL being used
-  mdblistLastMovieId    Int?      // Last processed TMDB movie ID (descending order)
-  mdblistLastTvId       Int?      // Last processed TMDB TV ID (descending order)
-  mdblistMovieTotal     Int?      // Total movies to process
-  mdblistTvTotal        Int?      // Total TV shows to process
+  mdblistJobId          String? // Current job ID if running
+  mdblistMovieExportUrl String? // TMDB export URL being used
+  mdblistTvExportUrl    String? // TMDB export URL being used
+  mdblistLastMovieId    Int? // Last processed TMDB movie ID (descending order)
+  mdblistLastTvId       Int? // Last processed TMDB TV ID (descending order)
+  mdblistMovieTotal     Int? // Total movies to process
+  mdblistTvTotal        Int? // Total TV shows to process
   mdblistStartedAt      DateTime? // When sync started
 
   // TMDB sync state (fullTMDBSync)
-  tmdbJobId             String?   // Current job ID if running
-  tmdbLastMovieId       Int?      // Last processed TMDB movie ID
-  tmdbLastTvId          Int?      // Last processed TMDB TV ID
-  tmdbMovieTotal        Int?      // Total movies to process
-  tmdbTvTotal           Int?      // Total TV shows to process
-  tmdbStartedAt         DateTime? // When sync started
+  tmdbJobId       String? // Current job ID if running
+  tmdbLastMovieId Int? // Last processed TMDB movie ID
+  tmdbLastTvId    Int? // Last processed TMDB TV ID
+  tmdbMovieTotal  Int? // Total movies to process
+  tmdbTvTotal     Int? // Total TV shows to process
+  tmdbStartedAt   DateTime? // When sync started
 
-  updatedAt     DateTime  @updatedAt
+  updatedAt DateTime @updatedAt
 }
 
 // =============================================================================
@@ -560,52 +641,52 @@ model SyncState {
 // =============================================================================
 
 model Job {
-  id            String      @id @default(cuid())
-  type          String      // Job type identifier
-  payload       Json        // Job data
-  dedupeKey     String?     // Optional key for deduplication (e.g., "tv:encode:episodeId")
+  id        String  @id @default(cuid())
+  type      String // Job type identifier
+  payload   Json // Job data
+  dedupeKey String? // Optional key for deduplication (e.g., "tv:encode:episodeId")
 
-  status        JobStatus   @default(PENDING)
-  priority      Int         @default(0)
-  attempts      Int         @default(0)
-  maxAttempts   Int         @default(3)
+  status      JobStatus @default(PENDING)
+  priority    Int       @default(0)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
 
   // Progress tracking
-  progress      Float       @default(0)  // 0-100 percentage
-  progressTotal Int?        // Total items to process
-  progressCurrent Int?      // Current item index
-  estimatedEnd  DateTime?   // Calculated ETA
+  progress        Float     @default(0) // 0-100 percentage
+  progressTotal   Int? // Total items to process
+  progressCurrent Int? // Current item index
+  estimatedEnd    DateTime? // Calculated ETA
 
-  error         String?
-  result        Json?
+  error  String?
+  result Json?
 
-  lockedAt      DateTime?   // When a worker picked up the job
-  lockedBy      String?     // Worker identifier
+  lockedAt DateTime? // When a worker picked up the job
+  lockedBy String? // Worker identifier
 
   // Worker & heartbeat tracking (crash resilience)
-  workerId      String?     // Which worker instance owns this job
-  heartbeatAt   DateTime?   // Last heartbeat from worker
+  workerId    String? // Which worker instance owns this job
+  heartbeatAt DateTime? // Last heartbeat from worker
 
   // Job hierarchy for complex workflows
-  parentJobId   String?
-  parentJob     Job?        @relation("JobHierarchy", fields: [parentJobId], references: [id], onDelete: SetNull)
-  childJobs     Job[]       @relation("JobHierarchy")
+  parentJobId String?
+  parentJob   Job?    @relation("JobHierarchy", fields: [parentJobId], references: [id], onDelete: SetNull)
+  childJobs   Job[]   @relation("JobHierarchy")
 
   // Request linkage for traceability
-  requestId     String?
-  request       MediaRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  requestId String?
+  request   MediaRequest? @relation(fields: [requestId], references: [id], onDelete: SetNull)
 
   // Cancellation tracking (persisted, not in-memory)
-  cancelRequested Boolean   @default(false)
+  cancelRequested Boolean @default(false)
 
-  scheduledFor  DateTime    @default(now())
-  startedAt     DateTime?
-  completedAt   DateTime?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  scheduledFor DateTime  @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   // Remote encoder assignment (if using distributed encoding)
-  encoderAssignment  EncoderAssignment?
+  encoderAssignment EncoderAssignment?
 
   @@index([status, scheduledFor])
   @@index([type, status])
@@ -630,14 +711,14 @@ enum JobStatus {
 // =============================================================================
 
 model Worker {
-  id            String        @id @default(cuid())
-  workerId      String        @unique  // hostname:pid:timestamp
-  hostname      String
-  nodePid       Int           // Node.js process PID
+  id       String @id @default(cuid())
+  workerId String @unique // hostname:pid:timestamp
+  hostname String
+  nodePid  Int // Node.js process PID
 
-  status        WorkerStatus  @default(ACTIVE)
-  startedAt     DateTime      @default(now())
-  lastHeartbeat DateTime      @default(now())
+  status        WorkerStatus @default(ACTIVE)
+  startedAt     DateTime     @default(now())
+  lastHeartbeat DateTime     @default(now())
 
   @@index([status, lastHeartbeat])
 }
@@ -653,9 +734,9 @@ enum WorkerStatus {
 // =============================================================================
 
 model SchedulerState {
-  taskId      String    @id  // Task identifier (e.g., "rss-poll", "library-sync-xxx")
-  lastRunAt   DateTime  // When the task last completed
-  updatedAt   DateTime  @updatedAt
+  taskId    String   @id // Task identifier (e.g., "rss-poll", "library-sync-xxx")
+  lastRunAt DateTime // When the task last completed
+  updatedAt DateTime @updatedAt
 }
 
 // =============================================================================
@@ -689,16 +770,16 @@ enum ActivityType {
 // =============================================================================
 
 model LibraryItem {
-  id        String   @id @default(cuid())
-  tmdbId    Int
-  type      MediaType
-  quality   String?
-  addedAt   DateTime?
-  syncedAt  DateTime @default(now())
+  id       String    @id @default(cuid())
+  tmdbId   Int
+  type     MediaType
+  quality  String?
+  addedAt  DateTime?
+  syncedAt DateTime  @default(now())
 
   // Relations
-  server    StorageServer @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  serverId  String
+  server   StorageServer @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  serverId String
 
   @@unique([tmdbId, type, serverId])
   @@index([tmdbId, type])
@@ -708,17 +789,17 @@ model LibraryItem {
 
 // Episode-level library tracking for TV shows
 model EpisodeLibraryItem {
-  id            String   @id @default(cuid())
-  tmdbId        Int      // Show TMDB ID
-  season        Int
-  episode       Int
-  quality       String?
-  addedAt       DateTime?
-  syncedAt      DateTime @default(now())
+  id       String    @id @default(cuid())
+  tmdbId   Int // Show TMDB ID
+  season   Int
+  episode  Int
+  quality  String?
+  addedAt  DateTime?
+  syncedAt DateTime  @default(now())
 
   // Relations
-  server        StorageServer @relation(fields: [serverId], references: [id], onDelete: Cascade)
-  serverId      String
+  server   StorageServer @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  serverId String
 
   @@unique([tmdbId, season, episode, serverId])
   @@index([tmdbId, serverId])
@@ -730,61 +811,61 @@ model EpisodeLibraryItem {
 // =============================================================================
 
 model MediaItem {
-  id            String    @id // Format: tmdb-movie-12345 or tmdb-tv-67890
-  tmdbId        Int
-  imdbId        String?
-  traktId       Int?
-  tvdbId        Int?
-  malId         Int?      // MyAnimeList ID
-  type          MediaType
+  id      String    @id // Format: tmdb-movie-12345 or tmdb-tv-67890
+  tmdbId  Int
+  imdbId  String?
+  traktId Int?
+  tvdbId  Int?
+  malId   Int? // MyAnimeList ID
+  type    MediaType
 
   // Basic metadata
   title         String
   originalTitle String?
   year          Int?
-  releaseDate   String?   // YYYY-MM-DD format
+  releaseDate   String? // YYYY-MM-DD format
   overview      String?
   tagline       String?
 
   // Images
-  posterPath    String?
-  backdropPath  String?
+  posterPath   String?
+  backdropPath String?
 
   // Classification
   genres        String[]
   keywords      String[]
-  certification String?   // PG-13, R, TV-MA, etc.
+  certification String? // PG-13, R, TV-MA, etc.
 
   // Details
-  runtime       Int?      // minutes
-  status        String?   // Released, In Production, Ended, etc.
-  language      String?   // Original language (ISO 639-1 code)
-  country       String?   // Production country
+  runtime  Int? // minutes
+  status   String? // Released, In Production, Ended, etc.
+  language String? // Original language (ISO 639-1 code)
+  country  String? // Production country
 
   // Extended language/region info
-  spokenLanguages    String[]  // ISO 639-1 codes of all spoken languages
+  spokenLanguages     String[] // ISO 639-1 codes of all spoken languages
   productionCountries String[] // ISO 3166-1 country codes
 
   // TV-specific
   numberOfSeasons  Int?
   numberOfEpisodes Int?
-  networks         Json?     // Array of {id, name, logoPath, originCountry}
-  createdBy        String[]  // Creator names
+  networks         Json? // Array of {id, name, logoPath, originCountry}
+  createdBy        String[] // Creator names
 
   // Movie-specific
-  director         String?   // Primary director name
-  budget           BigInt?
-  revenue          BigInt?
+  director String? // Primary director name
+  budget   BigInt?
+  revenue  BigInt?
 
   // Credits (stored as JSON arrays)
-  cast             Json?     // Array of {id, name, character, profilePath, order}
-  crew             Json?     // Array of {id, name, job, department, profilePath}
+  cast Json? // Array of {id, name, character, profilePath, order}
+  crew Json? // Array of {id, name, job, department, profilePath}
 
   // Videos/Trailers (stored as JSON array)
-  videos           Json?     // Array of {id, key, name, site, type, official}
+  videos Json? // Array of {id, key, name, site, type, official}
 
   // Production
-  productionCompanies Json?  // Array of {id, name, logoPath, originCountry}
+  productionCompanies Json? // Array of {id, name, logoPath, originCountry}
 
   // Streaming availability (JSON array of provider objects)
   watchProviders Json?
@@ -797,8 +878,8 @@ model MediaItem {
   traktUpdatedAt   DateTime? // Last time we fetched from Trakt
 
   // Relations
-  ratings       MediaRatings?
-  seasons       Season[]
+  ratings MediaRatings?
+  seasons Season[]
 
   @@index([tmdbId, type])
   @@index([imdbId])
@@ -816,42 +897,42 @@ model MediaItem {
 // =============================================================================
 
 model Season {
-  id            String    @id @default(cuid())
-  seasonNumber  Int
-  name          String
-  overview      String?
-  posterPath    String?
-  airDate       String?   // YYYY-MM-DD format
-  episodeCount  Int       @default(0)
+  id           String  @id @default(cuid())
+  seasonNumber Int
+  name         String
+  overview     String?
+  posterPath   String?
+  airDate      String? // YYYY-MM-DD format
+  episodeCount Int     @default(0)
 
   // Relations
-  mediaItem     MediaItem @relation(fields: [mediaItemId], references: [id], onDelete: Cascade)
-  mediaItemId   String
-  episodes      Episode[]
+  mediaItem   MediaItem @relation(fields: [mediaItemId], references: [id], onDelete: Cascade)
+  mediaItemId String
+  episodes    Episode[]
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([mediaItemId, seasonNumber])
   @@index([mediaItemId])
 }
 
 model Episode {
-  id            String    @id @default(cuid())
+  id            String  @id @default(cuid())
   episodeNumber Int
   seasonNumber  Int
   name          String
   overview      String?
   stillPath     String?
-  airDate       String?   // YYYY-MM-DD format
-  runtime       Int?      // minutes
+  airDate       String? // YYYY-MM-DD format
+  runtime       Int? // minutes
 
   // Relations
-  season        Season    @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  seasonId      String
+  season   Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  seasonId String
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([seasonId, episodeNumber])
   @@index([seasonId])
@@ -862,48 +943,48 @@ model Episode {
 // =============================================================================
 
 model MediaRatings {
-  id                    String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // TMDB
-  tmdbScore             Float?   // 0-10
-  tmdbVotes             Int?
-  tmdbPopularity        Float?
+  tmdbScore      Float? // 0-10
+  tmdbVotes      Int?
+  tmdbPopularity Float?
 
   // IMDB
-  imdbScore             Float?   // 0-10
-  imdbVotes             Int?
+  imdbScore Float? // 0-10
+  imdbVotes Int?
 
   // Rotten Tomatoes
-  rtCriticScore         Int?     // 0-100 (Tomatometer)
-  rtAudienceScore       Int?     // 0-100
+  rtCriticScore   Int? // 0-100 (Tomatometer)
+  rtAudienceScore Int? // 0-100
 
   // Metacritic
-  metacriticScore       Int?     // 0-100
-  metacriticUserScore   Float?   // 0-10
+  metacriticScore     Int? // 0-100
+  metacriticUserScore Float? // 0-10
 
   // Trakt
-  traktScore            Int?     // 0-100
-  traktVotes            Int?
+  traktScore Int? // 0-100
+  traktVotes Int?
 
   // Letterboxd
-  letterboxdScore       Int?     // 0-100 (converted from 0-5)
+  letterboxdScore Int? // 0-100 (converted from 0-5)
 
   // Roger Ebert
-  rogerebtScore         Float?   // 0-4 stars
+  rogerebtScore Float? // 0-4 stars
 
   // MyAnimeList
-  malScore              Float?   // 0-10
+  malScore Float? // 0-10
 
   // MDBList aggregate score
-  mdblistScore          Int?     // 0-100
-  mdblistRank           Int?     // Overall rank
+  mdblistScore Int? // 0-100
+  mdblistRank  Int? // Overall rank
 
   // Popularity tracking
-  popularityScore       Float?   // Based on votes/plays/watchers
+  popularityScore Float? // Based on votes/plays/watchers
 
   // Relations
-  media                 MediaItem @relation(fields: [mediaId], references: [id], onDelete: Cascade)
-  mediaId               String    @unique
+  media   MediaItem @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+  mediaId String    @unique
 
   @@index([popularityScore])
   @@index([mdblistScore])
@@ -914,23 +995,23 @@ model MediaRatings {
 // =============================================================================
 
 model TraktListCache {
-  id          String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Cache key components
-  listType    String   // "trending", "popular", "favorited", "played", "watched", "collected"
-  mediaType   String   // "movie" or "tv"
-  page        Int
-  period      String   @default("") // For time-based lists (played, watched, collected), empty string if not applicable
-  filterHash  String   @default("") // MD5 hash of filter parameters for uniqueness, empty string if no filters
+  listType   String // "trending", "popular", "favorited", "played", "watched", "collected"
+  mediaType  String // "movie" or "tv"
+  page       Int
+  period     String @default("") // For time-based lists (played, watched, collected), empty string if not applicable
+  filterHash String @default("") // MD5 hash of filter parameters for uniqueness, empty string if no filters
 
   // Cached data
-  results      Json     // Array of TraktDiscoverItem with hydrated inLibrary/requestStatus
+  results      Json // Array of TraktDiscoverItem with hydrated inLibrary/requestStatus
   totalPages   Int
   totalResults Int
 
   // Timestamps
-  createdAt   DateTime @default(now())
-  expiresAt   DateTime // createdAt + 6 hours
+  createdAt DateTime @default(now())
+  expiresAt DateTime // createdAt + 6 hours
 
   @@unique([listType, mediaType, page, period, filterHash])
   @@index([expiresAt])
@@ -942,35 +1023,35 @@ model TraktListCache {
 // =============================================================================
 
 model RemoteEncoder {
-  id              String           @id @default(cuid())
-  encoderId       String           @unique  // Unique identifier e.g., "encoder-vm-1"
-  name            String?                   // Human-readable name
+  id        String  @id @default(cuid())
+  encoderId String  @unique // Unique identifier e.g., "encoder-vm-1"
+  name      String? // Human-readable name
 
   // Capabilities
-  gpuDevice       String                    // e.g., "/dev/dri/renderD128"
-  maxConcurrent   Int              @default(1)
-  capabilities    Json?                     // Detected encoder capabilities (video/audio encoders, hwaccel, etc.)
+  gpuDevice     String // e.g., "/dev/dri/renderD128"
+  maxConcurrent Int    @default(1)
+  capabilities  Json? // Detected encoder capabilities (video/audio encoders, hwaccel, etc.)
 
   // State
-  status          EncoderStatus    @default(OFFLINE)
-  currentJobs     Int              @default(0)
-  lastHeartbeat   DateTime?
-  blockedUntil    DateTime?        // Temporary block after capacity error
+  status        EncoderStatus @default(OFFLINE)
+  currentJobs   Int           @default(0)
+  lastHeartbeat DateTime?
+  blockedUntil  DateTime? // Temporary block after capacity error
 
   // Statistics
-  totalJobsCompleted Int           @default(0)
-  totalJobsFailed    Int           @default(0)
-  avgEncodingSpeed   Float?        // x realtime
+  totalJobsCompleted Int    @default(0)
+  totalJobsFailed    Int    @default(0)
+  avgEncodingSpeed   Float? // x realtime
 
   // Connection info (for debugging)
-  hostname        String?
-  version         String?
+  hostname String?
+  version  String?
 
   // Relations
-  assignments     EncoderAssignment[]
+  assignments EncoderAssignment[]
 
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status, currentJobs])
 }
@@ -983,54 +1064,54 @@ enum EncoderStatus {
 }
 
 model EncoderAssignment {
-  id              String           @id @default(cuid())
+  id String @id @default(cuid())
 
   // Job reference
-  jobId           String           @unique
-  job             Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  jobId String @unique
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
   // Encoder reference (uses encoderId string, not the cuid id)
-  encoderId       String
-  encoder         RemoteEncoder    @relation(fields: [encoderId], references: [encoderId], onDelete: Cascade)
+  encoderId String
+  encoder   RemoteEncoder @relation(fields: [encoderId], references: [encoderId], onDelete: Cascade)
 
   // Encode details (copied from job for resilience)
-  inputPath       String
-  outputPath      String
+  inputPath  String
+  outputPath String
 
   // State
-  status          AssignmentStatus @default(PENDING)
-  attempt         Int              @default(1)
-  maxAttempts     Int              @default(10)
-  error           String?
+  status      AssignmentStatus @default(PENDING)
+  attempt     Int              @default(1)
+  maxAttempts Int              @default(10)
+  error       String?
 
   // Progress
-  progress        Float            @default(0)  // 0-100
-  fps             Float?
-  speed           Float?           // x realtime
-  eta             Int?             // seconds remaining
+  progress Float  @default(0) // 0-100
+  fps      Float?
+  speed    Float? // x realtime
+  eta      Int? // seconds remaining
 
   // Result (set on completion)
-  outputSize      BigInt?          // bytes
+  outputSize       BigInt? // bytes
   compressionRatio Float?
-  encodeDuration  Float?           // seconds to encode
+  encodeDuration   Float? // seconds to encode
 
-  assignedAt      DateTime         @default(now())
-  sentAt          DateTime?        // When job was sent to encoder (ASSIGNED state)
-  startedAt       DateTime?        // When encoder started processing (ENCODING state)
-  lastProgressAt  DateTime?        // Last progress update (for stall detection)
-  completedAt     DateTime?
+  assignedAt     DateTime  @default(now())
+  sentAt         DateTime? // When job was sent to encoder (ASSIGNED state)
+  startedAt      DateTime? // When encoder started processing (ENCODING state)
+  lastProgressAt DateTime? // Last progress update (for stall detection)
+  completedAt    DateTime?
 
   @@index([status])
   @@index([encoderId, status])
 }
 
 enum AssignmentStatus {
-  PENDING      // Waiting for encoder to pick up
-  ASSIGNED     // Sent to encoder, waiting for acceptance
-  ENCODING     // Encoder is processing
-  COMPLETED    // Successfully finished
-  FAILED       // Failed (may retry)
-  CANCELLED    // Cancelled by user
+  PENDING // Waiting for encoder to pick up
+  ASSIGNED // Sent to encoder, waiting for acceptance
+  ENCODING // Encoder is processing
+  COMPLETED // Successfully finished
+  FAILED // Failed (may retry)
+  CANCELLED // Cancelled by user
 }
 
 // =============================================================================
@@ -1048,19 +1129,19 @@ model Setting {
 // =============================================================================
 
 model PipelineTemplate {
-  id          String   @id @default(cuid())
+  id          String              @id @default(cuid())
   name        String
   description String?
   mediaType   MediaType // MOVIE or TV
-  isDefault   Boolean  @default(false)
-  isPublic    Boolean  @default(true)
+  isDefault   Boolean             @default(false)
+  isPublic    Boolean             @default(true)
   userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  steps       Json     // Tree structure of steps with children for parallel execution
-  layout      Json?    // Visual layout data for React Flow editor (node positions)
+  user        User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+  steps       Json // Tree structure of steps with children for parallel execution
+  layout      Json? // Visual layout data for React Flow editor (node positions)
   executions  PipelineExecution[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
 
   @@index([userId])
   @@index([mediaType, isDefault])
@@ -1088,26 +1169,26 @@ model PipelineTemplate {
 // }
 
 model PipelineExecution {
-  id          String   @id @default(cuid())
+  id          String           @id @default(cuid())
   requestId   String
-  request     MediaRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  request     MediaRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
   templateId  String
   template    PipelineTemplate @relation(fields: [templateId], references: [id])
   status      ExecutionStatus
   currentStep Int?
-  steps       Json     // Immutable snapshot of steps from template
-  context     Json     // Accumulated data shared between steps
+  steps       Json // Immutable snapshot of steps from template
+  context     Json // Accumulated data shared between steps
   error       String?
-  startedAt   DateTime @default(now())
+  startedAt   DateTime         @default(now())
   completedAt DateTime?
 
   // Pipeline branching for TV episodes
   parentExecutionId String?
-  parent           PipelineExecution?  @relation("BranchHierarchy", fields: [parentExecutionId], references: [id], onDelete: Cascade)
-  branches         PipelineExecution[] @relation("BranchHierarchy")
+  parent            PipelineExecution?  @relation("BranchHierarchy", fields: [parentExecutionId], references: [id], onDelete: Cascade)
+  branches          PipelineExecution[] @relation("BranchHierarchy")
 
-  episodeId   String?   @unique   // For episode branch pipelines
-  episode     TvEpisode?        @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  episodeId String?    @unique // For episode branch pipelines
+  episode   TvEpisode? @relation(fields: [episodeId], references: [id], onDelete: Cascade)
 
   stepExecutions StepExecution[]
 
@@ -1119,17 +1200,17 @@ model PipelineExecution {
 }
 
 model StepExecution {
-  id          String   @id @default(cuid())
+  id          String            @id @default(cuid())
   executionId String
   execution   PipelineExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
   stepOrder   Int
   stepType    StepType
   status      StepStatus
-  progress    Float?   @default(0)
+  progress    Float?            @default(0)
   input       Json?
   output      Json?
   error       String?
-  retryCount  Int      @default(0)
+  retryCount  Int               @default(0)
   startedAt   DateTime?
   completedAt DateTime?
 
@@ -1139,37 +1220,37 @@ model StepExecution {
 }
 
 model NotificationConfig {
-  id        String   @id @default(cuid())
+  id        String               @id @default(cuid())
   userId    String?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  user      User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   name      String
   provider  NotificationProvider
-  config    Json     // Provider-specific config (url, token, etc.)
+  config    Json // Provider-specific config (url, token, etc.)
   events    String[] // Event triggers (request.started, step.completed, etc.)
   mediaType MediaType? // Filter by media type
-  enabled   Boolean  @default(true)
-  createdAt DateTime @default(now())
+  enabled   Boolean              @default(true)
+  createdAt DateTime             @default(now())
 
   @@index([userId])
   @@index([enabled])
 }
 
 model ApprovalQueue {
-  id          String   @id @default(cuid())
-  requestId   String
-  request     MediaRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  executionId String
-  stepOrder   Int
-  reason      String?
-  context     Json     // Details for decision-making
-  status      ApprovalStatus
-  requiredRole String  // "admin", "moderator", "any"
+  id           String         @id @default(cuid())
+  requestId    String
+  request      MediaRequest   @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  executionId  String
+  stepOrder    Int
+  reason       String?
+  context      Json // Details for decision-making
+  status       ApprovalStatus
+  requiredRole String // "admin", "moderator", "any"
   timeoutHours Int?
-  autoAction  String?  // "approve", "reject", "cancel"
-  processedBy String?
-  processedAt DateTime?
-  comment     String?
-  createdAt   DateTime @default(now())
+  autoAction   String? // "approve", "reject", "cancel"
+  processedBy  String?
+  processedAt  DateTime?
+  comment      String?
+  createdAt    DateTime       @default(now())
 
   @@index([requestId])
   @@index([status])

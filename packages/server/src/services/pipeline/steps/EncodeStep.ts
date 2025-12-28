@@ -117,6 +117,17 @@ export class EncodeStep extends BaseStep {
 
   async execute(context: PipelineContext, config: unknown): Promise<StepOutput> {
     this.validateConfig(config);
+
+    // DEBUG: Log the config being received to diagnose template config not being passed
+    if (config === undefined || config === null) {
+      console.warn("[EncodeStep] WARNING: No config received! This will use all defaults.");
+      console.warn(
+        "[EncodeStep] Context episodeId:",
+        (context as { episodeId?: string }).episodeId
+      );
+    }
+    console.log("[EncodeStep] Received config:", JSON.stringify(config, null, 2));
+
     const cfg = (config as EncodeStepConfig | undefined) || {};
 
     const { requestId, mediaType } = context;

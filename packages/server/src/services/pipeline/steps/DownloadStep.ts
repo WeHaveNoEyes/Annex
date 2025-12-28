@@ -53,7 +53,7 @@ export class DownloadStep extends BaseStep {
     this.validateConfig(config);
     const cfg = (config as DownloadStepConfig | undefined) || {};
 
-    const { requestId, mediaType, episodeId, executionId } = context;
+    const { requestId, mediaType, episodeId } = context;
     const pollInterval = cfg.pollInterval || 5000;
     const timeout = cfg.timeout || 24 * 60 * 60 * 1000; // 24 hours
 

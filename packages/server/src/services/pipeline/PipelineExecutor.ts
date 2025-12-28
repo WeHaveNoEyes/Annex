@@ -150,6 +150,15 @@ export class PipelineExecutor {
           // Log step start
           logger.info(`Executing step: ${stepDef.name}`);
 
+          // DEBUG: Log config being passed to step
+          if (stepDef.type === "ENCODE") {
+            console.log(`[PipelineExecutor] About to execute ENCODE step`);
+            console.log(
+              `[PipelineExecutor] stepDef.config:`,
+              JSON.stringify(stepDef.config, null, 2)
+            );
+          }
+
           // Execute the step
           const result: StepOutput = await step.execute(currentContext, stepDef.config);
 
@@ -224,8 +233,12 @@ export class PipelineExecutor {
     });
 
     // Update execution context in database once after all parallel branches complete
-    await prisma.pipelineExecution.update({
-      where: { id: executionId },
+    // Use updateMany to avoid errors if execution was already completed/cancelled
+    await prisma.pipelineExecution.updateMany({
+      where: {
+        id: executionId,
+        status: "RUNNING", // Only update if still running
+      },
       data: { context: mergedContext as unknown as Prisma.JsonObject },
     });
 
@@ -467,14 +480,27 @@ export class PipelineExecutor {
 
   // Pause execution
   async pauseExecution(executionId: string, reason: string): Promise<void> {
-    await prisma.pipelineExecution.update({
-      where: { id: executionId },
-      data: {
-        status: "PAUSED" as ExecutionStatus,
-        error: reason,
-      },
-    });
-    logger.info(`Paused pipeline execution ${executionId}: ${reason}`);
+    try {
+      // Use updateMany to avoid errors if execution was already completed
+      const result = await prisma.pipelineExecution.updateMany({
+        where: {
+          id: executionId,
+          status: "RUNNING", // Only pause if still running
+        },
+        data: {
+          status: "PAUSED" as ExecutionStatus,
+          error: reason,
+        },
+      });
+
+      if (result.count > 0) {
+        logger.info(`Paused pipeline execution ${executionId}: ${reason}`);
+      } else {
+        logger.debug(`Skipped pausing execution ${executionId} (not running or doesn't exist)`);
+      }
+    } catch (err) {
+      logger.error(`Error while pausing execution ${executionId}:`, err);
+    }
   }
 
   // Resume execution (LEGACY - for sequential pipeline system)
@@ -540,39 +566,84 @@ export class PipelineExecutor {
 
   // Fail execution
   async failExecution(executionId: string, error: string): Promise<void> {
-    await prisma.pipelineExecution.update({
-      where: { id: executionId },
-      data: {
-        status: "FAILED" as ExecutionStatus,
-        error,
-        completedAt: new Date(),
-      },
-    });
-    logger.error(`Failed pipeline execution ${executionId}: ${error}`);
+    try {
+      // Use updateMany to avoid errors if execution was already deleted/completed
+      const result = await prisma.pipelineExecution.updateMany({
+        where: {
+          id: executionId,
+          status: { not: "FAILED" }, // Don't update if already failed
+        },
+        data: {
+          status: "FAILED" as ExecutionStatus,
+          error,
+          completedAt: new Date(),
+        },
+      });
+
+      if (result.count > 0) {
+        logger.error(`Failed pipeline execution ${executionId}: ${error}`);
+      } else {
+        logger.debug(
+          `Skipped failing execution ${executionId} (already completed or doesn't exist)`
+        );
+      }
+    } catch (err) {
+      logger.error(`Error while failing execution ${executionId}:`, err);
+    }
   }
 
   // Complete execution
   async completeExecution(executionId: string): Promise<void> {
-    await prisma.pipelineExecution.update({
-      where: { id: executionId },
-      data: {
-        status: "COMPLETED" as ExecutionStatus,
-        completedAt: new Date(),
-      },
-    });
-    logger.info(`Completed pipeline execution ${executionId}`);
+    try {
+      // Use updateMany to avoid errors if execution was already completed/cancelled
+      const result = await prisma.pipelineExecution.updateMany({
+        where: {
+          id: executionId,
+          status: "RUNNING", // Only complete if still running
+        },
+        data: {
+          status: "COMPLETED" as ExecutionStatus,
+          completedAt: new Date(),
+        },
+      });
+
+      if (result.count > 0) {
+        logger.info(`Completed pipeline execution ${executionId}`);
+      } else {
+        logger.debug(
+          `Skipped completing execution ${executionId} (already completed or doesn't exist)`
+        );
+      }
+    } catch (err) {
+      logger.error(`Error while completing execution ${executionId}:`, err);
+    }
   }
 
   // Cancel execution
   async cancelExecution(executionId: string): Promise<void> {
-    await prisma.pipelineExecution.update({
-      where: { id: executionId },
-      data: {
-        status: "CANCELLED" as ExecutionStatus,
-        completedAt: new Date(),
-      },
-    });
-    logger.info(`Cancelled pipeline execution ${executionId}`);
+    try {
+      // Use updateMany to avoid errors if execution was already completed
+      const result = await prisma.pipelineExecution.updateMany({
+        where: {
+          id: executionId,
+          status: { notIn: ["COMPLETED", "FAILED", "CANCELLED"] }, // Don't cancel if already done
+        },
+        data: {
+          status: "CANCELLED" as ExecutionStatus,
+          completedAt: new Date(),
+        },
+      });
+
+      if (result.count > 0) {
+        logger.info(`Cancelled pipeline execution ${executionId}`);
+      } else {
+        logger.debug(
+          `Skipped cancelling execution ${executionId} (already completed or doesn't exist)`
+        );
+      }
+    } catch (err) {
+      logger.error(`Error while cancelling execution ${executionId}:`, err);
+    }
   }
 
   // Spawn a branch pipeline execution (for TV episode processing)
