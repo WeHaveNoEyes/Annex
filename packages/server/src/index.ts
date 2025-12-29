@@ -546,6 +546,13 @@ jobQueue.start().catch((error) => {
   console.error("[JobQueue] Failed to start:", error);
 });
 
+// Start the pipeline service (new processing system)
+import("./services/pipeline/PipelineService.js")
+  .then(({ pipelineService }) => pipelineService.start())
+  .catch((error) => {
+    console.error("[PipelineService] Failed to start:", error);
+  });
+
 // Recover stuck and failed requests from server restarts
 Promise.all([
   recoverFailedJobs().catch((error) => {

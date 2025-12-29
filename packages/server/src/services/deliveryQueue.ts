@@ -220,9 +220,7 @@ class DeliveryQueueService {
       }
     } else {
       // Still delivering - update progress
-      const progress = Math.floor(
-        ((completed + failed + skipped) / total) * 100
-      );
+      const progress = Math.floor(((completed + failed + skipped) / total) * 100);
       await prisma.mediaRequest.update({
         where: { id: requestId },
         data: {

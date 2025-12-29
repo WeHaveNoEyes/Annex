@@ -2,6 +2,7 @@ import { MediaType, Prisma, RequestStatus, TvEpisodeStatus } from "@prisma/clien
 import { z } from "zod";
 import { prisma } from "../db/client.js";
 import { getDownloadService } from "../services/download.js";
+import { pipelineOrchestrator } from "../services/pipeline/PipelineOrchestrator.js";
 import { getPipelineExecutor } from "../services/pipeline/PipelineExecutor.js";
 import { getTraktService } from "../services/trakt.js";
 import { publicProcedure, router } from "../trpc.js";
@@ -126,47 +127,32 @@ export const requestsRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const request = await prisma.mediaRequest.create({
+      // Create request with ProcessingItems using new pipeline system
+      const { requestId, items } = await pipelineOrchestrator.createRequest({
+        type: "movie",
+        tmdbId: input.tmdbId,
+        title: input.title,
+        year: input.year,
+        targetServers: input.targets.map((t) => t.serverId),
+      });
+
+      // Update request with additional metadata
+      await prisma.mediaRequest.update({
+        where: { id: requestId },
         data: {
-          type: MediaType.MOVIE,
-          tmdbId: input.tmdbId,
-          title: input.title,
-          year: input.year,
           posterPath: input.posterPath ?? null,
-          targets: input.targets as unknown as Prisma.JsonArray,
-          status: RequestStatus.PENDING,
-          progress: 0,
-          // Store manually selected release if provided
+          targetServers: input.targets as unknown as Prisma.JsonArray,
           selectedRelease: input.selectedRelease
             ? (input.selectedRelease as unknown as Prisma.JsonObject)
             : undefined,
         },
       });
 
-      // Get pipeline template: use provided one or auto-select default
-      const templateId = input.pipelineTemplateId || (await getDefaultTemplate("MOVIE"));
+      console.log(
+        `[Requests] Created movie request ${requestId} with ${items.length} ProcessingItem(s)`
+      );
 
-      // Validate template exists
-      const template = await prisma.pipelineTemplate.findUnique({
-        where: { id: templateId },
-      });
-
-      if (!template) {
-        throw new Error(`Pipeline template ${templateId} not found`);
-      }
-
-      // Start pipeline execution
-      const executor = getPipelineExecutor();
-      executor.startExecution(request.id, templateId).catch(async (error) => {
-        console.error(`Pipeline execution failed for request ${request.id}:`, error);
-        // Mark request as failed if pipeline fails to start
-        await prisma.mediaRequest.update({
-          where: { id: request.id },
-          data: { status: RequestStatus.FAILED, error: error.message },
-        });
-      });
-
-      return { id: request.id };
+      return { id: requestId };
     }),
 
   /**
@@ -230,6 +216,14 @@ export const requestsRouter = router({
         });
       }
 
+      // Episodes to process
+      const episodesToCreate: Array<{
+        season: number;
+        episode: number;
+        title?: string;
+        airDate?: Date;
+      }> = [];
+
       // Fetch and update seasons from Trakt
       try {
         const traktSeasons = await trakt.getSeasons(input.tmdbId);
@@ -264,13 +258,6 @@ export const requestsRouter = router({
         }
 
         // Fetch and save episodes for each needed season
-        const episodesToCreate: Array<{
-          season: number;
-          episode: number;
-          title?: string;
-          airDate?: Date;
-        }> = [];
-
         for (const seasonNumber of seasonsToFetch) {
           const traktSeason = traktSeasons.find((s) => s.number === seasonNumber);
           if (!traktSeason) continue;
@@ -373,30 +360,55 @@ export const requestsRouter = router({
         // Continue anyway - the request will be created but may not have complete episode data
       }
 
-      // Get pipeline template: use provided one or auto-select default
-      const templateId = input.pipelineTemplateId || (await getDefaultTemplate("TV"));
+      // Create ProcessingItems for episodes using new pipeline system
+      if (episodesToCreate.length > 0) {
+        const { requestId: newRequestId, items } = await pipelineOrchestrator.createRequest({
+          type: "tv",
+          tmdbId: input.tmdbId,
+          title: input.title,
+          year: input.year,
+          episodes: episodesToCreate.map((ep) => ({
+            season: ep.season,
+            episode: ep.episode,
+            title: ep.title || `Episode ${ep.episode}`,
+          })),
+          targetServers: input.targets.map((t) => t.serverId),
+        });
 
-      // Validate template exists
-      const template = await prisma.pipelineTemplate.findUnique({
-        where: { id: templateId },
-      });
+        // Update request with additional metadata
+        await prisma.mediaRequest.update({
+          where: { id: newRequestId },
+          data: {
+            posterPath: input.posterPath ?? null,
+            requestedSeasons: input.seasons ?? [],
+            requestedEpisodes: input.episodes ?? Prisma.JsonNull,
+            targetServers: input.targets as unknown as Prisma.JsonArray,
+            selectedRelease: input.selectedRelease
+              ? (input.selectedRelease as unknown as Prisma.JsonObject)
+              : undefined,
+            subscribe: input.subscribe ?? false,
+          },
+        });
 
-      if (!template) {
-        throw new Error(`Pipeline template ${templateId} not found`);
-      }
+        console.log(
+          `[Requests] Created TV request ${newRequestId} with ${items.length} ProcessingItem(s)`
+        );
 
-      // Start pipeline execution
-      const executor = getPipelineExecutor();
-      executor.startExecution(request.id, templateId).catch(async (error) => {
-        console.error(`Pipeline execution failed for request ${request.id}:`, error);
-        // Mark request as failed if pipeline fails to start
+        // Delete the old request we created earlier, use the new one from orchestrator
+        await prisma.mediaRequest.delete({ where: { id: request.id } });
+
+        return { id: newRequestId };
+      } else {
+        // No episodes found - mark request as failed
         await prisma.mediaRequest.update({
           where: { id: request.id },
-          data: { status: RequestStatus.FAILED, error: error.message },
+          data: {
+            status: RequestStatus.FAILED,
+            error: "No episodes found for requested seasons",
+          },
         });
-      });
-
-      return { id: request.id };
+        return { id: request.id };
+      }
     }),
 
   /**
@@ -436,6 +448,21 @@ export const requestsRouter = router({
           targets: true,
           requestedSeasons: true,
           requestedEpisodes: true,
+          processingItems: {
+            select: {
+              id: true,
+              type: true,
+              status: true,
+              progress: true,
+              season: true,
+              episode: true,
+              attempts: true,
+              lastError: true,
+            },
+          },
+          totalItems: true,
+          completedItems: true,
+          failedItems: true,
           status: true,
           progress: true,
           currentStep: true,
@@ -611,6 +638,26 @@ export const requestsRouter = router({
   get: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
     const r = await prisma.mediaRequest.findUnique({
       where: { id: input.id },
+      include: {
+        processingItems: {
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            progress: true,
+            season: true,
+            episode: true,
+            title: true,
+            attempts: true,
+            maxAttempts: true,
+            lastError: true,
+            nextRetryAt: true,
+            currentStep: true,
+            createdAt: true,
+            completedAt: true,
+          },
+        },
+      },
     });
 
     if (!r) {
@@ -1218,5 +1265,43 @@ export const requestsRouter = router({
       }
 
       return { success: true };
+    }),
+
+  /**
+   * Retry a failed ProcessingItem
+   */
+  retryItem: publicProcedure.input(z.object({ itemId: z.string() })).mutation(async ({ input }) => {
+    await pipelineOrchestrator.retry(input.itemId);
+    return { success: true };
+  }),
+
+  /**
+   * Cancel a ProcessingItem
+   */
+  cancelItem: publicProcedure
+    .input(z.object({ itemId: z.string() }))
+    .mutation(async ({ input }) => {
+      await pipelineOrchestrator.cancel(input.itemId);
+      return { success: true };
+    }),
+
+  /**
+   * Get ProcessingItems for a request
+   */
+  getProcessingItems: publicProcedure
+    .input(z.object({ requestId: z.string() }))
+    .query(async ({ input }) => {
+      const items = await pipelineOrchestrator.getRequestItems(input.requestId);
+      return items;
+    }),
+
+  /**
+   * Get request statistics
+   */
+  getRequestStats: publicProcedure
+    .input(z.object({ requestId: z.string() }))
+    .query(async ({ input }) => {
+      const stats = await pipelineOrchestrator.getRequestStats(input.requestId);
+      return stats;
     }),
 });
