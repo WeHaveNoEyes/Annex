@@ -29,6 +29,44 @@ export class EncodeWorker extends BaseWorker {
       throw new Error(`Request ${item.requestId} not found`);
     }
 
+    // Get pipeline execution to load encoding config from template
+    const { prisma } = await import("../../../db/client.js");
+    const execution = await prisma.pipelineExecution.findFirst({
+      where: { requestId: item.requestId, parentExecutionId: null },
+      orderBy: { startedAt: "desc" },
+    });
+
+    if (!execution) {
+      throw new Error(`Pipeline execution not found for request ${item.requestId}`);
+    }
+
+    // Extract encoding config from pipeline steps
+    const steps = execution.steps as Array<{
+      type: string;
+      config?: Record<string, unknown>;
+      children?: Array<{ type: string; config?: Record<string, unknown>; children?: unknown[] }>;
+    }>;
+
+    const findEncodeConfig = (stepList: typeof steps): Record<string, unknown> | null => {
+      for (const step of stepList) {
+        if (step.type === "ENCODE" && step.config) {
+          return step.config;
+        }
+        if (step.children) {
+          const found = findEncodeConfig(step.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const encodeConfig = findEncodeConfig(steps);
+    if (!encodeConfig) {
+      throw new Error(`No ENCODE step found in pipeline template for request ${item.requestId}`);
+    }
+
+    console.log(`[${this.name}] Using encoding config from pipeline:`, encodeConfig);
+
     // Extract previous step contexts
     const stepContext = item.stepContext as Record<string, unknown>;
     const searchData = stepContext.search as PipelineContext["search"];
@@ -62,19 +100,8 @@ export class EncodeWorker extends BaseWorker {
       this.updateProgress(item.id, progress, message);
     });
 
-    // Execute encode
-    const output = await this.encodeStep.execute(context, {
-      videoEncoder: "av1_qsv",
-      crf: 23,
-      maxResolution: "1080p",
-      hwAccel: "VAAPI",
-      preset: "medium",
-      audioEncoder: "copy",
-      subtitlesMode: "COPY",
-      container: "MKV",
-      pollInterval: 5000,
-      timeout: 48 * 60 * 60 * 1000, // 48 hours
-    });
+    // Execute encode using config from pipeline template
+    const output = await this.encodeStep.execute(context, encodeConfig);
 
     if (!output.success) {
       throw new Error(output.error || "Encoding failed");
