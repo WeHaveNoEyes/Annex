@@ -37,10 +37,10 @@ class CardigannProvider {
 
     const definition = parsedDefinition.definition;
 
-    // Determine base URL from definition links
-    const baseUrl = definition.links?.[0];
-    if (!baseUrl) {
-      throw new Error(`No base URL found in definition: ${cardigannIndexer.definitionId}`);
+    // Get all available mirror URLs
+    const availableUrls = definition.links || [];
+    if (availableUrls.length === 0) {
+      throw new Error(`No URLs found in definition: ${cardigannIndexer.definitionId}`);
     }
 
     // Build settings object from stored settings
@@ -63,14 +63,6 @@ class CardigannProvider {
         }
       }
     }
-
-    // Build Cardigann context
-    const context: CardigannContext = {
-      definition,
-      settings,
-      cookies: cachedCookies, // Start with cached cookies
-      baseUrl,
-    };
 
     // Map search options to Cardigann params
     const searchParams: CardigannSearchParams = {
@@ -96,8 +88,43 @@ class CardigannProvider {
       season: searchParams.season,
     });
 
-    // Execute the search
-    const results = await cardigannExecutor.search(context, searchParams);
+    // Try each URL until one works
+    let results: CardigannSearchResult[] = [];
+    let lastError: Error | null = null;
+    let workingContext: CardigannContext | null = null;
+
+    for (const baseUrl of availableUrls) {
+      console.log(`[Cardigann Search] ${indexerName} - Trying mirror: ${baseUrl}`);
+
+      const context: CardigannContext = {
+        definition,
+        settings,
+        cookies: { ...cachedCookies }, // Fresh copy for each attempt
+        baseUrl,
+      };
+
+      try {
+        results = await cardigannExecutor.search(context, searchParams);
+        workingContext = context;
+        console.log(`[Cardigann Search] ${indexerName} - Successfully used mirror: ${baseUrl}`);
+        break; // Success! Stop trying other URLs
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        console.log(
+          `[Cardigann Search] ${indexerName} - Mirror ${baseUrl} failed: ${lastError.message}`
+        );
+        // Continue to next URL
+      }
+    }
+
+    // If all URLs failed, throw the last error
+    if (!workingContext) {
+      throw new Error(
+        `All ${availableUrls.length} mirror(s) failed. Last error: ${lastError?.message || "Unknown error"}`
+      );
+    }
+
+    const context = workingContext;
 
     // Cache cookies if they were obtained/refreshed during login
     if (Object.keys(context.cookies).length > 0) {
