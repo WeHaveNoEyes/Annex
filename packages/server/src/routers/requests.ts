@@ -390,8 +390,21 @@ export const requestsRouter = router({
           },
         });
 
+        // Create TvEpisode records for frontend compatibility
+        await prisma.tvEpisode.createMany({
+          data: episodesToCreate.map((ep) => ({
+            requestId: newRequestId,
+            season: ep.season,
+            episode: ep.episode,
+            title: ep.title || `Episode ${ep.episode}`,
+            airDate: ep.airDate || null,
+            status: TvEpisodeStatus.PENDING,
+            progress: 0,
+          })),
+        });
+
         console.log(
-          `[Requests] Created TV request ${newRequestId} with ${items.length} ProcessingItem(s)`
+          `[Requests] Created TV request ${newRequestId} with ${items.length} ProcessingItem(s) and ${episodesToCreate.length} TvEpisode(s)`
         );
 
         // Delete the old request we created earlier, use the new one from orchestrator
