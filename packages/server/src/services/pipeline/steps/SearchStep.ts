@@ -187,7 +187,6 @@ export class SearchStep extends BaseStep {
           const ep = requestedEpisodes[0];
           existingMatch = await downloadManager.findExistingEpisodeDownload(
             title,
-            year,
             ep.season,
             ep.episode
           );
@@ -195,7 +194,7 @@ export class SearchStep extends BaseStep {
           // Multiple episodes - check for season pack
           const seasons = [...new Set(requestedEpisodes.map((ep) => ep.season))];
           if (seasons.length === 1) {
-            existingMatch = await downloadManager.findExistingSeasonDownload(title, year, seasons[0]);
+            existingMatch = await downloadManager.findExistingSeasonDownload(title, seasons[0]);
           }
         }
       }
