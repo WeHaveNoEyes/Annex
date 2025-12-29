@@ -350,7 +350,23 @@ export class CardigannLoginHandler {
       console.log("[Cardigann Login] fetchPage Set-Cookie:", `${cookie.substring(0, 50)}...`);
     }
 
-    return response.text();
+    const responseText = await response.text();
+
+    // Log response body for non-200 responses (especially 403 for Cloudflare detection)
+    if (response.status !== 200) {
+      console.log("[Cardigann Login] Non-200 response detected");
+      console.log("[Cardigann Login] Response headers:", Object.fromEntries(response.headers.entries()));
+      console.log("[Cardigann Login] Response body preview (first 1000 chars):");
+      console.log(responseText.substring(0, 1000));
+
+      // Check for common Cloudflare indicators
+      const hasCloudflare = responseText.toLowerCase().includes("cloudflare") ||
+                           responseText.includes("cf-ray") ||
+                           response.headers.has("cf-ray");
+      console.log("[Cardigann Login] Cloudflare detected:", hasCloudflare);
+    }
+
+    return responseText;
   }
 
   private async postForm(
@@ -398,6 +414,22 @@ export class CardigannLoginHandler {
       await cookieJar.setCookie(cookie, url);
     }
 
+    const responseText = await response.text();
+
+    // Log response body for non-200/non-redirect responses (especially 403 for Cloudflare detection)
+    if (response.status !== 200 && !(response.status >= 300 && response.status < 400)) {
+      console.log("[Cardigann Login] POST non-200 response detected");
+      console.log("[Cardigann Login] Response headers:", Object.fromEntries(response.headers.entries()));
+      console.log("[Cardigann Login] Response body preview (first 1000 chars):");
+      console.log(responseText.substring(0, 1000));
+
+      // Check for common Cloudflare indicators
+      const hasCloudflare = responseText.toLowerCase().includes("cloudflare") ||
+                           responseText.includes("cf-ray") ||
+                           response.headers.has("cf-ray");
+      console.log("[Cardigann Login] Cloudflare detected:", hasCloudflare);
+    }
+
     // Handle redirects manually
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
@@ -420,7 +452,7 @@ export class CardigannLoginHandler {
     }
 
     console.log("[Cardigann Login] POST response URL:", response.url);
-    return response.text();
+    return responseText;
   }
 
   private async extractCookies(
