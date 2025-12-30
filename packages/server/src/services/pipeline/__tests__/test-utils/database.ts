@@ -33,12 +33,14 @@ export async function createTestRequest(data: {
   requestedEpisodes?: Array<{ season: number; episode: number }> | null;
   targets?: Array<{ serverId: string; encodingProfileId?: string }>;
   status?: RequestStatus;
+  createExecution?: boolean; // Create a parent pipeline execution for this request
 }) {
   const targets = data.targets || [{ serverId: "test-server" }];
+  const requestId = data.id || `test-request-${Date.now()}`;
 
-  return prisma.mediaRequest.create({
+  const request = await prisma.mediaRequest.create({
     data: {
-      id: data.id || `test-request-${Date.now()}`,
+      id: requestId,
       type: data.type,
       tmdbId: data.tmdbId,
       title: data.title,
@@ -50,6 +52,23 @@ export async function createTestRequest(data: {
       progress: 0,
     },
   });
+
+  // Create a parent pipeline execution if requested (needed for SearchStep tests)
+  if (data.createExecution) {
+    await prisma.pipelineExecution.create({
+      data: {
+        requestId,
+        templateId: "test-template",
+        status: "RUNNING" as ExecutionStatus,
+        currentStep: 0,
+        steps: [],
+        context: {},
+        startedAt: new Date(),
+      },
+    });
+  }
+
+  return request;
 }
 
 /**
