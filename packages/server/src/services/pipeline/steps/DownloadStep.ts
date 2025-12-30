@@ -81,12 +81,12 @@ export class DownloadStep extends BaseStep {
         `[DownloadStep] Episode ${episodeId} sourceFilePath: ${episode?.sourceFilePath || "null"}`
       );
 
-      if (episode?.sourceFilePath) {
+      if (episode?.sourceFilePath && episode.season !== null && episode.episode !== null) {
         // File already extracted - skip download and proceed to encoding
         await this.logActivity(
           requestId,
           ActivityType.INFO,
-          `Episode S${String(episode.season!).padStart(2, "0")}E${String(episode.episode!).padStart(2, "0")} already extracted, proceeding to encoding`
+          `Episode S${String(episode.season).padStart(2, "0")}E${String(episode.episode).padStart(2, "0")} already extracted, proceeding to encoding`
         );
 
         return {

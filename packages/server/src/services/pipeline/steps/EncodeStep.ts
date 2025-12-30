@@ -987,11 +987,12 @@ export class EncodeStep extends BaseStep {
 
       // Find most interesting status to show
       const activeStatuses = statuses.filter(
-        (s: typeof statuses[number]) =>
+        (s: (typeof statuses)[number]) =>
           s.status === AssignmentStatus.ASSIGNED || s.status === AssignmentStatus.ENCODING
       );
       const showStatus =
-        activeStatuses.find((s: typeof activeStatuses[number]) => s.progress !== null) || activeStatuses[0];
+        activeStatuses.find((s: (typeof activeStatuses)[number]) => s.progress !== null) ||
+        activeStatuses[0];
 
       let currentStep: string;
       if (showStatus && assignments.length > 0) {

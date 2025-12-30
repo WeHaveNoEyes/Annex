@@ -132,7 +132,8 @@ describe("Movie Pipeline Integration", () => {
 
   describe("Successful Flow", () => {
     test("should execute search step and complete successfully", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_1080P_SERVER,
       });
@@ -168,7 +169,8 @@ describe("Movie Pipeline Integration", () => {
     });
 
     test("should reuse existing download if available and quality matches", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_1080P_SERVER,
       });
@@ -202,7 +204,8 @@ describe("Movie Pipeline Integration", () => {
 
   describe("Quality Handling", () => {
     test("should stop pipeline when quality unavailable and store alternatives", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_4K_SERVER,
       });
@@ -232,7 +235,8 @@ describe("Movie Pipeline Integration", () => {
     });
 
     test("should select appropriate quality based on target server", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_4K_SERVER,
       });
@@ -258,7 +262,8 @@ describe("Movie Pipeline Integration", () => {
 
   describe("Error Handling", () => {
     test("should set retry flag when no releases found", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_1080P_SERVER,
       });
@@ -285,7 +290,8 @@ describe("Movie Pipeline Integration", () => {
     });
 
     test("should handle indexer search errors gracefully", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_1080P_SERVER,
       });
@@ -312,7 +318,8 @@ describe("Movie Pipeline Integration", () => {
 
   describe("Multi-Server Targeting", () => {
     test("should handle multiple target servers with different quality requirements", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.MULTI_SERVER,
       });
@@ -340,7 +347,8 @@ describe("Movie Pipeline Integration", () => {
 
   describe("Activity Logging", () => {
     test("should create activity logs during pipeline execution", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_1080P_SERVER,
       });

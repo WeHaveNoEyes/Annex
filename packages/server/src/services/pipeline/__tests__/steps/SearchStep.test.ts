@@ -99,7 +99,8 @@ describe("SearchStep", () => {
 
   describe("Movie Search", () => {
     test("should find and select best quality release that meets requirements", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_1080P_SERVER,
       });
@@ -131,7 +132,8 @@ describe("SearchStep", () => {
     });
 
     test("should skip lower quality releases when higher quality is available", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_4K_SERVER,
       });
@@ -160,7 +162,8 @@ describe("SearchStep", () => {
     });
 
     test("should handle no releases found and set retry flag", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_1080P_SERVER,
       });
@@ -183,7 +186,8 @@ describe("SearchStep", () => {
     });
 
     test("should store alternative releases when quality unavailable", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_4K_SERVER,
       });
@@ -214,7 +218,8 @@ describe("SearchStep", () => {
     });
 
     test("should find existing download in qBittorrent if available", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_1080P_SERVER,
       });
@@ -253,7 +258,8 @@ describe("SearchStep", () => {
     });
 
     test("should skip low quality existing downloads", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_4K_SERVER,
       });
@@ -289,7 +295,8 @@ describe("SearchStep", () => {
 
   describe("TV Show Search", () => {
     test("should search for TV season", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         type: MediaType.TV,
         tmdbId: 1396,
@@ -321,7 +328,8 @@ describe("SearchStep", () => {
     });
 
     test("should search for first season when multiple seasons requested", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         type: MediaType.TV,
         tmdbId: 1396,
         title: "Breaking Bad",
@@ -354,7 +362,8 @@ describe("SearchStep", () => {
 
   describe("Configuration", () => {
     test("should respect checkExistingDownloads config", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_1080P_SERVER,
       });
@@ -378,7 +387,8 @@ describe("SearchStep", () => {
     });
 
     test("should limit results based on maxResults config", async () => {
-      const request = await createTestRequest({ createExecution: true,
+      const request = await createTestRequest({
+        createExecution: true,
         ...MOVIES.INCEPTION,
         targets: TARGETS.SINGLE_1080P_SERVER,
       });

@@ -644,9 +644,7 @@ export class PipelineExecutor {
       }
 
       if (execution.status !== "RUNNING") {
-        logger.debug(
-          `Skipped completing execution ${executionId} (status: ${execution.status})`
-        );
+        logger.debug(`Skipped completing execution ${executionId} (status: ${execution.status})`);
         return;
       }
 
@@ -720,9 +718,7 @@ export class PipelineExecutor {
       }
 
       if (["COMPLETED", "FAILED", "CANCELLED"].includes(execution.status)) {
-        logger.debug(
-          `Skipped cancelling execution ${executionId} (status: ${execution.status})`
-        );
+        logger.debug(`Skipped cancelling execution ${executionId} (status: ${execution.status})`);
         return;
       }
 
@@ -742,8 +738,7 @@ export class PipelineExecutor {
       });
 
       const allCancelled = items.every(
-        (item: { status: import("@prisma/client").ProcessingStatus }) =>
-          item.status === "CANCELLED"
+        (item: { status: import("@prisma/client").ProcessingStatus }) => item.status === "CANCELLED"
       );
 
       if (allCancelled) {

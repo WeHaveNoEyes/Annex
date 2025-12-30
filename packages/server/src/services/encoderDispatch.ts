@@ -523,13 +523,14 @@ class EncoderDispatchService {
 
     // Build map of jobId -> assignment
     type AssignmentData = { jobId: string; progress: number; status: string };
-    const assignmentMap = new Map(
-      assignments.map((a: AssignmentData) => [a.jobId, a] as const)
-    );
+    const assignmentMap = new Map(assignments.map((a: AssignmentData) => [a.jobId, a] as const));
 
     let updated = 0;
     for (const item of encodingItems) {
-      const assignment = assignmentMap.get(item.encodingJobId!);
+      // encodingJobId should always be set due to query filter, but check to be safe
+      if (!item.encodingJobId) continue;
+
+      const assignment = assignmentMap.get(item.encodingJobId);
       if (!assignment) {
         continue;
       }

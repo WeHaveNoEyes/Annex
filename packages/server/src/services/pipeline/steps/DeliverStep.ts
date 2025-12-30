@@ -413,7 +413,10 @@ export class DeliverStep extends BaseStep {
               stat.status === ProcessingStatus.COMPLETED ||
               stat.status === ProcessingStatus.CANCELLED
           )
-          .reduce((sum: number, stat: { _count: { status: number } }) => sum + stat._count.status, 0);
+          .reduce(
+            (sum: number, stat: { _count: { status: number } }) => sum + stat._count.status,
+            0
+          );
 
         remainingEpisodes = totalEpisodes - completedEpisodes;
         allEpisodesComplete = remainingEpisodes === 0;
