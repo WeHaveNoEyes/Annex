@@ -131,7 +131,7 @@ export async function refreshTraktListCache(
     const baseResult = local
       ? mediaItemToTrendingResult(local)
       : mediaItemToTrendingResult({
-          type: traktItem.type,
+          type: (traktItem.type === "movie" ? "MOVIE" : "TV") as "MOVIE" | "TV",
           tmdbId: traktItem.tmdbId,
           title: traktItem.title,
           posterPath: traktItem.posterUrl || null,
