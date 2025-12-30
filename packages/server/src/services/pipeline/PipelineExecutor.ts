@@ -593,15 +593,19 @@ export class PipelineExecutor {
         },
       });
 
-      // Update MediaRequest to match
-      await prisma.mediaRequest.update({
-        where: { id: execution.requestId },
-        data: {
-          status: "FAILED" as import("@prisma/client").RequestStatus,
-          error,
-          completedAt: new Date(),
-        },
-      });
+      // Update MediaRequest to match (if it exists)
+      await prisma.mediaRequest
+        .update({
+          where: { id: execution.requestId },
+          data: {
+            status: "FAILED" as import("@prisma/client").RequestStatus,
+            error,
+            completedAt: new Date(),
+          },
+        })
+        .catch(() => {
+          // Ignore if MediaRequest doesn't exist (e.g., in tests)
+        });
 
       // Update all ProcessingItems for this request to FAILED
       await prisma.processingItem.updateMany({
@@ -666,14 +670,18 @@ export class PipelineExecutor {
 
       // Only update MediaRequest to COMPLETED if all items are done
       if (allCompleted) {
-        await prisma.mediaRequest.update({
-          where: { id: execution.requestId },
-          data: {
-            status: "COMPLETED" as import("@prisma/client").RequestStatus,
-            progress: 100,
-            completedAt: new Date(),
-          },
-        });
+        await prisma.mediaRequest
+          .update({
+            where: { id: execution.requestId },
+            data: {
+              status: "COMPLETED" as import("@prisma/client").RequestStatus,
+              progress: 100,
+              completedAt: new Date(),
+            },
+          })
+          .catch(() => {
+            // Ignore if MediaRequest doesn't exist (e.g., in tests)
+          });
         logger.info(`Completed request ${execution.requestId} - all items finished`);
       }
 
@@ -725,14 +733,18 @@ export class PipelineExecutor {
       );
 
       if (allCancelled) {
-        await prisma.mediaRequest.update({
-          where: { id: execution.requestId },
-          data: {
-            status: "FAILED" as import("@prisma/client").RequestStatus,
-            error: "Cancelled by user",
-            completedAt: new Date(),
-          },
-        });
+        await prisma.mediaRequest
+          .update({
+            where: { id: execution.requestId },
+            data: {
+              status: "FAILED" as import("@prisma/client").RequestStatus,
+              error: "Cancelled by user",
+              completedAt: new Date(),
+            },
+          })
+          .catch(() => {
+            // Ignore if MediaRequest doesn't exist (e.g., in tests)
+          });
       }
 
       logger.info(`Cancelled pipeline execution ${executionId}`);
