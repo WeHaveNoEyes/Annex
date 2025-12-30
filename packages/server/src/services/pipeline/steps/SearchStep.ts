@@ -2,9 +2,9 @@ import {
   ActivityType,
   MediaType,
   type Prisma,
+  ProcessingStatus,
   RequestStatus,
   StepType,
-  TvEpisodeStatus,
 } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { getDownloadService } from "../../download.js";
@@ -77,24 +77,25 @@ export class SearchStep extends BaseStep {
 
     // For TV shows, check if episodes are already downloaded first - skip everything if so
     if (mediaType === MediaType.TV) {
-      const downloadedEpisodes = await prisma.tvEpisode.findMany({
+      const downloadedEpisodes = await prisma.processingItem.findMany({
         where: {
           requestId,
+          type: "EPISODE",
           status: {
             in: [
-              TvEpisodeStatus.DOWNLOADED,
-              TvEpisodeStatus.ENCODING,
-              TvEpisodeStatus.ENCODED,
-              TvEpisodeStatus.DELIVERING,
-              TvEpisodeStatus.COMPLETED,
+              ProcessingStatus.DOWNLOADED,
+              ProcessingStatus.ENCODING,
+              ProcessingStatus.ENCODED,
+              ProcessingStatus.DELIVERING,
+              ProcessingStatus.COMPLETED,
             ],
           },
         },
         select: { id: true },
       });
 
-      const totalEpisodes = await prisma.tvEpisode.count({
-        where: { requestId },
+      const totalEpisodes = await prisma.processingItem.count({
+        where: { requestId, type: "EPISODE" },
       });
 
       // If most episodes are already downloaded or beyond, skip search entirely
@@ -319,24 +320,28 @@ export class SearchStep extends BaseStep {
     let seasonsToSearch: number[] = [];
     if (mediaType === MediaType.TV) {
       // Get all episodes for this request and their statuses
-      const allEpisodes = await prisma.tvEpisode.findMany({
-        where: { requestId },
+      const allEpisodes = await prisma.processingItem.findMany({
+        where: { requestId, type: "EPISODE" },
         select: { id: true, season: true, episode: true, status: true },
       });
 
-      const completedStatuses = new Set<TvEpisodeStatus>([
-        TvEpisodeStatus.DOWNLOADED,
-        TvEpisodeStatus.ENCODING,
-        TvEpisodeStatus.ENCODED,
-        TvEpisodeStatus.DELIVERING,
-        TvEpisodeStatus.COMPLETED,
-        TvEpisodeStatus.SKIPPED,
+      const completedStatuses = new Set<ProcessingStatus>([
+        ProcessingStatus.DOWNLOADED,
+        ProcessingStatus.ENCODING,
+        ProcessingStatus.ENCODED,
+        ProcessingStatus.DELIVERING,
+        ProcessingStatus.COMPLETED,
+        ProcessingStatus.CANCELLED,
       ]);
 
-      const neededEpisodes = allEpisodes.filter((ep) => !completedStatuses.has(ep.status));
+      const neededEpisodes = allEpisodes.filter(
+        (ep: { status: ProcessingStatus }) => !completedStatuses.has(ep.status)
+      );
 
       // Get unique seasons from needed episodes
-      seasonsToSearch = [...new Set(neededEpisodes.map((ep) => ep.season))].sort();
+      seasonsToSearch = ([
+        ...new Set(neededEpisodes.map((ep: { season: number | null }) => ep.season!)),
+      ] as number[]).sort();
       console.log(`[Search] Seasons to search: ${seasonsToSearch.join(", ")}`);
     }
 
@@ -401,8 +406,8 @@ export class SearchStep extends BaseStep {
     let filteredReleases = searchResult.releases;
     if (mediaType === MediaType.TV) {
       // Get all episodes for this request and their statuses
-      const allEpisodes = await prisma.tvEpisode.findMany({
-        where: { requestId },
+      const allEpisodes = await prisma.processingItem.findMany({
+        where: { requestId, type: "EPISODE" },
         select: { id: true, season: true, episode: true, status: true },
       });
 
@@ -429,7 +434,7 @@ export class SearchStep extends BaseStep {
         episodeServerMap.get(key)?.add(lib.serverId);
       }
 
-      // Mark episodes as SKIPPED if they're on all target servers
+      // Mark episodes as CANCELLED if they're on all target servers
       for (const ep of allEpisodes) {
         const key = `S${ep.season}E${ep.episode}`;
         const serversWithEpisode = episodeServerMap.get(key);
@@ -437,48 +442,56 @@ export class SearchStep extends BaseStep {
         if (
           serversWithEpisode &&
           serversWithEpisode.size === targetServerIds.length &&
-          ep.status === TvEpisodeStatus.PENDING
+          ep.status === ProcessingStatus.PENDING
         ) {
-          // Episode is already on all target servers - mark as SKIPPED
-          await prisma.tvEpisode.update({
+          // Episode is already on all target servers - mark as CANCELLED
+          await prisma.processingItem.update({
             where: { id: ep.id },
-            data: { status: TvEpisodeStatus.SKIPPED },
+            data: { status: ProcessingStatus.CANCELLED },
           });
           await this.logActivity(
             requestId,
             ActivityType.INFO,
-            `Skipped S${String(ep.season).padStart(2, "0")}E${String(ep.episode).padStart(2, "0")} - already in library on all target servers`
+            `Skipped S${String(ep.season!).padStart(2, "0")}E${String(ep.episode!).padStart(2, "0")} - already in library on all target servers`
           );
-          console.log(`[Search] Marked ${key} as SKIPPED - already in library`);
-          ep.status = TvEpisodeStatus.SKIPPED; // Update local object
+          console.log(`[Search] Marked ${key} as CANCELLED - already in library`);
+          ep.status = ProcessingStatus.CANCELLED; // Update local object
         }
       }
 
-      const completedStatuses = new Set<TvEpisodeStatus>([
-        TvEpisodeStatus.DOWNLOADED,
-        TvEpisodeStatus.ENCODING,
-        TvEpisodeStatus.ENCODED,
-        TvEpisodeStatus.DELIVERING,
-        TvEpisodeStatus.COMPLETED,
-        TvEpisodeStatus.SKIPPED,
+      const completedStatuses = new Set<ProcessingStatus>([
+        ProcessingStatus.DOWNLOADED,
+        ProcessingStatus.ENCODING,
+        ProcessingStatus.ENCODED,
+        ProcessingStatus.DELIVERING,
+        ProcessingStatus.COMPLETED,
+        ProcessingStatus.CANCELLED,
       ]);
 
-      const neededEpisodes = allEpisodes.filter((ep) => !completedStatuses.has(ep.status));
+      const neededEpisodes = allEpisodes.filter(
+        (ep: { status: ProcessingStatus }) => !completedStatuses.has(ep.status)
+      );
 
       // Mark needed episodes as SEARCHING
-      await prisma.tvEpisode.updateMany({
+      await prisma.processingItem.updateMany({
         where: {
-          id: { in: neededEpisodes.map((ep) => ep.id) },
-          status: TvEpisodeStatus.PENDING,
+          id: { in: neededEpisodes.map((ep: { id: string }) => ep.id) },
+          status: ProcessingStatus.PENDING,
         },
-        data: { status: TvEpisodeStatus.SEARCHING },
+        data: { status: ProcessingStatus.SEARCHING },
       });
 
-      const neededSet = new Set(neededEpisodes.map((ep) => `S${ep.season}E${ep.episode}`));
+      const neededSet = new Set(
+        neededEpisodes.map(
+          (ep: { season: number | null; episode: number | null }) => `S${ep.season}E${ep.episode}`
+        )
+      );
 
       if (neededEpisodes.length === 0) {
         // All episodes are already downloaded or beyond - skip search and continue pipeline
-        const downloadedOrBeyond = allEpisodes.filter((ep) => completedStatuses.has(ep.status));
+        const downloadedOrBeyond = allEpisodes.filter((ep: { status: ProcessingStatus }) =>
+          completedStatuses.has(ep.status)
+        );
 
         await this.logActivity(
           requestId,
@@ -508,7 +521,12 @@ export class SearchStep extends BaseStep {
       console.log(`[Search] Needed episodes for request ${requestId}: ${neededList}`);
       console.log(
         `[Search] Episode statuses:`,
-        allEpisodes.map((ep) => `S${ep.season}E${ep.episode}=${ep.status}`).join(", ")
+        allEpisodes
+          .map(
+            (ep: { season: number | null; episode: number | null; status: ProcessingStatus }) =>
+              `S${ep.season}E${ep.episode}=${ep.status}`
+          )
+          .join(", ")
       );
 
       // Categorize releases as season packs or individual episodes
@@ -604,7 +622,9 @@ export class SearchStep extends BaseStep {
 
               // DON'T spawn branch pipelines yet - season pack needs to download and extract first
               // The download monitor will spawn branches after extraction completes
-              const episodesInSeason = neededEpisodes.filter((ep) => ep.season === season);
+              const episodesInSeason = neededEpisodes.filter(
+                (ep: { season: number | null }) => ep.season === season
+              );
 
               await this.logActivity(
                 requestId,
@@ -778,10 +798,10 @@ export class SearchStep extends BaseStep {
                 spawnedBranches++;
 
                 // Mark episode as DOWNLOADING (branch will handle it)
-                await prisma.tvEpisode.update({
+                await prisma.processingItem.update({
                   where: { id: ep.id },
                   data: {
-                    status: TvEpisodeStatus.DOWNLOADING,
+                    status: ProcessingStatus.DOWNLOADING,
                   },
                 });
 
@@ -845,13 +865,13 @@ export class SearchStep extends BaseStep {
       // For TV shows, check if we have DOWNLOADED episodes that can proceed to encoding
       // even though we didn't find new releases for remaining episodes
       if (mediaType === MediaType.TV) {
-        const allEpisodes = await prisma.tvEpisode.findMany({
-          where: { requestId },
+        const allEpisodes = await prisma.processingItem.findMany({
+          where: { requestId, type: "EPISODE" },
           select: { id: true, season: true, episode: true, status: true },
         });
 
         const downloadedEpisodes = allEpisodes.filter(
-          (ep) => ep.status === TvEpisodeStatus.DOWNLOADED
+          (ep: { status: ProcessingStatus }) => ep.status === ProcessingStatus.DOWNLOADED
         );
 
         if (downloadedEpisodes.length > 0) {

@@ -3,9 +3,9 @@ import {
   DownloadStatus,
   MediaType,
   Prisma,
+  ProcessingStatus,
   RequestStatus,
   StepType,
-  TvEpisodeStatus,
 } from "@prisma/client";
 import ptt from "parse-torrent-title";
 import { prisma } from "../../../db/client.js";
@@ -72,7 +72,7 @@ export class DownloadStep extends BaseStep {
       `[DownloadStep] Episode recovery check: episodeId=${episodeId}, mediaType=${mediaType}`
     );
     if (episodeId && mediaType === MediaType.TV) {
-      const episode = await prisma.tvEpisode.findUnique({
+      const episode = await prisma.processingItem.findUnique({
         where: { id: episodeId as string },
         select: { sourceFilePath: true, season: true, episode: true },
       });
@@ -86,7 +86,7 @@ export class DownloadStep extends BaseStep {
         await this.logActivity(
           requestId,
           ActivityType.INFO,
-          `Episode S${String(episode.season).padStart(2, "0")}E${String(episode.episode).padStart(2, "0")} already extracted, proceeding to encoding`
+          `Episode S${String(episode.season!).padStart(2, "0")}E${String(episode.episode!).padStart(2, "0")} already extracted, proceeding to encoding`
         );
 
         return {
@@ -106,11 +106,12 @@ export class DownloadStep extends BaseStep {
     const skippedSearch = (context.search as { skippedSearch?: boolean })?.skippedSearch;
     if (skippedSearch && mediaType === MediaType.TV) {
       // Episodes are already DOWNLOADED - extract files and continue to encoding
-      const downloadedEpisodes = await prisma.tvEpisode.findMany({
+      const downloadedEpisodes = await prisma.processingItem.findMany({
         where: {
           requestId,
+          type: "EPISODE",
           status: {
-            in: [TvEpisodeStatus.DOWNLOADED, TvEpisodeStatus.ENCODING, TvEpisodeStatus.ENCODED],
+            in: [ProcessingStatus.DOWNLOADED, ProcessingStatus.ENCODING, ProcessingStatus.ENCODED],
           },
         },
         select: {
@@ -161,7 +162,9 @@ export class DownloadStep extends BaseStep {
         encodingProfileId?: string;
       }>;
 
-      for (const ep of downloadedEpisodes.filter((e) => e.sourceFilePath !== null)) {
+      for (const ep of downloadedEpisodes.filter(
+        (e: { sourceFilePath: string | null }) => e.sourceFilePath !== null
+      )) {
         try {
           await deliveryQueue.enqueue({
             episodeId: ep.id,
@@ -445,29 +448,31 @@ export class DownloadStep extends BaseStep {
           const season = parsed.season || 1;
 
           for (const episode of episodes) {
-            await prisma.tvEpisode.updateMany({
+            await prisma.processingItem.updateMany({
               where: {
                 requestId,
+                type: "EPISODE",
                 season,
                 episode,
-                status: { in: [TvEpisodeStatus.PENDING, TvEpisodeStatus.SEARCHING] },
+                status: { in: [ProcessingStatus.PENDING, ProcessingStatus.SEARCHING] },
               },
               data: {
-                status: TvEpisodeStatus.DOWNLOADING,
+                status: ProcessingStatus.DOWNLOADING,
                 downloadId: download.id,
               },
             });
           }
         } else if (parsed.season !== undefined) {
           // Season pack - mark all episodes in this season as DOWNLOADING
-          await prisma.tvEpisode.updateMany({
+          await prisma.processingItem.updateMany({
             where: {
               requestId,
+              type: "EPISODE",
               season: parsed.season,
-              status: { in: [TvEpisodeStatus.PENDING, TvEpisodeStatus.SEARCHING] },
+              status: { in: [ProcessingStatus.PENDING, ProcessingStatus.SEARCHING] },
             },
             data: {
-              status: TvEpisodeStatus.DOWNLOADING,
+              status: ProcessingStatus.DOWNLOADING,
               downloadId: download.id,
             },
           });
@@ -476,13 +481,14 @@ export class DownloadStep extends BaseStep {
           console.warn(
             `[DownloadStep] No season/episode info found in torrent name: ${download.torrentName}`
           );
-          await prisma.tvEpisode.updateMany({
+          await prisma.processingItem.updateMany({
             where: {
               requestId,
-              status: { in: [TvEpisodeStatus.PENDING, TvEpisodeStatus.SEARCHING] },
+              type: "EPISODE",
+              status: { in: [ProcessingStatus.PENDING, ProcessingStatus.SEARCHING] },
             },
             data: {
-              status: TvEpisodeStatus.DOWNLOADING,
+              status: ProcessingStatus.DOWNLOADING,
               downloadId: download.id,
             },
           });
@@ -793,7 +799,7 @@ export class DownloadStep extends BaseStep {
 
   /**
    * Extract all episode files from a season pack torrent
-   * Maps files to existing TvEpisode records created during request creation
+   * Maps files to existing ProcessingItem records created during request creation
    */
   private async extractEpisodeFiles(
     torrentHash: string,
@@ -852,57 +858,64 @@ export class DownloadStep extends BaseStep {
       const episode = Number.parseInt(match[2], 10);
       const fullPath = `${progress.savePath}/${file.name}`;
 
-      // Find existing TvEpisode record (created during request creation)
-      let tvEpisode = await prisma.tvEpisode.findUnique({
+      // Find existing ProcessingItem record (created during request creation)
+      let processingItem = await prisma.processingItem.findFirst({
         where: {
-          requestId_season_episode: {
-            requestId,
-            season,
-            episode,
-          },
+          requestId,
+          type: "EPISODE",
+          season,
+          episode,
         },
       });
 
-      // If TvEpisode doesn't exist (e.g., Trakt API failed during request creation),
+      // If ProcessingItem doesn't exist (e.g., Trakt API failed during request creation),
       // create it now so the episode can be tracked
-      if (!tvEpisode) {
+      if (!processingItem) {
         console.log(
-          `[DownloadStep] Creating missing TvEpisode record for S${season}E${episode} in request ${requestId}`
+          `[DownloadStep] Creating missing ProcessingItem record for S${season}E${episode} in request ${requestId}`
         );
-        tvEpisode = await prisma.tvEpisode.create({
+        const request = await prisma.mediaRequest.findUnique({
+          where: { id: requestId },
+          select: { tmdbId: true, title: true, year: true },
+        });
+        processingItem = await prisma.processingItem.create({
           data: {
             requestId,
+            type: "EPISODE",
+            tmdbId: request!.tmdbId,
+            title: `S${season}E${episode}`,
+            year: request!.year,
             season,
             episode,
-            status: TvEpisodeStatus.PENDING,
+            status: ProcessingStatus.PENDING,
           },
         });
       }
 
-      // Skip episode if it's already completed or delivered
+      // Skip episode if it's already completed or cancelled
       if (
-        tvEpisode.status === TvEpisodeStatus.COMPLETED ||
-        tvEpisode.status === TvEpisodeStatus.SKIPPED
+        processingItem.status === ProcessingStatus.COMPLETED ||
+        processingItem.status === ProcessingStatus.CANCELLED
       ) {
         console.log(
-          `[DownloadStep] Skipping S${season}E${episode} - already ${tvEpisode.status.toLowerCase()}`
+          `[DownloadStep] Skipping S${season}E${episode} - already ${processingItem.status.toLowerCase()}`
         );
         await this.logActivity(
           requestId,
           ActivityType.INFO,
           `Skipped S${String(season).padStart(2, "0")}E${String(episode).padStart(2, "0")} - already on storage server`,
-          { season, episode, status: tvEpisode.status }
+          { season, episode, status: processingItem.status }
         );
         continue;
       }
 
-      // Update TvEpisode with download info
-      await prisma.tvEpisode.update({
-        where: { id: tvEpisode.id },
+      // Update ProcessingItem with download info
+      await prisma.processingItem.update({
+        where: { id: processingItem.id },
         data: {
           downloadId: download.id,
           sourceFilePath: fullPath,
-          status: TvEpisodeStatus.DOWNLOADED,
+          status: ProcessingStatus.DOWNLOADED,
           downloadedAt: new Date(),
         },
       });
@@ -912,7 +925,7 @@ export class DownloadStep extends BaseStep {
         episode,
         path: fullPath,
         size: file.size,
-        episodeId: tvEpisode.id,
+        episodeId: processingItem.id,
       });
 
       await this.logActivity(

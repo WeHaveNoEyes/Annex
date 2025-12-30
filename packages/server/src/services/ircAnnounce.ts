@@ -7,7 +7,7 @@
  * This is more efficient than polling - we get instant notifications of new releases.
  */
 
-import { MediaType, Prisma, RequestStatus, TvEpisodeStatus } from "@prisma/client";
+import { MediaType, Prisma, ProcessingStatus, RequestStatus } from "@prisma/client";
 import { Client } from "irc-framework";
 import { getConfig } from "../config/index.js";
 import { prisma } from "../db/client.js";
@@ -411,10 +411,11 @@ class IrcAnnounceMonitor {
     // Extract resolution from release title
     const releaseResolution = this.extractResolution(announce.name);
 
-    // Find AWAITING or QUALITY_UNAVAILABLE episodes that match
-    const episodes = await prisma.tvEpisode.findMany({
+    // Find SEARCHING episodes that match (includes quality unavailable cases)
+    const episodes = await prisma.processingItem.findMany({
       where: {
-        status: { in: [TvEpisodeStatus.AWAITING, TvEpisodeStatus.QUALITY_UNAVAILABLE] },
+        type: "EPISODE",
+        status: ProcessingStatus.SEARCHING,
         season: seInfo.season,
         episode: seInfo.episode !== null ? seInfo.episode : undefined,
       },
@@ -440,7 +441,7 @@ class IrcAnnounceMonitor {
           }
         }
 
-        const wasQualityUnavailable = episode.status === TvEpisodeStatus.QUALITY_UNAVAILABLE;
+        const wasQualityUnavailable = episode.qualityMet === false;
 
         if (seInfo.episode !== null) {
           console.log(
@@ -674,10 +675,10 @@ class IrcAnnounceMonitor {
     }
 
     // Update episode status and clear availableReleases if this was a quality upgrade
-    const episode = await prisma.tvEpisode.update({
+    const episode = await prisma.processingItem.update({
       where: { id: episodeId },
       data: {
-        status: TvEpisodeStatus.DOWNLOADING,
+        status: ProcessingStatus.DOWNLOADING,
         ...(wasQualityUnavailable ? { qualityMet: true, availableReleases: Prisma.JsonNull } : {}),
       },
       include: { request: true },
@@ -724,35 +725,37 @@ class IrcAnnounceMonitor {
     }
 
     // Get all awaiting or quality_unavailable episodes for this season
-    const episodes = await prisma.tvEpisode.findMany({
+    const episodes = await prisma.processingItem.findMany({
       where: {
+        type: "EPISODE",
         requestId,
         season,
-        status: { in: [TvEpisodeStatus.AWAITING, TvEpisodeStatus.QUALITY_UNAVAILABLE] },
+        status: ProcessingStatus.SEARCHING,
       },
     });
 
     if (episodes.length === 0) return;
 
     // Update first episode status
-    await prisma.tvEpisode.update({
+    await prisma.processingItem.update({
       where: { id: episodes[0].id },
       data: {
-        status: TvEpisodeStatus.DOWNLOADING,
+        status: ProcessingStatus.DOWNLOADING,
         ...(wasQualityUnavailable ? { qualityMet: true, availableReleases: Prisma.JsonNull } : {}),
       },
     });
 
     // Mark other episodes as downloading too
-    await prisma.tvEpisode.updateMany({
+    await prisma.processingItem.updateMany({
       where: {
+        type: "EPISODE",
         requestId,
         season,
         id: { not: episodes[0].id },
-        status: { in: [TvEpisodeStatus.AWAITING, TvEpisodeStatus.QUALITY_UNAVAILABLE] },
+        status: ProcessingStatus.SEARCHING,
       },
       data: {
-        status: TvEpisodeStatus.DOWNLOADING,
+        status: ProcessingStatus.DOWNLOADING,
         ...(wasQualityUnavailable ? { qualityMet: true, availableReleases: Prisma.JsonNull } : {}),
       },
     });

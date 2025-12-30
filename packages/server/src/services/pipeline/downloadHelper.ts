@@ -1,11 +1,11 @@
-import { TvEpisodeStatus } from "@prisma/client";
+import { ProcessingStatus } from "@prisma/client";
 import { prisma } from "../../db/client.js";
 import { isSampleFile } from "../archive.js";
 import { getDownloadService } from "../download.js";
 
 /**
  * Extract episode files from a completed download
- * Updates TvEpisode records with DOWNLOADED status and file paths
+ * Updates ProcessingItem records with DOWNLOADED status and file paths
  */
 export async function extractEpisodeFilesFromDownload(
   torrentHash: string,
@@ -73,51 +73,53 @@ export async function extractEpisodeFilesFromDownload(
     const episode = Number.parseInt(match[2], 10);
     const fullPath = `${progress.savePath}/${file.name}`;
 
-    // Find existing TvEpisode record (created during request creation)
-    let tvEpisode = await prisma.tvEpisode.findUnique({
+    // Find existing ProcessingItem record (created during request creation)
+    let processingItem = await prisma.processingItem.findUnique({
       where: {
-        requestId_season_episode: {
+        requestId_type_season_episode: {
           requestId,
+          type: "EPISODE",
           season,
           episode,
         },
       },
     });
 
-    // If TvEpisode doesn't exist (e.g., Trakt API failed during request creation),
+    // If ProcessingItem doesn't exist (shouldn't happen with new pipeline system),
     // create it now so the episode can be tracked
-    if (!tvEpisode) {
+    if (!processingItem) {
       console.log(
-        `[DownloadHelper] Creating missing TvEpisode record for S${season}E${episode} in request ${requestId}`
+        `[DownloadHelper] Creating missing ProcessingItem record for S${season}E${episode} in request ${requestId}`
       );
-      tvEpisode = await prisma.tvEpisode.create({
+      processingItem = await prisma.processingItem.create({
         data: {
           requestId,
+          type: "EPISODE",
           season,
           episode,
-          status: TvEpisodeStatus.PENDING,
+          status: ProcessingStatus.PENDING,
         },
       });
     }
 
-    // Skip episode if it's already completed or delivered
+    // Skip episode if it's already completed or cancelled
     if (
-      tvEpisode.status === TvEpisodeStatus.COMPLETED ||
-      tvEpisode.status === TvEpisodeStatus.SKIPPED
+      processingItem.status === ProcessingStatus.COMPLETED ||
+      processingItem.status === ProcessingStatus.CANCELLED
     ) {
       console.log(
-        `[DownloadHelper] Skipping S${season}E${episode} - already ${tvEpisode.status.toLowerCase()}`
+        `[DownloadHelper] Skipping S${season}E${episode} - already ${processingItem.status.toLowerCase()}`
       );
       continue;
     }
 
-    // Update TvEpisode with download info
-    await prisma.tvEpisode.update({
-      where: { id: tvEpisode.id },
+    // Update ProcessingItem with download info
+    await prisma.processingItem.update({
+      where: { id: processingItem.id },
       data: {
         downloadId: download.id,
         sourceFilePath: fullPath,
-        status: TvEpisodeStatus.DOWNLOADED,
+        status: ProcessingStatus.DOWNLOADED,
         downloadedAt: new Date(),
       },
     });
@@ -127,7 +129,7 @@ export async function extractEpisodeFilesFromDownload(
       episode,
       path: fullPath,
       size: file.size,
-      episodeId: tvEpisode.id,
+      episodeId: processingItem.id,
     });
 
     console.log(

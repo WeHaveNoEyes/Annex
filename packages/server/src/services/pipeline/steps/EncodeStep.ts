@@ -2,9 +2,9 @@ import {
   ActivityType,
   AssignmentStatus,
   type Prisma,
+  ProcessingStatus,
   RequestStatus,
   StepType,
-  TvEpisodeStatus,
 } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { getEncoderDispatchService } from "../../encoderDispatch.js";
@@ -512,9 +512,9 @@ export class EncodeStep extends BaseStep {
     await this.logActivity(requestId, ActivityType.INFO, `Starting encoding for ${epNum}`);
 
     // Update episode status to ENCODING
-    await prisma.tvEpisode.update({
+    await prisma.processingItem.update({
       where: { id: episodeId },
-      data: { status: TvEpisodeStatus.ENCODING, progress: 0 },
+      data: { status: ProcessingStatus.ENCODING, progress: 0 },
     });
 
     const pollInterval = cfg.pollInterval || 5000;
@@ -583,9 +583,9 @@ export class EncodeStep extends BaseStep {
       });
 
       if (!assignmentStatus) {
-        await prisma.tvEpisode.update({
+        await prisma.processingItem.update({
           where: { id: episodeId },
-          data: { status: TvEpisodeStatus.FAILED, error: "Encoding assignment not found" },
+          data: { status: ProcessingStatus.FAILED, lastError: "Encoding assignment not found" },
         });
 
         return {
@@ -596,7 +596,7 @@ export class EncodeStep extends BaseStep {
 
       // Update episode progress
       if (assignmentStatus.progress !== null) {
-        await prisma.tvEpisode.update({
+        await prisma.processingItem.update({
           where: { id: episodeId },
           data: { progress: assignmentStatus.progress },
         });
@@ -609,10 +609,10 @@ export class EncodeStep extends BaseStep {
 
       // Check if complete
       if (assignmentStatus.status === AssignmentStatus.COMPLETED) {
-        await prisma.tvEpisode.update({
+        await prisma.processingItem.update({
           where: { id: episodeId },
           data: {
-            status: TvEpisodeStatus.ENCODED,
+            status: ProcessingStatus.ENCODED,
             encodedAt: new Date(),
             progress: 100,
           },
@@ -666,11 +666,11 @@ export class EncodeStep extends BaseStep {
       if (assignmentStatus.status === AssignmentStatus.FAILED) {
         const errorMsg = assignmentStatus.error || "Encoding failed";
 
-        await prisma.tvEpisode.update({
+        await prisma.processingItem.update({
           where: { id: episodeId },
           data: {
-            status: TvEpisodeStatus.FAILED,
-            error: errorMsg,
+            status: ProcessingStatus.FAILED,
+            lastError: errorMsg,
           },
         });
 
@@ -688,11 +688,11 @@ export class EncodeStep extends BaseStep {
 
       // Check if cancelled
       if (assignmentStatus.status === AssignmentStatus.CANCELLED) {
-        await prisma.tvEpisode.update({
+        await prisma.processingItem.update({
           where: { id: episodeId },
           data: {
-            status: TvEpisodeStatus.FAILED,
-            error: "Encoding cancelled",
+            status: ProcessingStatus.FAILED,
+            lastError: "Encoding cancelled",
           },
         });
 
@@ -708,11 +708,11 @@ export class EncodeStep extends BaseStep {
 
     // Timeout
     const timeoutMsg = `Encoding timeout after ${timeout / 1000 / 60} minutes`;
-    await prisma.tvEpisode.update({
+    await prisma.processingItem.update({
       where: { id: episodeId },
       data: {
-        status: TvEpisodeStatus.FAILED,
-        error: timeoutMsg,
+        status: ProcessingStatus.FAILED,
+        lastError: timeoutMsg,
       },
     });
 
@@ -840,9 +840,9 @@ export class EncodeStep extends BaseStep {
         );
 
         // Update episode status to ENCODING
-        await prisma.tvEpisode.update({
+        await prisma.processingItem.update({
           where: { id: ep.episodeId },
-          data: { status: TvEpisodeStatus.ENCODING },
+          data: { status: ProcessingStatus.ENCODING },
         });
 
         assignments.push({
@@ -899,7 +899,7 @@ export class EncodeStep extends BaseStep {
           status.status === AssignmentStatus.ENCODING
         ) {
           const episodeProgress = status.progress || 0;
-          await prisma.tvEpisode.update({
+          await prisma.processingItem.update({
             where: { id: assignment.episodeId },
             data: {
               progress: episodeProgress,
@@ -922,10 +922,10 @@ export class EncodeStep extends BaseStep {
             compressionRatio: status.compressionRatio || undefined,
           });
 
-          await prisma.tvEpisode.update({
+          await prisma.processingItem.update({
             where: { id: assignment.episodeId },
             data: {
-              status: TvEpisodeStatus.ENCODED,
+              status: ProcessingStatus.ENCODED,
               encodedAt: new Date(),
             },
           });
@@ -941,11 +941,11 @@ export class EncodeStep extends BaseStep {
 
         // Handle failed
         if (status.status === AssignmentStatus.FAILED) {
-          await prisma.tvEpisode.update({
+          await prisma.processingItem.update({
             where: { id: assignment.episodeId },
             data: {
-              status: TvEpisodeStatus.FAILED,
-              error: status.error || "Encoding failed",
+              status: ProcessingStatus.FAILED,
+              lastError: status.error || "Encoding failed",
             },
           });
 
@@ -960,11 +960,11 @@ export class EncodeStep extends BaseStep {
 
         // Handle cancelled
         if (status.status === AssignmentStatus.CANCELLED) {
-          await prisma.tvEpisode.update({
+          await prisma.processingItem.update({
             where: { id: assignment.episodeId },
             data: {
-              status: TvEpisodeStatus.FAILED,
-              error: "Encoding cancelled",
+              status: ProcessingStatus.FAILED,
+              lastError: "Encoding cancelled",
             },
           });
 
@@ -1036,11 +1036,11 @@ export class EncodeStep extends BaseStep {
 
     // Handle any remaining timeouts
     for (const assignment of assignments) {
-      await prisma.tvEpisode.update({
+      await prisma.processingItem.update({
         where: { id: assignment.episodeId },
         data: {
-          status: TvEpisodeStatus.FAILED,
-          error: `Encoding timeout after ${timeout / 1000 / 60} minutes`,
+          status: ProcessingStatus.FAILED,
+          lastError: `Encoding timeout after ${timeout / 1000 / 60} minutes`,
         },
       });
 

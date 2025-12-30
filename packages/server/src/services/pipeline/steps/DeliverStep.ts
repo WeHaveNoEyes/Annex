@@ -2,9 +2,9 @@ import {
   ActivityType,
   MediaType,
   Prisma,
+  ProcessingStatus,
   RequestStatus,
   StepType,
-  TvEpisodeStatus,
 } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { getDeliveryService } from "../../delivery.js";
@@ -291,9 +291,9 @@ export class DeliverStep extends BaseStep {
 
         // Mark episode as DELIVERING if this is a TV episode
         if (episodeId) {
-          await prisma.tvEpisode.update({
+          await prisma.processingItem.update({
             where: { id: episodeId },
-            data: { status: TvEpisodeStatus.DELIVERING },
+            data: { status: ProcessingStatus.DELIVERING },
           });
         }
 
@@ -339,12 +339,12 @@ export class DeliverStep extends BaseStep {
             }
           );
 
-          // Update TvEpisode status if this is a TV episode
+          // Update ProcessingItem status if this is a TV episode
           if (episodeId) {
-            await prisma.tvEpisode.update({
+            await prisma.processingItem.update({
               where: { id: episodeId },
               data: {
-                status: TvEpisodeStatus.COMPLETED,
+                status: ProcessingStatus.COMPLETED,
                 deliveredAt: new Date(),
               },
             });
@@ -397,22 +397,23 @@ export class DeliverStep extends BaseStep {
       let remainingEpisodes = 0;
 
       if (mediaType === MediaType.TV) {
-        const episodeStats = await prisma.tvEpisode.groupBy({
+        const episodeStats = await prisma.processingItem.groupBy({
           by: ["status"],
-          where: { requestId },
+          where: { requestId, type: "EPISODE" },
           _count: { status: true },
         });
 
         const totalEpisodes = episodeStats.reduce(
-          (sum: number, stat) => sum + stat._count.status,
+          (sum: number, stat: { _count: { status: number } }) => sum + stat._count.status,
           0
         );
         const completedEpisodes = episodeStats
           .filter(
-            (stat) =>
-              stat.status === TvEpisodeStatus.COMPLETED || stat.status === TvEpisodeStatus.SKIPPED
+            (stat: { status: ProcessingStatus }) =>
+              stat.status === ProcessingStatus.COMPLETED ||
+              stat.status === ProcessingStatus.CANCELLED
           )
-          .reduce((sum: number, stat) => sum + stat._count.status, 0);
+          .reduce((sum: number, stat: { _count: { status: number } }) => sum + stat._count.status, 0);
 
         remainingEpisodes = totalEpisodes - completedEpisodes;
         allEpisodesComplete = remainingEpisodes === 0;
@@ -555,11 +556,11 @@ export class DeliverStep extends BaseStep {
         for (const encodedFile of encodedFiles) {
           const { episodeId } = encodedFile as { episodeId?: string };
           if (episodeId) {
-            await prisma.tvEpisode.update({
+            await prisma.processingItem.update({
               where: { id: episodeId },
               data: {
-                status: TvEpisodeStatus.FAILED,
-                error: error,
+                status: ProcessingStatus.FAILED,
+                lastError: error,
               },
             });
           }

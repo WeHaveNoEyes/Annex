@@ -206,9 +206,6 @@ class EncoderDispatchService {
 
       // 6. Sync ProcessingItem progress: Update all ENCODING items with latest progress
       await this.syncProcessingItemProgress();
-
-      // 7. Sync episode progress: Update all ENCODING episodes with latest progress (legacy)
-      await this.syncEpisodeProgress();
     } catch (error) {
       console.error("[EncoderDispatch] Tick error:", error);
     }
@@ -486,171 +483,6 @@ class EncoderDispatchService {
     }
   }
 
-  async syncEpisodeProgress(): Promise<void> {
-    // Find all ENCODING episodes
-    const encodingEpisodes = await prisma.tvEpisode.findMany({
-      where: {
-        status: "ENCODING",
-      },
-      select: {
-        id: true,
-        requestId: true,
-        season: true,
-        episode: true,
-        progress: true,
-      },
-    });
-
-    if (encodingEpisodes.length === 0) {
-      return;
-    }
-
-    console.log(
-      `[EncoderDispatch] Syncing progress for ${encodingEpisodes.length} ENCODING episodes`
-    );
-
-    // Get all active encoding assignments with progress (including completed)
-    const assignments = await prisma.encoderAssignment.findMany({
-      where: {
-        status: { in: ["ASSIGNED", "ENCODING", "COMPLETED"] },
-      },
-      select: {
-        id: true,
-        jobId: true,
-        progress: true,
-        status: true,
-        outputPath: true,
-        outputSize: true,
-        compressionRatio: true,
-      },
-    });
-
-    if (assignments.length === 0) {
-      console.log("[EncoderDispatch] No active assignments found for progress sync");
-      return;
-    }
-
-    console.log(`[EncoderDispatch] Found ${assignments.length} active assignments`);
-
-    if (assignments.length > 0 && assignments.length <= 5) {
-      for (const a of assignments) {
-        const job = await prisma.job.findUnique({
-          where: { id: a.jobId },
-          select: { payload: true },
-        });
-        const payload = job?.payload as {
-          season?: number;
-          episode?: number;
-          episodeId?: string;
-        } | null;
-        console.log(
-          `[EncoderDispatch]   Assignment: S${payload?.season}E${payload?.episode} (episodeId: ${payload?.episodeId}) - ${a.progress.toFixed(1)}%`
-        );
-      }
-    }
-
-    // Build map of jobId -> assignment for quick lookup
-    const assignmentMap = new Map(assignments.map((a) => [a.jobId, a]));
-
-    // Get all jobs for encoding episodes to find their assignments
-    const jobs = await prisma.job.findMany({
-      where: {
-        type: "remote:encode",
-        status: { not: "COMPLETED" },
-      },
-      select: {
-        id: true,
-        payload: true,
-        status: true,
-      },
-    });
-
-    console.log(`[EncoderDispatch] Found ${jobs.length} non-completed remote:encode jobs`);
-
-    // Update each episode with progress from its assignment
-    let updated = 0;
-    let noJob = 0;
-    let noAssignment = 0;
-    for (const episode of encodingEpisodes) {
-      // Find the job for this episode
-      const job = jobs.find((j) => {
-        const payload = j.payload as { episodeId?: string };
-        return payload.episodeId === episode.id;
-      });
-
-      if (!job) {
-        noJob++;
-        continue;
-      }
-
-      // Find the assignment for this job
-      const assignment = assignmentMap.get(job.id);
-      if (!assignment) {
-        noAssignment++;
-        continue;
-      }
-
-      // Handle completed assignments - mark episode as ENCODED and resume pipeline
-      if (assignment.status === "COMPLETED") {
-        console.log(
-          `[EncoderDispatch] S${episode.season.toString().padStart(2, "0")}E${episode.episode.toString().padStart(2, "0")} encoding complete - transitioning to delivery`
-        );
-
-        // Mark episode as ENCODED
-        await prisma.tvEpisode.update({
-          where: { id: episode.id },
-          data: {
-            status: "ENCODED",
-            progress: 100,
-            encodedAt: new Date(),
-          },
-        });
-
-        // Resume the pipeline execution to trigger delivery (if it exists)
-        const execution = await prisma.pipelineExecution.findUnique({
-          where: { episodeId: episode.id },
-          select: { id: true },
-        });
-
-        if (execution) {
-          // Import here to avoid circular dependency
-          const { getPipelineExecutor } = await import("./pipeline/PipelineExecutor.js");
-          const executor = getPipelineExecutor();
-
-          // Resume execution - this will continue to the next step (DELIVER)
-          executor.resumeExecution(execution.id).catch((err: Error) => {
-            console.error(`[EncoderDispatch] Failed to resume execution ${execution.id}:`, err);
-          });
-        } else {
-          console.log(
-            `[EncoderDispatch] No pipeline execution found for episode ${episode.id} - skipping delivery (legacy episode)`
-          );
-        }
-
-        updated++;
-      } else {
-        // Update episode progress if it differs (for in-progress encoding)
-        const newProgress = assignment.progress || 0;
-        if (Math.abs(episode.progress - newProgress) > 0.01) {
-          console.log(
-            `[EncoderDispatch] Updating S${episode.season.toString().padStart(2, "0")}E${episode.episode.toString().padStart(2, "0")} progress: ${episode.progress.toFixed(1)}% → ${newProgress.toFixed(1)}%`
-          );
-          await prisma.tvEpisode.update({
-            where: { id: episode.id },
-            data: { progress: newProgress },
-          });
-          updated++;
-        }
-      }
-    }
-
-    if (updated > 0 || noJob > 0 || noAssignment > 0) {
-      console.log(
-        `[EncoderDispatch] Episode progress sync: ${updated} updated, ${noJob} no job, ${noAssignment} no assignment`
-      );
-    }
-  }
-
   async syncProcessingItemProgress(): Promise<void> {
     // Find all ENCODING ProcessingItems with encodingJobId set
     const encodingItems = await prisma.processingItem.findMany({
@@ -716,18 +548,6 @@ class EncoderDispatchService {
           where: { id: item.id },
           data: { progress: newProgress },
         });
-
-        // Also update TvEpisode progress if this is an episode
-        if (item.season !== null && item.episode !== null) {
-          await prisma.tvEpisode.updateMany({
-            where: {
-              requestId: item.requestId,
-              season: item.season,
-              episode: item.episode,
-            },
-            data: { progress: newProgress },
-          });
-        }
 
         updated++;
       }

@@ -1,4 +1,4 @@
-import { MediaType, Prisma, RequestStatus, TvEpisodeStatus } from "@prisma/client";
+import { MediaType, Prisma, ProcessingStatus, RequestStatus } from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db/client.js";
 import { getDownloadService } from "../services/download.js";
@@ -314,7 +314,7 @@ export const requestsRouter = router({
                   },
                 });
 
-                // Add to list for TvEpisode creation if this episode is requested
+                // Add to list for ProcessingItem creation if this episode is requested
                 if (input.episodes && input.episodes.length > 0) {
                   // Check if this specific episode was requested
                   if (
@@ -343,18 +343,6 @@ export const requestsRouter = router({
           }
         }
 
-        // Create TvEpisode records
-        if (episodesToCreate.length > 0) {
-          await prisma.tvEpisode.createMany({
-            data: episodesToCreate.map((ep) => ({
-              requestId: request.id,
-              season: ep.season,
-              episode: ep.episode,
-              title: ep.title,
-              airDate: ep.airDate,
-            })),
-          });
-        }
       } catch (error) {
         console.error("Failed to fetch episode data from Trakt:", error);
         // Continue anyway - the request will be created but may not have complete episode data
@@ -390,8 +378,7 @@ export const requestsRouter = router({
           },
         });
 
-        // TvEpisode records are created by PipelineOrchestrator.createRequest()
-        // No need to create them here
+        // ProcessingItem records are created by PipelineOrchestrator.createRequest()
 
         console.log(
           `[Requests] Created TV request ${newRequestId} with ${items.length} ProcessingItem(s)`
@@ -487,18 +474,6 @@ export const requestsRouter = router({
           releaseScore: true,
           releasePublishDate: true,
           releaseName: true,
-          tvEpisodes: {
-            select: {
-              id: true,
-              season: true,
-              episode: true,
-              title: true,
-              airDate: true,
-              status: true,
-              progress: true,
-            },
-            orderBy: [{ season: "asc" }, { episode: "asc" }],
-          },
         },
       });
 
@@ -534,17 +509,6 @@ export const requestsRouter = router({
           releaseScore: true;
           releasePublishDate: true;
           releaseName: true;
-          tvEpisodes: {
-            select: {
-              id: true;
-              season: true;
-              episode: true;
-              title: true;
-              airDate: true;
-              status: true;
-              progress: true;
-            };
-          };
         };
       }>;
 
@@ -695,8 +659,8 @@ export const requestsRouter = router({
     // For TV shows, get episode count
     let episodeCount: number | null = null;
     if (r.type === MediaType.TV) {
-      episodeCount = await prisma.tvEpisode.count({
-        where: { requestId: input.id },
+      episodeCount = await prisma.processingItem.count({
+        where: { requestId: input.id, type: "EPISODE" },
       });
     }
 
@@ -770,7 +734,6 @@ export const requestsRouter = router({
   delete: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
     const request = await prisma.mediaRequest.findUnique({
       where: { id: input.id },
-      include: { tvEpisodes: true },
     });
 
     if (!request) {
@@ -794,8 +757,8 @@ export const requestsRouter = router({
     // - For each torrent hash, call downloadService.deleteTorrent(hash, deleteFiles: true)
     // - This should remove the torrent from qBittorrent and delete the downloaded files
 
-    // Delete TV episodes first (foreign key constraint)
-    await prisma.tvEpisode.deleteMany({
+    // Delete ProcessingItems first (foreign key constraint)
+    await prisma.processingItem.deleteMany({
       where: { requestId: input.id },
     });
 
@@ -858,14 +821,14 @@ export const requestsRouter = router({
 
     if (request.type === "TV") {
       // Check episode statuses to determine resume point
-      const episodes = await prisma.tvEpisode.findMany({
-        where: { requestId: input.id },
+      const episodes = await prisma.processingItem.findMany({
+        where: { requestId: input.id, type: "EPISODE" },
         select: { status: true },
       });
 
       if (episodes.length > 0) {
         const statusCounts = episodes.reduce(
-          (acc, ep) => {
+          (acc: Record<string, number>, ep: { status: ProcessingStatus }) => {
             acc[ep.status] = (acc[ep.status] || 0) + 1;
             return acc;
           },
@@ -942,13 +905,13 @@ export const requestsRouter = router({
         return [];
       }
 
-      // Check if TV episodes exist, if not, initialize them
-      const episodes = await prisma.tvEpisode.findMany({
-        where: { requestId: input.requestId },
+      // Get ProcessingItems for this TV request
+      const episodes = await prisma.processingItem.findMany({
+        where: { requestId: input.requestId, type: "EPISODE" },
         orderBy: [{ season: "asc" }, { episode: "asc" }],
       });
 
-      type TvEpisodeData = Prisma.TvEpisodeGetPayload<Record<string, never>>;
+      type ProcessingItemData = Prisma.ProcessingItemGetPayload<Record<string, never>>;
 
       // Get target server IDs from the request
       const targets = request.targets as unknown as RequestTarget[];
@@ -984,7 +947,7 @@ export const requestsRouter = router({
 
       // Get download progress for episodes that are downloading
       const downloadingEpisodes = episodes.filter(
-        (ep: TvEpisodeData) => ep.status === TvEpisodeStatus.DOWNLOADING && ep.downloadId
+        (ep: ProcessingItemData) => ep.status === ProcessingStatus.DOWNLOADING && ep.downloadId
       );
 
       const downloadService = getDownloadService();
@@ -992,7 +955,7 @@ export const requestsRouter = router({
 
       // First, get the Download records for these episodes
       const downloadIds = downloadingEpisodes
-        .map((ep: TvEpisodeData) => ep.downloadId)
+        .map((ep: ProcessingItemData) => ep.downloadId)
         .filter((id: string | null): id is string => id !== null);
 
       const downloads = await prisma.download.findMany({
@@ -1001,7 +964,9 @@ export const requestsRouter = router({
 
       type DownloadData = Prisma.DownloadGetPayload<Record<string, never>>;
 
-      const downloadMap = new Map(downloads.map((d: DownloadData) => [d.id, d]));
+      const downloadMap = new Map<string, DownloadData>(
+        downloads.map((d: DownloadData) => [d.id, d])
+      );
 
       // Fetch all torrents once instead of individual calls per episode
       // This reduces API overhead when qBittorrent is under load
@@ -1044,15 +1009,21 @@ export const requestsRouter = router({
 
       // Check encoding job assignments for pending status
       const jobIds = processingItems
-        .map((item) => item.encodingJobId)
-        .filter((id): id is string => id !== null);
+        .map((item: { encodingJobId: string | null }) => item.encodingJobId)
+        .filter((id: string | null): id is string => id !== null);
 
       const assignments = await prisma.encoderAssignment.findMany({
         where: { jobId: { in: jobIds } },
         select: { jobId: true, status: true },
       });
 
-      const assignmentMap = new Map(assignments.map((a) => [a.jobId, a.status]));
+      type AssignmentData = Prisma.EncoderAssignmentGetPayload<{
+        select: { jobId: true; status: true };
+      }>;
+
+      const assignmentMap = new Map(
+        assignments.map((a: AssignmentData) => [a.jobId, a.status])
+      );
 
       // Build map of pending encode episodes: "season-episode" -> true
       const pendingEncodeMap = new Map<string, boolean>();
@@ -1115,9 +1086,9 @@ export const requestsRouter = router({
         // - For ENCODING status, use episode's progress field
         // - For other statuses, no progress
         let progress: number | null = null;
-        if (ep.status === TvEpisodeStatus.DOWNLOADING) {
+        if (ep.status === ProcessingStatus.DOWNLOADING) {
           progress = downloadProgress?.progress ?? null;
-        } else if (ep.status === TvEpisodeStatus.ENCODING) {
+        } else if (ep.status === ProcessingStatus.ENCODING) {
           progress = ep.progress;
         }
 
@@ -1125,9 +1096,9 @@ export const requestsRouter = router({
 
         seasons[ep.season].episodes.push({
           id: ep.id,
-          episodeNumber: ep.episode,
+          episodeNumber: ep.episode ?? 0,
           status,
-          error: ep.error,
+          error: ep.lastError,
           airDate: ep.airDate,
           downloadedAt: ep.downloadedAt,
           deliveredAt: ep.deliveredAt,

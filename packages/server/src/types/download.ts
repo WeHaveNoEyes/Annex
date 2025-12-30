@@ -4,7 +4,7 @@
  * Comprehensive type definitions for the download management system.
  */
 
-import type { Download, DownloadStatus, MediaType, TvEpisode } from "@prisma/client";
+import type { Download, DownloadStatus, MediaType } from "@prisma/client";
 
 // =============================================================================
 // parse-torrent-title types (no @types package available)
@@ -292,11 +292,7 @@ export interface CreateDownloadParams {
   alternativeReleases?: IndexerRelease[];
   isSeasonPack?: boolean;
   season?: number;
-  episodeIds?: string[]; // TvEpisode IDs to link
-}
-
-export interface DownloadWithEpisodes extends Download {
-  tvEpisodes: TvEpisode[];
+  episodeIds?: string[]; // ProcessingItem IDs to link
 }
 
 export interface DownloadManagerCallbacks {

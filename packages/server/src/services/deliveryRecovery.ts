@@ -1,4 +1,4 @@
-import { RequestStatus, TvEpisodeStatus } from "@prisma/client";
+import { ProcessingStatus, RequestStatus } from "@prisma/client";
 import { prisma } from "../db/client.js";
 import { registerPipelineSteps } from "./pipeline/registerSteps.js";
 import { StepRegistry } from "./pipeline/StepRegistry.js";
@@ -173,9 +173,10 @@ export async function recoverFailedEpisodeDeliveries(): Promise<void> {
   }
 
   // Find episodes that failed during delivery
-  const failedEpisodes = await prisma.tvEpisode.findMany({
+  const failedEpisodes = await prisma.processingItem.findMany({
     where: {
-      status: TvEpisodeStatus.FAILED,
+      type: "EPISODE",
+      status: ProcessingStatus.FAILED,
       encodedAt: { not: null }, // Successfully encoded
       sourceFilePath: { not: null }, // Have source file
     },
@@ -185,7 +186,7 @@ export async function recoverFailedEpisodeDeliveries(): Promise<void> {
       season: true,
       episode: true,
       sourceFilePath: true,
-      error: true,
+      lastError: true,
       updatedAt: true,
     },
     orderBy: { updatedAt: "asc" },
@@ -202,7 +203,7 @@ export async function recoverFailedEpisodeDeliveries(): Promise<void> {
   let retried = 0;
 
   for (const episode of failedEpisodes) {
-    const epNum = `S${String(episode.season).padStart(2, "0")}E${String(episode.episode).padStart(2, "0")}`;
+    const epNum = `S${String(episode.season ?? 0).padStart(2, "0")}E${String(episode.episode ?? 0).padStart(2, "0")}`;
 
     // Check if there's already an active pipeline for this episode
     const activePipeline = await prisma.pipelineExecution.findFirst({
@@ -234,11 +235,11 @@ export async function recoverFailedEpisodeDeliveries(): Promise<void> {
     }
 
     // Reset episode status to allow retry
-    await prisma.tvEpisode.update({
+    await prisma.processingItem.update({
       where: { id: episode.id },
       data: {
-        status: TvEpisodeStatus.DOWNLOADED,
-        error: null,
+        status: ProcessingStatus.DOWNLOADED,
+        lastError: null,
       },
     });
 

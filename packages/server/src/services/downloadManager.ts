@@ -8,7 +8,7 @@
  * - Cleanup and lifecycle management
  */
 
-import { type Download, DownloadStatus, MediaType, TvEpisodeStatus } from "@prisma/client";
+import { type Download, DownloadStatus, MediaType, ProcessingStatus } from "@prisma/client";
 import ptt from "parse-torrent-title";
 import { prisma } from "../db/client.js";
 import type {
@@ -747,11 +747,11 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
 
   // Link TV episodes if provided
   if (episodeIds && episodeIds.length > 0) {
-    await prisma.tvEpisode.updateMany({
+    await prisma.processingItem.updateMany({
       where: { id: { in: episodeIds } },
       data: {
         downloadId: download.id,
-        status: TvEpisodeStatus.DOWNLOADING,
+        status: ProcessingStatus.DOWNLOADING,
       },
     });
   }
@@ -791,11 +791,11 @@ export async function createDownloadFromExisting(
   if (existing) {
     // Link episodes to existing download
     if (episodeIds && episodeIds.length > 0) {
-      await prisma.tvEpisode.updateMany({
+      await prisma.processingItem.updateMany({
         where: { id: { in: episodeIds } },
         data: {
           downloadId: existing.id,
-          status: isComplete ? TvEpisodeStatus.DOWNLOADED : TvEpisodeStatus.DOWNLOADING,
+          status: isComplete ? ProcessingStatus.DOWNLOADED : ProcessingStatus.DOWNLOADING,
         },
       });
     }
@@ -838,11 +838,11 @@ export async function createDownloadFromExisting(
 
   // Link TV episodes if provided
   if (episodeIds && episodeIds.length > 0) {
-    await prisma.tvEpisode.updateMany({
+    await prisma.processingItem.updateMany({
       where: { id: { in: episodeIds } },
       data: {
         downloadId: download.id,
-        status: isComplete ? TvEpisodeStatus.DOWNLOADED : TvEpisodeStatus.DOWNLOADING,
+        status: isComplete ? ProcessingStatus.DOWNLOADED : ProcessingStatus.DOWNLOADING,
       },
     });
   }
@@ -1161,11 +1161,11 @@ export async function handleStalledDownload(downloadId: string, reason: string):
     });
 
     // Update linked episodes
-    await prisma.tvEpisode.updateMany({
+    await prisma.processingItem.updateMany({
       where: { downloadId },
       data: {
-        status: TvEpisodeStatus.FAILED,
-        error: reason,
+        status: ProcessingStatus.FAILED,
+        lastError: reason,
       },
     });
 
@@ -1218,10 +1218,11 @@ export async function cleanupDownload(downloadId: string): Promise<void> {
 
   // Check if all linked content is processed
   if (download.mediaType === MediaType.TV) {
-    const unprocessedEpisodes = await prisma.tvEpisode.count({
+    const unprocessedEpisodes = await prisma.processingItem.count({
       where: {
         downloadId,
-        status: { notIn: [TvEpisodeStatus.COMPLETED, TvEpisodeStatus.SKIPPED] },
+        type: "EPISODE",
+        status: { notIn: [ProcessingStatus.COMPLETED, ProcessingStatus.CANCELLED] },
       },
     });
 
@@ -1347,9 +1348,9 @@ export async function reconcileOnStartup(): Promise<{
       });
 
       // Update linked episodes
-      await prisma.tvEpisode.updateMany({
+      await prisma.processingItem.updateMany({
         where: { downloadId: download.id },
-        data: { status: TvEpisodeStatus.DOWNLOADED },
+        data: { status: ProcessingStatus.DOWNLOADED },
       });
     }
   }

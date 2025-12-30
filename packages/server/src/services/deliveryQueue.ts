@@ -10,7 +10,7 @@
  * - Database-backed queue for crash resilience
  */
 
-import { TvEpisodeStatus } from "@prisma/client";
+import { ProcessingStatus } from "@prisma/client";
 import { prisma } from "../db/client.js";
 import { getDeliveryService } from "./delivery.js";
 import { getNamingService } from "./naming.js";
@@ -71,9 +71,9 @@ class DeliveryQueueService {
     );
 
     // Update episode status to DELIVERING
-    await prisma.tvEpisode.update({
+    await prisma.processingItem.update({
       where: { id: job.episodeId },
-      data: { status: TvEpisodeStatus.DELIVERING },
+      data: { status: ProcessingStatus.DELIVERING },
     });
 
     // Start processing if not already running
@@ -113,22 +113,22 @@ class DeliveryQueueService {
             `[DeliveryQueue] ✓ ${epNum} delivered to ${result.deliveredServers.length} server(s)`
           );
 
-          await prisma.tvEpisode.update({
+          await prisma.processingItem.update({
             where: { id: job.episodeId },
             data: {
-              status: TvEpisodeStatus.COMPLETED,
+              status: ProcessingStatus.COMPLETED,
               deliveredAt: new Date(),
-              error: null,
+              lastError: null,
             },
           });
         } else {
           console.error(`[DeliveryQueue] ✗ ${epNum} failed: ${result.error}`);
 
-          await prisma.tvEpisode.update({
+          await prisma.processingItem.update({
             where: { id: job.episodeId },
             data: {
-              status: TvEpisodeStatus.FAILED,
-              error: result.error,
+              status: ProcessingStatus.FAILED,
+              lastError: result.error,
             },
           });
         }
@@ -138,11 +138,11 @@ class DeliveryQueueService {
           error instanceof Error ? error.message : error
         );
 
-        await prisma.tvEpisode.update({
+        await prisma.processingItem.update({
           where: { id: job.episodeId },
           data: {
-            status: TvEpisodeStatus.FAILED,
-            error: error instanceof Error ? error.message : String(error),
+            status: ProcessingStatus.FAILED,
+            lastError: error instanceof Error ? error.message : String(error),
           },
         });
       }
@@ -164,8 +164,8 @@ class DeliveryQueueService {
    * Update request status based on episode completion
    */
   private async updateRequestStatus(requestId: string): Promise<void> {
-    const episodes = await prisma.tvEpisode.findMany({
-      where: { requestId },
+    const episodes = await prisma.processingItem.findMany({
+      where: { requestId, type: "EPISODE" },
       select: { status: true },
     });
 
@@ -174,7 +174,7 @@ class DeliveryQueueService {
     }
 
     const statusCounts = episodes.reduce(
-      (acc, ep) => {
+      (acc: Record<string, number>, ep: { status: ProcessingStatus }) => {
         acc[ep.status] = (acc[ep.status] || 0) + 1;
         return acc;
       },
@@ -183,12 +183,12 @@ class DeliveryQueueService {
 
     const completed = statusCounts.COMPLETED || 0;
     const failed = statusCounts.FAILED || 0;
-    const skipped = statusCounts.SKIPPED || 0;
+    const cancelled = statusCounts.CANCELLED || 0;
     const delivering = statusCounts.DELIVERING || 0;
     const total = episodes.length;
 
-    // All episodes done (completed, failed, or skipped)
-    if (completed + failed + skipped === total) {
+    // All episodes done (completed, failed, or cancelled)
+    if (completed + failed + cancelled === total) {
       if (completed > 0) {
         // At least some episodes succeeded
         await prisma.mediaRequest.update({
@@ -201,7 +201,7 @@ class DeliveryQueueService {
           },
         });
         console.log(
-          `[DeliveryQueue] Request ${requestId} completed: ${completed} delivered, ${failed} failed, ${skipped} skipped`
+          `[DeliveryQueue] Request ${requestId} completed: ${completed} delivered, ${failed} failed, ${cancelled} cancelled`
         );
       } else {
         // All episodes failed or skipped
@@ -211,16 +211,16 @@ class DeliveryQueueService {
             status: "FAILED",
             progress: 0,
             currentStep: "All episodes failed delivery",
-            error: "All episodes failed or were skipped",
+            error: "All episodes failed or were cancelled",
           },
         });
         console.log(
-          `[DeliveryQueue] Request ${requestId} failed: ${failed} failed, ${skipped} skipped`
+          `[DeliveryQueue] Request ${requestId} failed: ${failed} failed, ${cancelled} cancelled`
         );
       }
     } else {
       // Still delivering - update progress
-      const progress = Math.floor(((completed + failed + skipped) / total) * 100);
+      const progress = Math.floor(((completed + failed + cancelled) / total) * 100);
       await prisma.mediaRequest.update({
         where: { id: requestId },
         data: {

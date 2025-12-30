@@ -567,12 +567,25 @@ export class PipelineExecutor {
   // Fail execution
   async failExecution(executionId: string, error: string): Promise<void> {
     try {
-      // Use updateMany to avoid errors if execution was already deleted/completed
-      const result = await prisma.pipelineExecution.updateMany({
-        where: {
-          id: executionId,
-          status: { not: "FAILED" }, // Don't update if already failed
-        },
+      // Get execution to find requestId
+      const execution = await prisma.pipelineExecution.findUnique({
+        where: { id: executionId },
+        select: { requestId: true, status: true },
+      });
+
+      if (!execution) {
+        logger.debug(`Skipped failing execution ${executionId} (doesn't exist)`);
+        return;
+      }
+
+      if (execution.status === "FAILED") {
+        logger.debug(`Skipped failing execution ${executionId} (already failed)`);
+        return;
+      }
+
+      // Update PipelineExecution
+      await prisma.pipelineExecution.update({
+        where: { id: executionId },
         data: {
           status: "FAILED" as ExecutionStatus,
           error,
@@ -580,13 +593,31 @@ export class PipelineExecutor {
         },
       });
 
-      if (result.count > 0) {
-        logger.error(`Failed pipeline execution ${executionId}: ${error}`);
-      } else {
-        logger.debug(
-          `Skipped failing execution ${executionId} (already completed or doesn't exist)`
-        );
-      }
+      // Update MediaRequest to match
+      await prisma.mediaRequest.update({
+        where: { id: execution.requestId },
+        data: {
+          status: "FAILED" as import("@prisma/client").RequestStatus,
+          error,
+          completedAt: new Date(),
+        },
+      });
+
+      // Update all ProcessingItems for this request to FAILED
+      await prisma.processingItem.updateMany({
+        where: {
+          requestId: execution.requestId,
+          status: {
+            notIn: ["COMPLETED", "CANCELLED", "FAILED"], // Don't override terminal states
+          },
+        },
+        data: {
+          status: "FAILED" as import("@prisma/client").ProcessingStatus,
+          lastError: error,
+        },
+      });
+
+      logger.error(`Failed pipeline execution ${executionId}: ${error}`);
     } catch (err) {
       logger.error(`Error while failing execution ${executionId}:`, err);
     }
@@ -595,25 +626,58 @@ export class PipelineExecutor {
   // Complete execution
   async completeExecution(executionId: string): Promise<void> {
     try {
-      // Use updateMany to avoid errors if execution was already completed/cancelled
-      const result = await prisma.pipelineExecution.updateMany({
-        where: {
-          id: executionId,
-          status: "RUNNING", // Only complete if still running
-        },
+      // Get execution to find requestId
+      const execution = await prisma.pipelineExecution.findUnique({
+        where: { id: executionId },
+        select: { requestId: true, status: true },
+      });
+
+      if (!execution) {
+        logger.debug(`Skipped completing execution ${executionId} (doesn't exist)`);
+        return;
+      }
+
+      if (execution.status !== "RUNNING") {
+        logger.debug(
+          `Skipped completing execution ${executionId} (status: ${execution.status})`
+        );
+        return;
+      }
+
+      // Update PipelineExecution
+      await prisma.pipelineExecution.update({
+        where: { id: executionId },
         data: {
           status: "COMPLETED" as ExecutionStatus,
           completedAt: new Date(),
         },
       });
 
-      if (result.count > 0) {
-        logger.info(`Completed pipeline execution ${executionId}`);
-      } else {
-        logger.debug(
-          `Skipped completing execution ${executionId} (already completed or doesn't exist)`
-        );
+      // Check if all ProcessingItems are completed
+      const items = await prisma.processingItem.findMany({
+        where: { requestId: execution.requestId },
+        select: { status: true },
+      });
+
+      const allCompleted = items.every(
+        (item: { status: import("@prisma/client").ProcessingStatus }) =>
+          item.status === "COMPLETED" || item.status === "CANCELLED"
+      );
+
+      // Only update MediaRequest to COMPLETED if all items are done
+      if (allCompleted) {
+        await prisma.mediaRequest.update({
+          where: { id: execution.requestId },
+          data: {
+            status: "COMPLETED" as import("@prisma/client").RequestStatus,
+            progress: 100,
+            completedAt: new Date(),
+          },
+        });
+        logger.info(`Completed request ${execution.requestId} - all items finished`);
       }
+
+      logger.info(`Completed pipeline execution ${executionId}`);
     } catch (err) {
       logger.error(`Error while completing execution ${executionId}:`, err);
     }
@@ -622,25 +686,56 @@ export class PipelineExecutor {
   // Cancel execution
   async cancelExecution(executionId: string): Promise<void> {
     try {
-      // Use updateMany to avoid errors if execution was already completed
-      const result = await prisma.pipelineExecution.updateMany({
-        where: {
-          id: executionId,
-          status: { notIn: ["COMPLETED", "FAILED", "CANCELLED"] }, // Don't cancel if already done
-        },
+      // Get execution to find requestId
+      const execution = await prisma.pipelineExecution.findUnique({
+        where: { id: executionId },
+        select: { requestId: true, status: true },
+      });
+
+      if (!execution) {
+        logger.debug(`Skipped cancelling execution ${executionId} (doesn't exist)`);
+        return;
+      }
+
+      if (["COMPLETED", "FAILED", "CANCELLED"].includes(execution.status)) {
+        logger.debug(
+          `Skipped cancelling execution ${executionId} (status: ${execution.status})`
+        );
+        return;
+      }
+
+      // Update PipelineExecution
+      await prisma.pipelineExecution.update({
+        where: { id: executionId },
         data: {
           status: "CANCELLED" as ExecutionStatus,
           completedAt: new Date(),
         },
       });
 
-      if (result.count > 0) {
-        logger.info(`Cancelled pipeline execution ${executionId}`);
-      } else {
-        logger.debug(
-          `Skipped cancelling execution ${executionId} (already completed or doesn't exist)`
-        );
+      // Update MediaRequest to match (if all items are cancelled)
+      const items = await prisma.processingItem.findMany({
+        where: { requestId: execution.requestId },
+        select: { status: true },
+      });
+
+      const allCancelled = items.every(
+        (item: { status: import("@prisma/client").ProcessingStatus }) =>
+          item.status === "CANCELLED"
+      );
+
+      if (allCancelled) {
+        await prisma.mediaRequest.update({
+          where: { id: execution.requestId },
+          data: {
+            status: "FAILED" as import("@prisma/client").RequestStatus,
+            error: "Cancelled by user",
+            completedAt: new Date(),
+          },
+        });
       }
+
+      logger.info(`Cancelled pipeline execution ${executionId}`);
     } catch (err) {
       logger.error(`Error while cancelling execution ${executionId}:`, err);
     }

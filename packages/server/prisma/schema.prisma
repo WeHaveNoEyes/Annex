@@ -306,7 +306,6 @@ model MediaRequest {
   user               User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   userId             String?
   activityLog        ActivityLog[]
-  tvEpisodes         TvEpisode[] // Track individual episode status for TV shows (LEGACY - being replaced by ProcessingItem)
   downloads          Download[] // All downloads associated with this request
   jobs               Job[] // All jobs associated with this request
   pipelineExecutions PipelineExecution[] // Main execution + episode branches (LEGACY - being replaced)
@@ -367,8 +366,7 @@ model Download {
   updatedAt   DateTime  @updatedAt
 
   // Relations
-  tvEpisodes      TvEpisode[] // For TV: episodes this download provides (LEGACY)
-  processingItems ProcessingItem[] // NEW: Processing items using this download
+  processingItems ProcessingItem[] // Processing items using this download
   events          DownloadEvent[]
 
   @@index([requestId])
@@ -406,64 +404,6 @@ model DownloadEvent {
 // =============================================================================
 // TV Episodes - Track individual episode status
 // =============================================================================
-
-model TvEpisode {
-  id        String       @id @default(cuid())
-  requestId String
-  request   MediaRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-
-  // Episode identity
-  season  Int
-  episode Int
-  title   String? // Episode title from TMDB
-  airDate DateTime? // When episode airs
-
-  // Link to download (set when download is created/assigned)
-  downloadId String?
-  download   Download? @relation(fields: [downloadId], references: [id], onDelete: SetNull)
-
-  // File mapping (set when download completes)
-  sourceFilePath String? // Specific file within the download for this episode
-
-  // Processing status
-  status   TvEpisodeStatus @default(PENDING)
-  progress Float           @default(0) // 0-100 encoding progress
-  error    String?
-
-  // Quality tracking per episode
-  qualityMet        Boolean @default(false) // Did we find matching quality?
-  availableReleases Json? // Lower-quality alternatives for this episode
-
-  // Timestamps
-  downloadedAt DateTime? // When source file became available
-  encodedAt    DateTime? // When encoding completed
-  deliveredAt  DateTime? // When delivered to all targets
-
-  // Branch pipeline execution for this episode
-  branchExecution PipelineExecution?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([requestId, season, episode])
-  @@index([requestId, status])
-  @@index([downloadId])
-}
-
-enum TvEpisodeStatus {
-  PENDING // Not yet started
-  AWAITING // Not aired yet / no release found
-  QUALITY_UNAVAILABLE // Releases found but none meet quality requirements
-  SEARCHING // Looking for release
-  DOWNLOADING // Download in progress (linked to Download)
-  DOWNLOADED // File available, awaiting encoding
-  ENCODING // Encoding in progress
-  ENCODED // Encoding done, awaiting delivery
-  DELIVERING // Transfer in progress
-  COMPLETED // Done
-  FAILED // Error occurred
-  SKIPPED // Already in library
-}
 
 // =============================================================================
 // Processing Items - Universal Work Tracking (NEW PIPELINE SYSTEM)
@@ -1196,16 +1136,12 @@ model PipelineExecution {
   parent            PipelineExecution?  @relation("BranchHierarchy", fields: [parentExecutionId], references: [id], onDelete: Cascade)
   branches          PipelineExecution[] @relation("BranchHierarchy")
 
-  episodeId String?    @unique // For episode branch pipelines
-  episode   TvEpisode? @relation(fields: [episodeId], references: [id], onDelete: Cascade)
-
   stepExecutions StepExecution[]
 
   @@index([requestId])
   @@index([status])
   @@index([templateId])
   @@index([parentExecutionId])
-  @@index([episodeId])
 }
 
 model StepExecution {

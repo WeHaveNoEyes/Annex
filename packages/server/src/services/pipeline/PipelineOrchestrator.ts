@@ -100,18 +100,6 @@ export class PipelineOrchestrator {
             episode: ep.episode,
           });
           items.push(item);
-
-          // Create TvEpisode record for UI display
-          await prisma.tvEpisode.create({
-            data: {
-              id: crypto.randomUUID(),
-              requestId,
-              season: ep.season,
-              episode: ep.episode,
-              title: ep.title,
-              status: "PENDING",
-            },
-          });
         }
       }
 
@@ -175,11 +163,6 @@ export class PipelineOrchestrator {
         downloadId: context?.downloadId,
         encodingJobId: context?.encodingJobId,
       });
-
-      // Sync TvEpisode status for UI display (if this is an episode)
-      if (item.type === "EPISODE" && item.season !== null && item.episode !== null) {
-        await this.syncTvEpisodeStatus(item.requestId, item.season, item.episode, toStatus);
-      }
 
       // Update request aggregates
       await processingItemRepository.updateRequestAggregates(item.requestId);
@@ -334,52 +317,6 @@ export class PipelineOrchestrator {
    */
   async updateContext(itemId: string, context: Record<string, unknown>): Promise<ProcessingItem> {
     return await processingItemRepository.updateStepContext(itemId, context);
-  }
-
-  /**
-   * Sync TvEpisode status with ProcessingItem status for UI display
-   */
-  private async syncTvEpisodeStatus(
-    requestId: string,
-    season: number,
-    episode: number,
-    processingStatus: ProcessingStatus
-  ): Promise<void> {
-    // Map ProcessingItem status to TvEpisode status
-    const statusMap: Record<ProcessingStatus, import("@prisma/client").TvEpisodeStatus> = {
-      PENDING: "PENDING",
-      SEARCHING: "SEARCHING",
-      FOUND: "SEARCHING",
-      DOWNLOADING: "DOWNLOADING",
-      DOWNLOADED: "DOWNLOADED",
-      ENCODING: "ENCODING",
-      ENCODED: "ENCODED",
-      DELIVERING: "DELIVERING",
-      COMPLETED: "COMPLETED",
-      FAILED: "FAILED",
-      CANCELLED: "SKIPPED",
-    };
-
-    const tvEpisodeStatus = statusMap[processingStatus];
-
-    try {
-      await prisma.tvEpisode.updateMany({
-        where: {
-          requestId,
-          season,
-          episode,
-        },
-        data: {
-          status: tvEpisodeStatus,
-        },
-      });
-    } catch (error) {
-      // Don't fail the transition if TvEpisode update fails (it's just for UI)
-      console.error(
-        `[PipelineOrchestrator] Failed to sync TvEpisode status for S${season}E${episode}:`,
-        error
-      );
-    }
   }
 }
 

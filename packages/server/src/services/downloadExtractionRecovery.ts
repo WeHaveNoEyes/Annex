@@ -1,4 +1,4 @@
-import { DownloadStatus, TvEpisodeStatus } from "@prisma/client";
+import { DownloadStatus, ProcessingStatus } from "@prisma/client";
 import { prisma } from "../db/client.js";
 import { extractEpisodeFilesFromDownload } from "./pipeline/downloadHelper.js";
 import { getPipelineExecutor } from "./pipeline/PipelineExecutor.js";
@@ -20,9 +20,10 @@ export async function recoverStuckDownloadExtractions(): Promise<void> {
   console.log("[DownloadExtractionRecovery] Checking for stuck episode extractions...");
 
   // Find episodes stuck in DOWNLOADING status that have a COMPLETED download
-  const stuckEpisodes = await prisma.tvEpisode.findMany({
+  const stuckEpisodes = await prisma.processingItem.findMany({
     where: {
-      status: TvEpisodeStatus.DOWNLOADING,
+      type: "EPISODE",
+      status: ProcessingStatus.DOWNLOADING,
       download: {
         status: DownloadStatus.COMPLETED,
       },
@@ -83,10 +84,12 @@ export async function recoverStuckDownloadExtractions(): Promise<void> {
       });
     }
 
-    downloadsToProcess.get(downloadId)?.episodes.push({
-      season: ep.season,
-      episode: ep.episode,
-    });
+    if (ep.season !== null && ep.episode !== null) {
+      downloadsToProcess.get(downloadId)?.episodes.push({
+        season: ep.season,
+        episode: ep.episode,
+      });
+    }
   }
 
   let recovered = 0;
