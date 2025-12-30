@@ -667,10 +667,39 @@ class DownloadService {
     // Note: qBittorrent file.name includes the relative path from save_path
     // e.g., "TorrentFolder/video.mkv" or just "video.mkv" for single-file torrents
     const mainFile = videoFiles[0];
-    const fullPath = `${progress.savePath}/${mainFile.name}`;
+    let fullPath = `${progress.savePath}/${mainFile.name}`;
 
     console.log(`[Download]   mainFile.name: ${mainFile.name}`);
     console.log(`[Download]   fullPath: ${fullPath}`);
+
+    // Check if fullPath is a directory - if so, scan for the video file inside
+    const fs = await import("node:fs/promises");
+    try {
+      const stats = await fs.stat(fullPath);
+      if (stats.isDirectory()) {
+        console.log(`[Download]   fullPath is a directory, scanning for video file...`);
+
+        // Read directory contents
+        const entries = await fs.readdir(fullPath, { withFileTypes: true });
+        const videoInDir = entries.find(
+          (entry) =>
+            entry.isFile() && videoExtensions.some((ext) => entry.name.toLowerCase().endsWith(ext))
+        );
+
+        if (videoInDir) {
+          fullPath = `${fullPath}/${videoInDir.name}`;
+          const fileStats = await fs.stat(fullPath);
+          console.log(`[Download]   Found video file: ${videoInDir.name}`);
+          return { path: fullPath, size: Number(fileStats.size) };
+        }
+
+        console.log(`[Download]   No video file found in directory`);
+        return null;
+      }
+    } catch (e) {
+      // Path doesn't exist or can't be accessed - continue with original path
+      console.log(`[Download]   Could not stat path: ${e}`);
+    }
 
     return { path: fullPath, size: mainFile.size };
   }
