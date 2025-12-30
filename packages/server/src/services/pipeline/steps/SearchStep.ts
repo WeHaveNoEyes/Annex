@@ -335,19 +335,24 @@ export class SearchStep extends BaseStep {
       ]);
 
       const neededEpisodes = allEpisodes.filter(
-        (ep: { status: ProcessingStatus }) => !completedStatuses.has(ep.status)
+        (ep: { status: ProcessingStatus; season: number | null }) =>
+          !completedStatuses.has(ep.status) && ep.season !== null
       );
 
-      // Get unique seasons from needed episodes
+      // Get unique seasons from needed episodes (season is guaranteed non-null after filter)
       seasonsToSearch = (
-        [...new Set(neededEpisodes.map((ep: { season: number | null }) => ep.season!))] as number[]
+        [...new Set(neededEpisodes.map((ep: { season: number }) => ep.season))] as number[]
       ).sort();
 
       // If no ProcessingItems exist yet, fall back to first requestedSeason from context
       // This handles cases where SearchStep runs before ProcessingItems are created
       // We only search for the first season - subsequent seasons will be handled
       // in subsequent pipeline executions as episodes complete
-      if (seasonsToSearch.length === 0 && context.requestedSeasons && context.requestedSeasons.length > 0) {
+      if (
+        seasonsToSearch.length === 0 &&
+        context.requestedSeasons &&
+        context.requestedSeasons.length > 0
+      ) {
         seasonsToSearch = [context.requestedSeasons[0]];
       }
 
@@ -445,6 +450,9 @@ export class SearchStep extends BaseStep {
 
       // Mark episodes as CANCELLED if they're on all target servers
       for (const ep of allEpisodes) {
+        // Skip episodes with null season/episode (shouldn't happen but be defensive)
+        if (ep.season === null || ep.episode === null) continue;
+
         const key = `S${ep.season}E${ep.episode}`;
         const serversWithEpisode = episodeServerMap.get(key);
 
@@ -461,7 +469,7 @@ export class SearchStep extends BaseStep {
           await this.logActivity(
             requestId,
             ActivityType.INFO,
-            `Skipped S${String(ep.season!).padStart(2, "0")}E${String(ep.episode!).padStart(2, "0")} - already in library on all target servers`
+            `Skipped S${String(ep.season).padStart(2, "0")}E${String(ep.episode).padStart(2, "0")} - already in library on all target servers`
           );
           console.log(`[Search] Marked ${key} as CANCELLED - already in library`);
           ep.status = ProcessingStatus.CANCELLED; // Update local object
