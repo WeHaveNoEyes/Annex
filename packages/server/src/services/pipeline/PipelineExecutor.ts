@@ -593,33 +593,35 @@ export class PipelineExecutor {
         },
       });
 
-      // Update MediaRequest to match (if it exists)
-      await prisma.mediaRequest
-        .update({
+      // Update MediaRequest to match (only if it exists, e.g. not in tests)
+      const mediaRequest = await prisma.mediaRequest.findUnique({
+        where: { id: execution.requestId },
+      });
+
+      if (mediaRequest) {
+        await prisma.mediaRequest.update({
           where: { id: execution.requestId },
           data: {
             status: "FAILED" as import("@prisma/client").RequestStatus,
             error,
             completedAt: new Date(),
           },
-        })
-        .catch(() => {
-          // Ignore if MediaRequest doesn't exist (e.g., in tests)
         });
 
-      // Update all ProcessingItems for this request to FAILED
-      await prisma.processingItem.updateMany({
-        where: {
-          requestId: execution.requestId,
-          status: {
-            notIn: ["COMPLETED", "CANCELLED", "FAILED"], // Don't override terminal states
+        // Update all ProcessingItems for this request to FAILED
+        await prisma.processingItem.updateMany({
+          where: {
+            requestId: execution.requestId,
+            status: {
+              notIn: ["COMPLETED", "CANCELLED", "FAILED"], // Don't override terminal states
+            },
           },
-        },
-        data: {
-          status: "FAILED" as import("@prisma/client").ProcessingStatus,
-          lastError: error,
-        },
-      });
+          data: {
+            status: "FAILED" as import("@prisma/client").ProcessingStatus,
+            lastError: error,
+          },
+        });
+      }
 
       logger.error(`Failed pipeline execution ${executionId}: ${error}`);
     } catch (err) {
@@ -668,21 +670,23 @@ export class PipelineExecutor {
           item.status === "COMPLETED" || item.status === "CANCELLED"
       );
 
-      // Only update MediaRequest to COMPLETED if all items are done
+      // Only update MediaRequest to COMPLETED if all items are done (and if it exists)
       if (allCompleted) {
-        await prisma.mediaRequest
-          .update({
+        const mediaRequest = await prisma.mediaRequest.findUnique({
+          where: { id: execution.requestId },
+        });
+
+        if (mediaRequest) {
+          await prisma.mediaRequest.update({
             where: { id: execution.requestId },
             data: {
               status: "COMPLETED" as import("@prisma/client").RequestStatus,
               progress: 100,
               completedAt: new Date(),
             },
-          })
-          .catch(() => {
-            // Ignore if MediaRequest doesn't exist (e.g., in tests)
           });
-        logger.info(`Completed request ${execution.requestId} - all items finished`);
+          logger.info(`Completed request ${execution.requestId} - all items finished`);
+        }
       }
 
       logger.info(`Completed pipeline execution ${executionId}`);
@@ -733,18 +737,20 @@ export class PipelineExecutor {
       );
 
       if (allCancelled) {
-        await prisma.mediaRequest
-          .update({
+        const mediaRequest = await prisma.mediaRequest.findUnique({
+          where: { id: execution.requestId },
+        });
+
+        if (mediaRequest) {
+          await prisma.mediaRequest.update({
             where: { id: execution.requestId },
             data: {
               status: "FAILED" as import("@prisma/client").RequestStatus,
               error: "Cancelled by user",
               completedAt: new Date(),
             },
-          })
-          .catch(() => {
-            // Ignore if MediaRequest doesn't exist (e.g., in tests)
           });
+        }
       }
 
       logger.info(`Cancelled pipeline execution ${executionId}`);
