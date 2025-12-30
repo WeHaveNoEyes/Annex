@@ -345,9 +345,12 @@ scheduler.register(
 );
 
 // Register download progress sync task (runs every 500ms)
+// LEGACY: Download progress sync for old MediaRequest/Download system
+// New requests use ProcessingItems and are handled by DownloadProgressWorker
+// This can be removed once all old requests are complete
 scheduler.register(
   "download-progress-sync",
-  "Download Progress Sync",
+  "Download Progress Sync (LEGACY)",
   500, // 500ms
   async () => {
     // Get all downloads that are actively downloading

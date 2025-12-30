@@ -1,5 +1,6 @@
 import type { BaseWorker } from "./BaseWorker";
 import { deliverWorker } from "./DeliverWorker";
+import { downloadProgressWorker } from "./DownloadProgressWorker";
 import { downloadRecoveryWorker } from "./DownloadRecoveryWorker";
 import { downloadWorker } from "./DownloadWorker";
 import { encoderMonitorWorker } from "./EncoderMonitorWorker";
@@ -18,6 +19,7 @@ export class WorkerManager {
     this.workers = [
       searchWorker,
       downloadWorker,
+      downloadProgressWorker,
       downloadRecoveryWorker,
       encodeWorker,
       encoderMonitorWorker,
