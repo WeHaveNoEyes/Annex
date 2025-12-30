@@ -71,6 +71,7 @@ export function createMockPrisma() {
   const mediaRequestStore = new Map<string, any>();
   const pipelineTemplateStore = new Map<string, any>();
   const pipelineExecutionStore = new Map<string, any>();
+  const processingItemStore = new Map<string, any>();
   const stepExecutionStore = new Map<string, any>();
   const notificationConfigStore = new Map<string, any>();
   const activityLogStore = new Map<string, any>();
@@ -257,9 +258,63 @@ export function createMockPrisma() {
         pipelineExecutionStore.set(where.id, updated);
         return updated;
       }),
+      updateMany: mock(async ({ where, data }: { where: any; data: any }) => {
+        let count = 0;
+        for (const [id, record] of pipelineExecutionStore.entries()) {
+          const matches = Object.keys(where).every((key) => {
+            if (key === "status" && typeof where[key] === "string") {
+              return record[key] === where[key];
+            }
+            return record[key] === where[key];
+          });
+          if (matches) {
+            const updated = { ...record, ...data, updatedAt: new Date() };
+            pipelineExecutionStore.set(id, updated);
+            count++;
+          }
+        }
+        return { count };
+      }),
       deleteMany: mock(async () => {
         const count = pipelineExecutionStore.size;
         pipelineExecutionStore.clear();
+        return { count };
+      }),
+    },
+    processingItem: {
+      findUnique: mock(async ({ where }: { where: { id: string } }) => {
+        return processingItemStore.get(where.id) || null;
+      }),
+      findMany: mock(async ({ where }: { where?: any } = {}) => {
+        const values = Array.from(processingItemStore.values());
+        if (!where) return values;
+
+        return values.filter((v) =>
+          Object.keys(where).every((key) => {
+            if (key === "requestId") return v.requestId === where.requestId;
+            if (key === "status" && where.status?.notIn) {
+              return !where.status.notIn.includes(v.status);
+            }
+            return v[key] === where[key];
+          })
+        );
+      }),
+      updateMany: mock(async ({ where, data }: { where: any; data: any }) => {
+        let count = 0;
+        for (const [id, record] of processingItemStore.entries()) {
+          const matches = Object.keys(where).every((key) => {
+            if (key === "requestId") return record.requestId === where.requestId;
+            if (key === "status" && where.status?.notIn) {
+              return !where.status.notIn.includes(record.status);
+            }
+            return record[key] === where[key];
+          });
+          if (matches) {
+            const updated = { ...record, ...data, updatedAt: new Date() };
+            processingItemStore.set(id, updated);
+            count++;
+          }
+        }
         return { count };
       }),
     },
@@ -672,6 +727,7 @@ export function createMockPrisma() {
       mediaRequest: mediaRequestStore,
       pipelineTemplate: pipelineTemplateStore,
       pipelineExecution: pipelineExecutionStore,
+      processingItem: processingItemStore,
       stepExecution: stepExecutionStore,
       notificationConfig: notificationConfigStore,
       activityLog: activityLogStore,
@@ -690,6 +746,7 @@ export function createMockPrisma() {
       mediaRequestStore.clear();
       pipelineTemplateStore.clear();
       pipelineExecutionStore.clear();
+      processingItemStore.clear();
       stepExecutionStore.clear();
       notificationConfigStore.clear();
       activityLogStore.clear();
