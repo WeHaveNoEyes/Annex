@@ -1017,26 +1017,23 @@ class EncoderDispatchService {
       }
     }
 
-    // Get all available encoders and filter by capacity
-    const availableEncoders = await prisma.remoteEncoder.findMany({
+    // Get all encoders ordered by current load
+    const allEncoders = await prisma.remoteEncoder.findMany({
       where: {
-        status: { in: ["IDLE", "ENCODING"] },
         OR: [{ blockedUntil: null }, { blockedUntil: { lt: new Date() } }],
       },
       orderBy: [{ currentJobs: "asc" }, { totalJobsCompleted: "desc" }],
     });
 
-    // CRITICAL: Filter to only encoders with available capacity
-    const encoder = availableEncoders.find((enc) => enc.currentJobs < enc.maxConcurrentJobs);
-
-    if (!encoder) {
-      const totalEncoders = await prisma.remoteEncoder.count();
-      throw new Error(
-        `No encoders available - all ${totalEncoders} encoder(s) are at capacity. Available encoders: ${availableEncoders.map((e) => `${e.encoderId} (${e.currentJobs}/${e.maxConcurrentJobs})`).join(", ") || "none"}`
-      );
+    if (allEncoders.length === 0) {
+      throw new Error("No encoders registered - cannot queue encoding job");
     }
 
-    // Create assignment
+    // Find encoder with available capacity, or use least-loaded encoder
+    const encoderWithCapacity = allEncoders.find((enc) => enc.currentJobs < enc.maxConcurrentJobs);
+    const encoder = encoderWithCapacity || allEncoders[0];
+
+    // Create assignment (PENDING status means dispatcher will assign when capacity available)
     const assignment = await prisma.encoderAssignment.create({
       data: {
         jobId,
@@ -1047,7 +1044,14 @@ class EncoderDispatchService {
       },
     });
 
-    console.log(`[EncoderDispatch] Queued job ${jobId} for remote encoding`);
+    if (encoderWithCapacity) {
+      console.log(`[EncoderDispatch] Queued job ${jobId} for encoder ${encoder.encoderId} (${encoder.currentJobs}/${encoder.maxConcurrentJobs})`);
+    } else {
+      console.log(
+        `[EncoderDispatch] Queued job ${jobId} - all encoders at capacity, will assign when available. Current: ${allEncoders.map((e) => `${e.encoderId}(${e.currentJobs}/${e.maxConcurrentJobs})`).join(", ")}`
+      );
+    }
+
     return assignment;
   }
 
