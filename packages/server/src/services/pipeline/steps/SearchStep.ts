@@ -342,6 +342,15 @@ export class SearchStep extends BaseStep {
       seasonsToSearch = (
         [...new Set(neededEpisodes.map((ep: { season: number | null }) => ep.season!))] as number[]
       ).sort();
+
+      // If no ProcessingItems exist yet, fall back to first requestedSeason from context
+      // This handles cases where SearchStep runs before ProcessingItems are created
+      // We only search for the first season - subsequent seasons will be handled
+      // in subsequent pipeline executions as episodes complete
+      if (seasonsToSearch.length === 0 && context.requestedSeasons && context.requestedSeasons.length > 0) {
+        seasonsToSearch = [context.requestedSeasons[0]];
+      }
+
       console.log(`[Search] Seasons to search: ${seasonsToSearch.join(", ")}`);
     }
 

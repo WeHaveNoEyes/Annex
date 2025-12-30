@@ -78,6 +78,7 @@ export function createMockPrisma() {
   const approvalQueueStore = new Map<string, any>();
   const storageServerStore = new Map<string, any>();
   const tvEpisodeStore = new Map<string, any>();
+  const episodeLibraryItemStore = new Map<string, any>();
   const downloadStore = new Map<string, any>();
   const mediaItemStore = new Map<string, any>();
   const indexerStore = new Map<string, any>();
@@ -324,9 +325,25 @@ export function createMockPrisma() {
             if (key === "status" && where.status?.notIn) {
               return !where.status.notIn.includes(v.status);
             }
+            if (key === "type") return v.type === where.type;
             return v[key] === where[key];
           })
         );
+      }),
+      count: mock(async ({ where }: { where?: any } = {}) => {
+        const values = Array.from(processingItemStore.values());
+        if (!where) return values.length;
+
+        return values.filter((v) =>
+          Object.keys(where).every((key) => {
+            if (key === "requestId") return v.requestId === where.requestId;
+            if (key === "type") return v.type === where.type;
+            if (key === "status" && where.status?.notIn) {
+              return !where.status.notIn.includes(v.status);
+            }
+            return v[key] === where[key];
+          })
+        ).length;
       }),
       updateMany: mock(async ({ where, data }: { where: any; data: any }) => {
         let count = 0;
@@ -565,6 +582,29 @@ export function createMockPrisma() {
         return { count };
       }),
     },
+    episodeLibraryItem: {
+      findMany: mock(async ({ where }: { where?: any } = {}) => {
+        const values = Array.from(episodeLibraryItemStore.values());
+        if (!where) return values;
+
+        return values.filter((v) =>
+          Object.keys(where).every((key) => {
+            if (key === "tmdbId") return v.tmdbId === where.tmdbId;
+            if (key === "season") return v.season === where.season;
+            if (key === "episode") return v.episode === where.episode;
+            if (key === "serverId" && where.serverId?.in) {
+              return where.serverId.in.includes(v.serverId);
+            }
+            return v[key] === where[key];
+          })
+        );
+      }),
+      deleteMany: mock(async () => {
+        const count = episodeLibraryItemStore.size;
+        episodeLibraryItemStore.clear();
+        return { count };
+      }),
+    },
     download: {
       create: mock(async ({ data }: { data: any }) => {
         const id = generateId();
@@ -763,6 +803,7 @@ export function createMockPrisma() {
       approvalQueue: approvalQueueStore,
       storageServer: storageServerStore,
       tvEpisode: tvEpisodeStore,
+      episodeLibraryItem: episodeLibraryItemStore,
       download: downloadStore,
       mediaItem: mediaItemStore,
       indexer: indexerStore,
@@ -782,6 +823,7 @@ export function createMockPrisma() {
       approvalQueueStore.clear();
       storageServerStore.clear();
       tvEpisodeStore.clear();
+      episodeLibraryItemStore.clear();
       downloadStore.clear();
       mediaItemStore.clear();
       indexerStore.clear();

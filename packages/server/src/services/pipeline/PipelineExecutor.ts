@@ -674,18 +674,28 @@ export class PipelineExecutor {
       if (allCompleted) {
         const mediaRequest = await prisma.mediaRequest.findUnique({
           where: { id: execution.requestId },
+          select: { status: true },
         });
 
         if (mediaRequest) {
-          await prisma.mediaRequest.update({
-            where: { id: execution.requestId },
-            data: {
-              status: "COMPLETED" as import("@prisma/client").RequestStatus,
-              progress: 100,
-              completedAt: new Date(),
-            },
-          });
-          logger.info(`Completed request ${execution.requestId} - all items finished`);
+          // Only update to COMPLETED if status is "active" (not QUALITY_UNAVAILABLE, AWAITING, etc.)
+          // This preserves more specific statuses set by steps
+          const activeStatuses = ["PENDING", "SEARCHING", "DOWNLOADING", "ENCODING", "DELIVERING"];
+          if (activeStatuses.includes(mediaRequest.status)) {
+            await prisma.mediaRequest.update({
+              where: { id: execution.requestId },
+              data: {
+                status: "COMPLETED" as import("@prisma/client").RequestStatus,
+                progress: 100,
+                completedAt: new Date(),
+              },
+            });
+            logger.info(`Completed request ${execution.requestId} - all items finished`);
+          } else {
+            logger.info(
+              `Pipeline execution completed but MediaRequest status is ${mediaRequest.status} - not overwriting`
+            );
+          }
         }
       }
 
