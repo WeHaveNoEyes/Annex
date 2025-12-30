@@ -85,9 +85,11 @@ export const systemRouter = router({
       where: { id: { in: mediaItemIds } },
       select: { id: true, posterPath: true },
     });
-    const posterMap = new Map(mediaItems.map((m) => [m.id, m.posterPath]));
+    const posterMap = new Map(
+      mediaItems.map((m: { id: string; posterPath: string | null }) => [m.id, m.posterPath])
+    );
 
-    return results.map((r, index) => {
+    return results.map((r: typeof results[number], index: number) => {
       const mediaItemId = `tmdb-${r.type.toLowerCase()}-${r.tmdbId}`;
       return {
         requestId: r.id,
@@ -120,7 +122,7 @@ export const systemRouter = router({
         take: input.limit,
       });
 
-      return results.map((a) => ({
+      return results.map((a: typeof results[number]) => ({
         id: a.id,
         requestId: a.requestId,
         type: fromActivityType(a.type),
@@ -175,7 +177,7 @@ export const systemRouter = router({
     list: publicProcedure.query(async () => {
       const results = await prisma.setting.findMany();
 
-      return results.map((s) => ({
+      return results.map((s: typeof results[number]) => ({
         key: s.key,
         value: JSON.parse(s.value),
         updatedAt: s.updatedAt,

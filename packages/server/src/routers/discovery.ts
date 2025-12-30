@@ -128,18 +128,19 @@ export async function refreshTraktListCache(
     const local = localMap.get(localId);
     const key = `${traktItem.type}-${traktItem.tmdbId}`;
 
-    const baseResult = local
-      ? mediaItemToTrendingResult(local)
-      : mediaItemToTrendingResult({
-          type: (traktItem.type === "movie" ? "MOVIE" : "TV") as "MOVIE" | "TV",
-          tmdbId: traktItem.tmdbId,
-          title: traktItem.title,
-          posterPath: traktItem.posterUrl || null,
-          backdropPath: traktItem.fanartUrl || null,
-          year: traktItem.year,
-          overview: "",
-          ratings: null,
-        });
+    const baseResult =
+      local && local.ratings !== undefined
+        ? mediaItemToTrendingResult(local as LocalMediaItem)
+        : mediaItemToTrendingResult({
+            type: (traktItem.type === "movie" ? "MOVIE" : "TV") as "MOVIE" | "TV",
+            tmdbId: traktItem.tmdbId,
+            title: traktItem.title,
+            posterPath: traktItem.posterUrl || null,
+            backdropPath: traktItem.fanartUrl || null,
+            year: traktItem.year,
+            overview: "",
+            ratings: null,
+          });
 
     // Add hydrated status
     return {

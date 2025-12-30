@@ -636,7 +636,7 @@ export const serversRouter = router({
         });
 
         for (const item of mediaItems) {
-          const totalEps = item.seasons.reduce((sum, s) => sum + s._count.episodes, 0);
+          const totalEps = item.seasons.reduce((sum: number, s: { totalMovies?: number; totalTvShows?: number }) => sum + s._count.episodes, 0);
           if (totalEps > 0) {
             totalEpisodeCounts.set(item.tmdbId, totalEps);
           }
@@ -768,7 +768,7 @@ export const serversRouter = router({
       orderBy: { name: "asc" },
     });
 
-    return servers.map((s) => ({
+    return servers.map((s: { name: string }) => ({
       id: s.id,
       name: s.name,
       mediaServerType: fromMediaServerType(s.mediaServerType),

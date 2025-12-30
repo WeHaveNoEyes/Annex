@@ -477,6 +477,7 @@ scheduler.register(
                             season: ep.season,
                             episode: ep.episode,
                             download: {
+                              torrentHash: download.torrentHash,
                               sourceFilePath: ep.path,
                             },
                           }

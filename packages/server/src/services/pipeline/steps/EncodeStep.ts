@@ -220,7 +220,7 @@ export class EncodeStep extends BaseStep {
               orderBy: { createdAt: "desc" },
               take: 5,
             })
-          ).map((j) => j.id),
+          ).map((j: { id: string }) => j.id),
         },
         status: AssignmentStatus.COMPLETED,
       },
