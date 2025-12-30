@@ -522,7 +522,10 @@ class EncoderDispatchService {
     });
 
     // Build map of jobId -> assignment
-    const assignmentMap = new Map(assignments.map((a) => [a.jobId, a]));
+    type AssignmentData = { jobId: string; progress: number; status: string };
+    const assignmentMap = new Map(
+      assignments.map((a: AssignmentData) => [a.jobId, a] as const)
+    );
 
     let updated = 0;
     for (const item of encodingItems) {
@@ -532,7 +535,7 @@ class EncoderDispatchService {
       }
 
       // Update progress if it differs
-      const newProgress = assignment.progress || 0;
+      const newProgress = (assignment as AssignmentData).progress || 0;
       if (Math.abs(item.progress - newProgress) > 0.01) {
         const title =
           item.season && item.episode

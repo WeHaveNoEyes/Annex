@@ -119,8 +119,9 @@ export async function deriveRequiredResolution(targets: RequestTarget[]): Promis
   let highestRank = 0;
 
   for (const server of servers) {
-    const res = PRISMA_RESOLUTION_MAP[server.maxResolution] || "480p";
-    const rank = RESOLUTION_RANK[res];
+    const maxRes = server.maxResolution as keyof typeof PRISMA_RESOLUTION_MAP;
+    const res = PRISMA_RESOLUTION_MAP[maxRes] || ("480p" as Resolution);
+    const rank = RESOLUTION_RANK[res as Resolution];
     if (rank > highestRank) {
       highestRank = rank;
       highest = res;
