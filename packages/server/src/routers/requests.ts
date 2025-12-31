@@ -858,7 +858,7 @@ export const requestsRouter = router({
       where: {
         requestId: input.id,
         type: "remote:encode",
-        status: { in: ["PENDING", "PROCESSING"] },
+        status: { in: ["PENDING", "RUNNING"] },
       },
       include: {
         encoderAssignments: {
