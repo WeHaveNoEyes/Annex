@@ -5,6 +5,9 @@
  * All functions take serverUrl and apiKey as parameters for per-storage-server configuration.
  */
 
+import type { MediaType } from "@prisma/client";
+import { prisma } from "../db/client.js";
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -312,15 +315,51 @@ export async function fetchEmbyMediaPaginated(
       runtime: item.RunTimeTicks ? Math.round(item.RunTimeTicks / 600000000) : undefined,
       genres: item.Genres || [],
       addedAt: item.DateCreated ? new Date(item.DateCreated) : undefined,
-      posterUrl: item.ImageTags?.Primary
-        ? `${baseUrl}/Items/${item.Id}/Images/Primary?tag=${item.ImageTags.Primary}&maxWidth=300`
-        : undefined,
-      backdropUrl: item.BackdropImageTags?.[0]
-        ? `${baseUrl}/Items/${item.Id}/Images/Backdrop?tag=${item.BackdropImageTags[0]}&maxWidth=1280`
-        : undefined,
+      posterUrl: undefined,
+      backdropUrl: undefined,
       quality: extractQuality(item),
       fileSize: item.MediaSources?.[0]?.Size,
     });
+  }
+
+  // Look up TMDB poster/backdrop paths from our database
+  const tmdbIds = items.map((i) => i.tmdbId).filter((id): id is number => id !== undefined);
+  if (tmdbIds.length > 0) {
+    const mediaItems = await prisma.mediaItem.findMany({
+      where: {
+        tmdbId: { in: tmdbIds },
+      },
+      select: {
+        tmdbId: true,
+        type: true,
+        posterPath: true,
+        backdropPath: true,
+      },
+    });
+
+    const mediaMap = new Map<
+      string,
+      { tmdbId: number; type: MediaType; posterPath: string | null; backdropPath: string | null }
+    >(
+      mediaItems.map(
+        (m: {
+          tmdbId: number;
+          type: MediaType;
+          posterPath: string | null;
+          backdropPath: string | null;
+        }) => [`${m.type.toLowerCase()}-${m.tmdbId}`, m]
+      )
+    );
+
+    for (const item of items) {
+      if (item.tmdbId) {
+        const mediaItem = mediaMap.get(`${item.type}-${item.tmdbId}`);
+        if (mediaItem) {
+          item.posterUrl = mediaItem.posterPath || undefined;
+          item.backdropUrl = mediaItem.backdropPath || undefined;
+        }
+      }
+    }
   }
 
   return {

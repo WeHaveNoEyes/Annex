@@ -5,6 +5,9 @@
  * Uses X-Plex-Token authentication.
  */
 
+import type { MediaType } from "@prisma/client";
+import { prisma } from "../db/client.js";
+
 // =============================================================================
 // Types
 // =============================================================================
@@ -167,21 +170,9 @@ function extractQuality(item: PlexMediaItem): string | undefined {
 }
 
 /**
- * Build image URL for Plex
- */
-function buildImageUrl(baseUrl: string, token: string, path?: string): string | undefined {
-  if (!path) return undefined;
-  return `${baseUrl}${path}?X-Plex-Token=${token}`;
-}
-
-/**
  * Convert Plex item to our normalized format
  */
-function normalizePlexItem(
-  item: PlexMediaItem,
-  baseUrl: string,
-  token: string
-): PlexLibraryItem | null {
+function normalizePlexItem(item: PlexMediaItem): PlexLibraryItem | null {
   // Only process movies and shows
   if (item.type !== "movie" && item.type !== "show") {
     return null;
@@ -204,11 +195,55 @@ function normalizePlexItem(
     runtime: item.duration ? Math.round(item.duration / 60000) : undefined,
     genres: item.Genre?.map((g) => g.tag) || [],
     addedAt: item.addedAt ? new Date(item.addedAt * 1000) : undefined,
-    posterUrl: buildImageUrl(baseUrl, token, item.thumb),
-    backdropUrl: buildImageUrl(baseUrl, token, item.art),
+    posterUrl: undefined,
+    backdropUrl: undefined,
     quality: extractQuality(item),
     fileSize: item.Media?.[0]?.Part?.[0]?.size,
   };
+}
+
+/**
+ * Enrich Plex library items with TMDB poster/backdrop paths from our database
+ */
+async function enrichWithTmdbImages(items: PlexLibraryItem[]): Promise<void> {
+  const tmdbIds = items.map((i) => i.tmdbId).filter((id): id is number => id !== undefined);
+  if (tmdbIds.length === 0) return;
+
+  const mediaItems = await prisma.mediaItem.findMany({
+    where: {
+      tmdbId: { in: tmdbIds },
+    },
+    select: {
+      tmdbId: true,
+      type: true,
+      posterPath: true,
+      backdropPath: true,
+    },
+  });
+
+  const mediaMap = new Map<
+    string,
+    { tmdbId: number; type: MediaType; posterPath: string | null; backdropPath: string | null }
+  >(
+    mediaItems.map(
+      (m: {
+        tmdbId: number;
+        type: MediaType;
+        posterPath: string | null;
+        backdropPath: string | null;
+      }) => [`${m.type.toLowerCase()}-${m.tmdbId}`, m]
+    )
+  );
+
+  for (const item of items) {
+    if (item.tmdbId) {
+      const mediaItem = mediaMap.get(`${item.type}-${item.tmdbId}`);
+      if (mediaItem) {
+        item.posterUrl = mediaItem.posterPath || undefined;
+        item.backdropUrl = mediaItem.backdropPath || undefined;
+      }
+    }
+  }
 }
 
 // =============================================================================
@@ -334,7 +369,7 @@ export async function getPlexLibraryContents(
   const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(baseUrl, token, endpoint);
 
   const items = (data.MediaContainer.Metadata || [])
-    .map((item) => normalizePlexItem(item, baseUrl, token))
+    .map((item) => normalizePlexItem(item))
     .filter((item): item is PlexLibraryItem => item !== null);
 
   return {
@@ -396,7 +431,7 @@ export async function fetchPlexLibraryForSync(
       totalCount = data.MediaContainer.totalSize ?? data.MediaContainer.size;
 
       for (const item of data.MediaContainer.Metadata || []) {
-        const normalized = normalizePlexItem(item, baseUrl, token);
+        const normalized = normalizePlexItem(item);
         // Only include items with TMDB ID for library tracking
         if (normalized?.tmdbId) {
           allItems.push(normalized);
@@ -496,13 +531,16 @@ export async function fetchPlexMediaPaginated(
       for (const hub of searchData.MediaContainer.Hub || []) {
         if (hub.type === "movie" || hub.type === "show") {
           for (const item of hub.Metadata || []) {
-            const normalized = normalizePlexItem(item, baseUrl, token);
+            const normalized = normalizePlexItem(item);
             if (normalized) {
               allResults.push(normalized);
             }
           }
         }
       }
+
+      // Look up TMDB poster/backdrop paths from our database
+      await enrichWithTmdbImages(allResults);
 
       return {
         items: allResults,
@@ -517,8 +555,11 @@ export async function fetchPlexMediaPaginated(
   const data = await plexFetch<PlexMediaContainer<PlexMediaItem>>(baseUrl, token, endpoint);
 
   const items = (data.MediaContainer.Metadata || [])
-    .map((item) => normalizePlexItem(item, baseUrl, token))
+    .map((item) => normalizePlexItem(item))
     .filter((item): item is PlexLibraryItem => item !== null);
+
+  // Look up TMDB poster/backdrop paths from our database
+  await enrichWithTmdbImages(items);
 
   return {
     items,
@@ -641,7 +682,7 @@ export async function findPlexItemByTmdbId(
 
       const items = data.MediaContainer.Metadata || [];
       if (items.length > 0) {
-        const normalized = normalizePlexItem(items[0], baseUrl, token);
+        const normalized = normalizePlexItem(items[0]);
         if (normalized) {
           return normalized;
         }
