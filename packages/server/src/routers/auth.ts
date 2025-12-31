@@ -16,6 +16,7 @@ import {
   findOrCreateUserFromEmby,
   findOrCreateUserFromPlex,
   getAllUsers,
+  getEmbyServers,
   getPlexUser,
   getUserById,
   getUserWithAccounts,
@@ -168,23 +169,31 @@ export const authRouter = router({
   /**
    * Check if Emby authentication is available (server configured)
    */
-  embyConfigured: publicProcedure.query(() => {
-    return { configured: isEmbyConfigured() };
+  embyConfigured: publicProcedure.query(async () => {
+    return { configured: await isEmbyConfigured() };
+  }),
+
+  /**
+   * Get available Emby servers for login
+   */
+  getEmbyServers: publicProcedure.query(async () => {
+    return { servers: await getEmbyServers() };
   }),
 
   /**
    * Login with Emby credentials
-   * Uses the server-configured Emby URL
+   * @param serverId - Optional storage server ID to authenticate against
    */
   embyLogin: publicProcedure
     .input(
       z.object({
         username: z.string().min(1),
         password: z.string(),
+        serverId: z.string().optional(),
       })
     )
     .mutation(async ({ input }) => {
-      if (!isEmbyConfigured()) {
+      if (!(await isEmbyConfigured())) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
           message: "Emby authentication is not configured. Contact your administrator.",
@@ -192,10 +201,25 @@ export const authRouter = router({
       }
 
       try {
+        // Get server URL if serverId provided
+        let serverUrl: string | undefined;
+        if (input.serverId) {
+          const servers = await getEmbyServers();
+          const server = servers.find((s) => s.id === input.serverId);
+          if (!server) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Emby server not found",
+            });
+          }
+          serverUrl = server.url;
+        }
+
         // Authenticate with Emby server
         const { user: embyUser, token: embyToken } = await authenticateWithEmby(
           input.username,
-          input.password
+          input.password,
+          serverUrl
         );
 
         // Find or create our user

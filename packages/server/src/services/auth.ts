@@ -332,22 +332,60 @@ export function getEmbyServerUrl(): string {
 }
 
 /**
- * Check if Emby is configured
+ * Get all Emby servers from storage server configuration
  */
-export function isEmbyConfigured(): boolean {
+export async function getEmbyServers(): Promise<Array<{ id: string; name: string; url: string }>> {
+  const servers = await prisma.storageServer.findMany({
+    where: {
+      mediaServerType: "EMBY",
+      mediaServerUrl: { not: null },
+    },
+    select: {
+      id: true,
+      name: true,
+      mediaServerUrl: true,
+    },
+  });
+
+  const result: Array<{ id: string; name: string; url: string }> = [];
+  for (const server of servers) {
+    if (server.mediaServerUrl) {
+      result.push({
+        id: server.id,
+        name: server.name,
+        url: server.mediaServerUrl,
+      });
+    }
+  }
+  return result;
+}
+
+/**
+ * Check if Emby is configured (either via env var or storage servers)
+ */
+export async function isEmbyConfigured(): Promise<boolean> {
   const config = getConfig();
-  return !!config.emby.serverUrl;
+  if (config.emby.serverUrl) {
+    return true;
+  }
+
+  // Check if any storage servers have Emby configured
+  const embyServers = await getEmbyServers();
+  return embyServers.length > 0;
 }
 
 /**
  * Authenticate with an Emby server using username/password
- * Uses the configured server URL from environment
+ * @param username - Emby username
+ * @param password - Emby password
+ * @param serverUrl - Optional server URL (if not provided, uses env config)
  */
 export async function authenticateWithEmby(
   username: string,
-  password: string
-): Promise<{ user: EmbyUser; token: string }> {
-  const baseUrl = getEmbyServerUrl();
+  password: string,
+  serverUrl?: string
+): Promise<{ user: EmbyUser; token: string; serverUrl: string }> {
+  const baseUrl = serverUrl ? serverUrl.replace(/\/$/, "") : getEmbyServerUrl();
 
   // Emby auth headers
   const authHeader = `MediaBrowser Client="Annex", Device="Web Browser", DeviceId="annex-web", Version="1.0"`;
@@ -381,6 +419,7 @@ export async function authenticateWithEmby(
       imageTag: data.User.PrimaryImageTag,
     },
     token: data.AccessToken,
+    serverUrl: baseUrl,
   };
 }
 
