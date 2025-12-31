@@ -197,8 +197,17 @@ export class PipelineExecutor {
           }
 
           // Step succeeded - merge output into context
-          const updatedContext = {
-            ...currentContext,
+          // Preserve core context fields that should never be overwritten by step outputs
+          const { requestId, mediaType, tmdbId, title, year, targets, ...coreFields } =
+            currentContext;
+          const updatedContext: PipelineContext = {
+            requestId,
+            mediaType,
+            tmdbId,
+            title,
+            year,
+            targets,
+            ...coreFields,
             ...result.data,
           };
 
@@ -228,9 +237,18 @@ export class PipelineExecutor {
     );
 
     // Merge all branch contexts (last one wins for conflicts)
+    // But preserve core context fields from being overwritten
     const mergedContext = results.reduce((acc, ctx) => Object.assign(acc, ctx), {
       ...currentContext,
     });
+
+    // Ensure core fields are never lost
+    mergedContext.requestId = currentContext.requestId;
+    mergedContext.mediaType = currentContext.mediaType;
+    mergedContext.tmdbId = currentContext.tmdbId;
+    mergedContext.title = currentContext.title;
+    mergedContext.year = currentContext.year;
+    mergedContext.targets = currentContext.targets;
 
     // Update execution context in database once after all parallel branches complete
     // Use updateMany to avoid errors if execution was already completed/cancelled
@@ -800,7 +818,20 @@ export class PipelineExecutor {
       }
 
       // Merge parent context with branch-specific context
+      // Core fields from request should never be overwritten
       const parentContext = (parentExecution?.context as Record<string, unknown>) || {};
+
+      // Remove core fields from context parameter to prevent overwriting
+      const {
+        requestId: _,
+        mediaType: __,
+        tmdbId: ___,
+        title: ____,
+        year: _____,
+        targets: ______,
+        ...contextData
+      } = context as Partial<PipelineContext>;
+
       const branchContext: PipelineContext = {
         requestId: request.id,
         mediaType: request.type,
@@ -810,7 +841,7 @@ export class PipelineExecutor {
         targets: request.targets as Array<{ serverId: string; encodingProfileId?: string }>,
         episodeId, // Add episode ID to context
         ...parentContext, // Inherit from parent (e.g., selected release)
-        ...context, // Override with branch-specific context
+        ...contextData, // Override with branch-specific context (core fields removed)
       };
 
       // Create branch execution
