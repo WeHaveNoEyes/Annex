@@ -663,8 +663,10 @@ class EncoderDispatchService {
       // Update request aggregates for all affected requests
       const { processingItemRepository } = await import("./pipeline/ProcessingItemRepository.js");
       for (const requestId of updatedRequestIds) {
+        console.log(`[EncoderDispatch] Updating MediaRequest aggregates for ${requestId}`);
         await processingItemRepository.updateRequestAggregates(requestId);
       }
+      console.log(`[EncoderDispatch] Updated ${updatedRequestIds.size} MediaRequest aggregate(s)`);
     }
   }
 
