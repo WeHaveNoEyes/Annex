@@ -205,6 +205,28 @@ export class EncodeStep extends BaseStep {
       };
     }
 
+    // Validate source file exists before encoding
+    try {
+      const fileExists = await Bun.file(sourceFilePath).exists();
+      if (!fileExists) {
+        await this.logActivity(
+          requestId,
+          ActivityType.ERROR,
+          `Source file not found: ${sourceFilePath}`
+        );
+        return {
+          success: false,
+          error: `Source file not found: ${sourceFilePath}`,
+        };
+      }
+    } catch (error) {
+      await this.logActivity(requestId, ActivityType.ERROR, `Error checking source file: ${error}`);
+      return {
+        success: false,
+        error: `Error checking source file: ${error}`,
+      };
+    }
+
     // Check if we have a recent completed encoding job for this request
     // This allows retry to skip re-encoding if the encoded file still exists
     const recentCompletedJob = await prisma.encoderAssignment.findFirst({
