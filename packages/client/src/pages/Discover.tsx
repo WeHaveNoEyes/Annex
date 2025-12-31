@@ -159,7 +159,26 @@ export default function DiscoverPage() {
     }
   }, [debouncedSearchInput, filters.query, setQuery]);
 
-  // Create a stable query key for caching
+  // Create a stable filter key (excludes page for reset detection)
+  const filterKey = useMemo(
+    () =>
+      JSON.stringify({
+        type: filters.type,
+        mode: filters.mode,
+        period: filters.period,
+        query: filters.query,
+        years: filters.years,
+        genres: filters.genres,
+        languages: filters.languages,
+        countries: filters.countries,
+        runtimes: filters.runtimes,
+        certifications: filters.certifications,
+        ratingFilters: filters.ratingFilters,
+      }),
+    [filters]
+  );
+
+  // Create a stable query key for caching (includes page)
   const queryKey = useMemo(
     () =>
       JSON.stringify({
@@ -230,25 +249,20 @@ export default function DiscoverPage() {
   }, [filters.ratingFilters]);
 
   // Use the traktDiscover endpoint
-  const discoverQuery = trpc.discovery.traktDiscover.useQuery(
-    {
-      type: filters.type,
-      listType: filters.mode,
-      page,
-      period: filters.period,
-      query: filters.query || undefined,
-      years: filters.years || undefined,
-      genres: filters.genres.length > 0 ? filters.genres : undefined,
-      languages: filters.languages.length > 0 ? filters.languages : undefined,
-      countries: filters.countries.length > 0 ? filters.countries : undefined,
-      runtimes: filters.runtimes || undefined,
-      certifications: filters.certifications.length > 0 ? filters.certifications : undefined,
-      ...ratingParams,
-    },
-    {
-      keepPreviousData: true,
-    }
-  );
+  const discoverQuery = trpc.discovery.traktDiscover.useQuery({
+    type: filters.type,
+    listType: filters.mode,
+    page,
+    period: filters.period,
+    query: filters.query || undefined,
+    years: filters.years || undefined,
+    genres: filters.genres.length > 0 ? filters.genres : undefined,
+    languages: filters.languages.length > 0 ? filters.languages : undefined,
+    countries: filters.countries.length > 0 ? filters.countries : undefined,
+    runtimes: filters.runtimes || undefined,
+    certifications: filters.certifications.length > 0 ? filters.certifications : undefined,
+    ...ratingParams,
+  });
 
   // Accumulate results when new data arrives
   useEffect(() => {
@@ -280,13 +294,14 @@ export default function DiscoverPage() {
   }, [discoverQuery.data, discoverQuery.isFetching, page, queryKey]);
 
   // Reset pagination when filters change
+  // biome-ignore lint/correctness/useExhaustiveDependencies: filterKey is intentionally used to trigger reset on any filter change
   useEffect(() => {
     setPage(1);
     setAllResults([]);
     setHasMore(true);
     setTotalResults(0);
     processedDataRef.current = "";
-  }, []);
+  }, [filterKey]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchInput(e.target.value);
