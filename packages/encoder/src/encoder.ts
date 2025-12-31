@@ -78,20 +78,6 @@ function validateFilePath(filePath: string): void {
 export async function probeMedia(filePath: string): Promise<MediaInfo> {
   validateFilePath(filePath);
 
-  // Check if file exists before probing
-  try {
-    const file = Bun.file(filePath);
-    const exists = await file.exists();
-    if (!exists) {
-      throw new Error(`File not found: ${filePath}`);
-    }
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("File not found")) {
-      throw error;
-    }
-    throw new Error(`Error accessing file "${filePath}": ${error}`);
-  }
-
   const proc = Bun.spawn(
     ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_format", "-show_streams", filePath],
     {
