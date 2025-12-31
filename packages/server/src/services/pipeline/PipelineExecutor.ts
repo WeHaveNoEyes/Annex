@@ -198,17 +198,30 @@ export class PipelineExecutor {
 
           // Step succeeded - merge output into context
           // Preserve core context fields that should never be overwritten by step outputs
-          const { requestId, mediaType, tmdbId, title, year, targets, ...coreFields } =
+          const { requestId, mediaType, tmdbId, title, year, targets, ...otherFields } =
             currentContext;
+
+          // Remove core fields from step output to prevent overwriting
+          const {
+            requestId: _rid,
+            mediaType: _mt,
+            tmdbId: _tid,
+            title: _t,
+            year: _y,
+            targets: _tgt,
+            ...stepData
+          } = result.data || {};
+
           const updatedContext: PipelineContext = {
+            ...otherFields,
+            ...stepData,
+            // Core fields always come last to ensure they're never overwritten
             requestId,
             mediaType,
             tmdbId,
             title,
             year,
             targets,
-            ...coreFields,
-            ...result.data,
           };
 
           logger.info(`Completed step: ${stepDef.name}`);
