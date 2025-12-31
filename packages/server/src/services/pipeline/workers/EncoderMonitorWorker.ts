@@ -1,5 +1,6 @@
 import type { ProcessingItem } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
+import { processingItemRepository } from "../ProcessingItemRepository.js";
 import { BaseWorker } from "./BaseWorker";
 
 /**
@@ -28,7 +29,14 @@ export class EncoderMonitorWorker extends BaseWorker {
       console.warn(
         `[${this.name}] Request ${item.requestId} not found, marking ${item.title} as FAILED (orphaned)`
       );
-      await this.transitionToFailed(item.id, "Request no longer exists");
+      // Directly update status to bypass validation for orphaned items
+      await processingItemRepository.updateStatus(item.id, "FAILED", {
+        lastError: "Request no longer exists",
+      });
+      // Update request aggregates
+      await processingItemRepository.updateRequestAggregates(item.requestId).catch(() => {
+        // Request might be deleted, ignore error
+      });
       return;
     }
 
@@ -36,7 +44,12 @@ export class EncoderMonitorWorker extends BaseWorker {
       console.warn(
         `[${this.name}] Request ${item.requestId} is ${request.status}, marking ${item.title} as FAILED (orphaned)`
       );
-      await this.transitionToFailed(item.id, `Request was ${request.status}`);
+      // Directly update status to bypass validation for orphaned items
+      await processingItemRepository.updateStatus(item.id, "FAILED", {
+        lastError: `Request was ${request.status}`,
+      });
+      // Update request aggregates
+      await processingItemRepository.updateRequestAggregates(item.requestId);
       return;
     }
 
