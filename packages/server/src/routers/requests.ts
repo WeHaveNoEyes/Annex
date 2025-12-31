@@ -861,11 +861,7 @@ export const requestsRouter = router({
         status: { in: ["PENDING", "RUNNING"] },
       },
       include: {
-        encoderAssignments: {
-          where: {
-            status: { in: ["PENDING", "ASSIGNED", "ENCODING"] },
-          },
-        },
+        encoderAssignment: true,
       },
     });
 
@@ -876,11 +872,14 @@ export const requestsRouter = router({
 
       // Cancel active encoding assignments
       for (const job of activeEncodingJobs) {
-        for (const assignment of job.encoderAssignments) {
-          await prisma.encoderAssignment.update({
-            where: { id: assignment.id },
-            data: { status: "CANCELLED" },
-          });
+        if (job.encoderAssignment) {
+          const assignment = job.encoderAssignment;
+          if (["PENDING", "ASSIGNED", "ENCODING"].includes(assignment.status)) {
+            await prisma.encoderAssignment.update({
+              where: { id: assignment.id },
+              data: { status: "CANCELLED" },
+            });
+          }
         }
         // Mark job as failed so it can be retried
         await prisma.job.update({
