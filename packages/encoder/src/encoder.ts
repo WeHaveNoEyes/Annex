@@ -532,13 +532,58 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
 
   // Ensure output directory exists
   const outputDir = path.dirname(job.outputPath);
+
+  // Diagnostic logging for permission debugging
+  console.log(`[Encoder] Permission Diagnostics:`);
+  console.log(`  Process UID: ${process.getuid?.()} GID: ${process.getgid?.()}`);
+  console.log(`  Output path: ${job.outputPath}`);
+  console.log(`  Output dir:  ${outputDir}`);
+
+  // Check parent directory before creating
+  const parentDir = path.dirname(outputDir);
+  try {
+    const parentStat = fs.statSync(parentDir);
+    console.log(`  Parent dir: ${parentDir}`);
+    console.log(
+      `  Parent perms: ${(parentStat.mode & 0o777).toString(8)} (${parentStat.uid}:${parentStat.gid})`
+    );
+  } catch (e) {
+    console.warn(`  Parent dir check failed: ${e}`);
+  }
+
+  // Create directory
+  const dirExistedBefore = fs.existsSync(outputDir);
   fs.mkdirSync(outputDir, { recursive: true });
+  console.log(`  Dir existed: ${dirExistedBefore}`);
+
+  // Check directory after creation
+  try {
+    const dirStat = fs.statSync(outputDir);
+    const beforePerms = (dirStat.mode & 0o777).toString(8);
+    console.log(`  Dir perms before chmod: ${beforePerms} (${dirStat.uid}:${dirStat.gid})`);
+  } catch (e) {
+    console.warn(`  Dir stat before chmod failed: ${e}`);
+  }
 
   // Set directory permissions to allow full access (closed system)
   try {
     fs.chmodSync(outputDir, 0o777);
+    const dirStat = fs.statSync(outputDir);
+    const afterPerms = (dirStat.mode & 0o777).toString(8);
+    console.log(`  Dir perms after chmod: ${afterPerms}`);
   } catch (e) {
     console.warn(`[Encoder] WARNING: Could not set directory permissions: ${e}`);
+  }
+
+  // Test if directory is actually writable
+  try {
+    const testFile = path.join(outputDir, `.write-test-${Date.now()}`);
+    fs.writeFileSync(testFile, "test", { mode: 0o666 });
+    fs.unlinkSync(testFile);
+    console.log(`  Write test: PASSED`);
+  } catch (e) {
+    console.error(`  Write test: FAILED - ${e}`);
+    throw new Error(`Output directory is not writable: ${outputDir} - ${e}`);
   }
 
   // Probe input file
