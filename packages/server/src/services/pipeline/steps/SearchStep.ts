@@ -62,6 +62,10 @@ export class SearchStep extends BaseStep {
 
     const { requestId, mediaType, tmdbId, title, year, targets } = context;
 
+    if (!requestId) {
+      throw new Error("SearchStep requires requestId in context");
+    }
+
     // Get parent execution ID for spawning branch pipelines
     const parentExecution = await prisma.pipelineExecution.findFirst({
       where: { requestId, parentExecutionId: null },
