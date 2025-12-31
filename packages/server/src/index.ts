@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { DownloadStatus } from "@prisma/client";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import type { Server, ServerWebSocket } from "bun";
 import { initConfig } from "./config/index.js";
@@ -13,7 +12,6 @@ import {
   recoverFailedEpisodeDeliveries,
   recoverStuckDeliveries,
 } from "./services/deliveryRecovery.js";
-import { getDownloadService } from "./services/download.js";
 import { recoverStuckDownloadExtractions } from "./services/downloadExtractionRecovery.js";
 import {
   type EncoderWebSocketData,
@@ -341,152 +339,6 @@ scheduler.register(
     const { getRateLimiter } = await import("./services/rateLimiter.js");
     const rateLimiter = getRateLimiter();
     await rateLimiter.cleanupOldRecords();
-  }
-);
-
-// Register download progress sync task (runs every 500ms)
-// LEGACY: Download progress sync for old MediaRequest/Download system
-// New requests use ProcessingItems and are handled by DownloadProgressWorker
-// This can be removed once all old requests are complete
-scheduler.register(
-  "download-progress-sync",
-  "Download Progress Sync (LEGACY)",
-  500, // 500ms
-  async () => {
-    // Get all downloads that are actively downloading
-    const activeDownloads = await prisma.download.findMany({
-      where: { status: DownloadStatus.DOWNLOADING },
-    });
-
-    // Skip if no active downloads
-    if (activeDownloads.length === 0) return;
-
-    const qb = getDownloadService();
-
-    // Update progress for each active download
-    for (const download of activeDownloads) {
-      try {
-        const progress = await qb.getProgress(download.torrentHash);
-        if (!progress) continue;
-
-        // Update database with current progress
-        await prisma.download.update({
-          where: { id: download.id },
-          data: {
-            progress: progress.progress,
-            lastProgressAt: new Date(),
-            seedCount: progress.seeds,
-            peerCount: progress.peers,
-            savePath: progress.savePath || null,
-            contentPath: progress.contentPath || null,
-            ...(progress.isComplete && {
-              status: DownloadStatus.COMPLETED,
-              progress: 100,
-              completedAt: new Date(),
-            }),
-          },
-        });
-
-        // Update the associated request's progress
-        if (download.requestId) {
-          const speed =
-            progress.downloadSpeed > 0
-              ? `${(progress.downloadSpeed / (1024 * 1024)).toFixed(1)} MB/s`
-              : "";
-          const eta =
-            progress.eta > 0 ? `ETA: ${Math.floor(progress.eta / 60)}m ${progress.eta % 60}s` : "";
-
-          if (progress.isComplete) {
-            // Download completed - process and continue pipeline
-            const request = await prisma.mediaRequest.findUnique({
-              where: { id: download.requestId },
-              select: { type: true },
-            });
-
-            if (request?.type === "TV") {
-              // TV show - extract episode files and continue to encoding
-              console.log(
-                `[DownloadSync] TV download completed for ${download.requestId}, extracting episodes`
-              );
-
-              // Extract episode files from the completed download
-              // This updates episode statuses to DOWNLOADED
-              const { extractEpisodeFilesFromDownload } = await import(
-                "./services/pipeline/downloadHelper.js"
-              );
-              const episodeFiles = await extractEpisodeFilesFromDownload(
-                download.torrentHash,
-                download.requestId
-              );
-
-              console.log(
-                `[DownloadSync] Extracted ${episodeFiles.length} episodes, continuing pipeline`
-              );
-
-              await prisma.mediaRequest.update({
-                where: { id: download.requestId },
-                data: {
-                  progress: 50,
-                  currentStep: `Download complete (${episodeFiles.length} episodes)`,
-                },
-              });
-
-              // LEGACY: Old branch pipeline spawning code - superseded by ProcessingItem/Worker system
-              // The new system uses workers to automatically pick up DOWNLOADED ProcessingItems
-              // and process them through encode/deliver steps
-              //
-              // Check if branch pipelines already exist (spawned by SearchStep)
-              // const existingBranches = await prisma.pipelineExecution.findMany({
-              //   where: {
-              //     requestId: download.requestId,
-              //     parentExecutionId: { not: null }, // Only get branch pipelines
-              //   },
-              //   select: { id: true, context: true },
-              // });
-              //
-              // const existingEpisodeIds = new Set(
-              //   existingBranches
-              //     .map((b) => (b.context as any)?.episodeId)
-              //     .filter(Boolean)
-              // );
-              //
-              // // Only spawn branches for episodes that don't have one yet
-              // const episodesNeedingBranches = episodeFiles.filter(
-              //   (ep) => !existingEpisodeIds.has(ep.episodeId)
-              // );
-
-              // Workers will automatically pick up DOWNLOADED episodes and process them
-              console.log(
-                `[DownloadSync] Episodes extracted and marked as DOWNLOADED, workers will handle encoding/delivery`
-              );
-            } else {
-              // Movie - simple path update
-              const videoFile = await qb.getMainVideoFile(download.torrentHash);
-              await prisma.mediaRequest.update({
-                where: { id: download.requestId },
-                data: {
-                  sourceFilePath: videoFile?.path,
-                  progress: 50,
-                  currentStep: "Download complete",
-                },
-              });
-            }
-          } else {
-            // Download in progress
-            const overallProgress = 20 + progress.progress * 0.3; // 20-50%
-            await prisma.mediaRequest.update({
-              where: { id: download.requestId },
-              data: {
-                progress: overallProgress,
-                currentStep: `Downloading: ${progress.progress.toFixed(1)}% - ${speed} ${eta}`,
-              },
-            });
-          }
-        }
-      } catch (_error) {
-        // Ignore errors for individual downloads, continue syncing others
-      }
-    }
   }
 );
 
