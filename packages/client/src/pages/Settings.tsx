@@ -3266,6 +3266,18 @@ function SchedulerSettings() {
     },
   });
 
+  const forceRunMutation = trpc.system.scheduler.forceRunTask.useMutation({
+    onSuccess: (result) => {
+      if (result.alreadyRunning) {
+        console.info("Task is already running");
+      }
+      healthQuery.refetch();
+    },
+    onError: () => {
+      healthQuery.refetch();
+    },
+  });
+
   // Auto-scroll to bottom when logs update (if shouldAutoScroll is true)
   useEffect(() => {
     if (shouldAutoScroll && logContainerRef.current) {
@@ -3449,11 +3461,32 @@ function SchedulerSettings() {
                         )}
                         <Button
                           size="sm"
+                          variant="secondary"
+                          onClick={() => forceRunMutation.mutate({ taskId: task.id })}
+                          disabled={
+                            !task.enabled ||
+                            task.isRunning ||
+                            forceRunMutation.isLoading ||
+                            toggleTaskMutation.isLoading
+                          }
+                          popcorn={false}
+                          title={
+                            !task.enabled
+                              ? "Task is disabled"
+                              : task.isRunning
+                                ? "Task is already running"
+                                : "Run this task immediately"
+                          }
+                        >
+                          {forceRunMutation.isLoading ? "Running..." : "Run Now"}
+                        </Button>
+                        <Button
+                          size="sm"
                           variant={task.enabled ? "secondary" : "primary"}
                           onClick={() =>
                             toggleTaskMutation.mutate({ taskId: task.id, enabled: !task.enabled })
                           }
-                          disabled={toggleTaskMutation.isLoading}
+                          disabled={toggleTaskMutation.isLoading || forceRunMutation.isLoading}
                         >
                           {task.enabled ? "Disable" : "Enable"}
                         </Button>

@@ -204,6 +204,78 @@ class SchedulerService {
   }
 
   /**
+   * Force run a task immediately (for manual triggering)
+   * Returns whether execution was initiated
+   */
+  forceRunTask(id: string): { success: boolean; alreadyRunning: boolean; error?: string } {
+    const task = this.recurringTasks.get(id);
+    if (!task) {
+      return { success: false, alreadyRunning: false, error: "Task not found" };
+    }
+
+    if (!task.enabled) {
+      return { success: false, alreadyRunning: false, error: "Task is disabled" };
+    }
+
+    if (task.isRunning) {
+      return { success: false, alreadyRunning: true };
+    }
+
+    // Set isRunning and schedule execution
+    task.isRunning = true;
+    const taskStart = Date.now();
+
+    // Mirror the tick() pattern for consistency
+    import("./schedulerLogs.js")
+      .then(({ schedulerLogService }) => {
+        const restoreConsole = schedulerLogService.captureLogsForTask(task.id, task.name);
+
+        return task
+          .handler()
+          .then(() => {
+            task.lastDuration = Date.now() - taskStart;
+            task.lastError = null;
+            task.runCount++;
+          })
+          .catch((error: Error) => {
+            task.lastDuration = Date.now() - taskStart;
+            task.lastError = error.message;
+            task.errorCount++;
+            console.error(`[Scheduler] Force-run task ${task.name} failed:`, error.message);
+          })
+          .finally(() => {
+            restoreConsole();
+            task.isRunning = false;
+            task.lastRun = new Date();
+            this.saveLastRunTime(task.id).catch(() => {});
+          });
+      })
+      .catch((_error) => {
+        // Fallback without log capture
+        task
+          .handler()
+          .then(() => {
+            task.lastDuration = Date.now() - taskStart;
+            task.lastError = null;
+            task.runCount++;
+          })
+          .catch((error: Error) => {
+            task.lastDuration = Date.now() - taskStart;
+            task.lastError = error.message;
+            task.errorCount++;
+            console.error(`[Scheduler] Force-run task ${task.name} failed:`, error.message);
+          })
+          .finally(() => {
+            task.isRunning = false;
+            task.lastRun = new Date();
+            this.saveLastRunTime(task.id).catch(() => {});
+          });
+      });
+
+    return { success: true, alreadyRunning: false };
+  }
+
+  /**
    * Schedule a one-off task to run after a delay
    */
   scheduleOnce(name: string, delayMs: number, handler: () => Promise<void>): string {

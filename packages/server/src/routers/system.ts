@@ -634,6 +634,15 @@ export const systemRouter = router({
       }),
 
     /**
+     * Force run a task immediately
+     */
+    forceRunTask: publicProcedure.input(z.object({ taskId: z.string() })).mutation(({ input }) => {
+      const scheduler = getSchedulerService();
+      const result = scheduler.forceRunTask(input.taskId);
+      return result;
+    }),
+
+    /**
      * Get logs for a specific task
      */
     getLogs: publicProcedure.input(z.object({ taskId: z.string() })).query(async ({ input }) => {
