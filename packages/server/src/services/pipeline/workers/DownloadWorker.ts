@@ -7,6 +7,7 @@ import type { PipelineContext } from "../PipelineContext";
 import { pipelineOrchestrator } from "../PipelineOrchestrator.js";
 import { DownloadStep } from "../steps/DownloadStep";
 import { BaseWorker } from "./BaseWorker";
+import { findMainVideoFile } from "./fileUtils.js";
 
 /**
  * DownloadWorker - Downloads media for items in FOUND status
@@ -252,10 +253,11 @@ export class DownloadWorker extends BaseWorker {
       if (torrent.progress >= 100 || torrent.isComplete) {
         console.log(`[${this.name}] Download complete: ${torrent.name}`);
 
-        // For season packs, find the specific episode file
+        // Find the actual video file
         let sourceFilePath = torrent.contentPath;
 
         if (item.type === "EPISODE" && item.season !== null && item.episode !== null) {
+          // For TV episodes, find the specific episode file
           const episodeFile = await this.findEpisodeFile(
             torrent.contentPath,
             item.season,
@@ -269,6 +271,15 @@ export class DownloadWorker extends BaseWorker {
             throw new Error(
               `Could not find S${item.season}E${item.episode} in season pack ${torrent.contentPath}`
             );
+          }
+        } else if (item.type === "MOVIE") {
+          // For movies, find the main video file if path is a directory
+          const mainVideoFile = await findMainVideoFile(torrent.contentPath);
+          if (mainVideoFile) {
+            sourceFilePath = mainVideoFile;
+            console.log(`[${this.name}] Found main video file: ${mainVideoFile}`);
+          } else {
+            throw new Error(`Could not find video file in ${torrent.contentPath}`);
           }
         }
 

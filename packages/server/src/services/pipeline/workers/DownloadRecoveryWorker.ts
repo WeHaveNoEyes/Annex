@@ -4,6 +4,7 @@ import { getDownloadService } from "../../download.js";
 import type { PipelineContext } from "../PipelineContext";
 import { pipelineOrchestrator } from "../PipelineOrchestrator.js";
 import { BaseWorker } from "./BaseWorker";
+import { findMainVideoFile } from "./fileUtils.js";
 
 /**
  * DownloadRecoveryWorker - Recovers ProcessingItems stuck in DOWNLOADING status
@@ -77,7 +78,7 @@ export class DownloadRecoveryWorker extends BaseWorker {
     let sourceFilePath = matchingTorrent.contentPath;
 
     if (item.type === "EPISODE" && item.season !== null && item.episode !== null) {
-      // For episodes, find the specific episode file in the season pack
+      // For TV episodes, find the specific episode file in the season pack
       const episodeFile = await this.findEpisodeFile(
         matchingTorrent.contentPath,
         item.season,
@@ -91,6 +92,15 @@ export class DownloadRecoveryWorker extends BaseWorker {
         throw new Error(
           `Could not find S${item.season}E${item.episode} in season pack ${matchingTorrent.contentPath}`
         );
+      }
+    } else if (item.type === "MOVIE") {
+      // For movies, find the main video file if path is a directory
+      const mainVideoFile = await findMainVideoFile(matchingTorrent.contentPath);
+      if (mainVideoFile) {
+        sourceFilePath = mainVideoFile;
+        console.log(`[${this.name}] Found main video file: ${mainVideoFile}`);
+      } else {
+        throw new Error(`Could not find video file in ${matchingTorrent.contentPath}`);
       }
     }
 
