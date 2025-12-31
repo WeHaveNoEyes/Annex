@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Badge, Button, Card, EmptyState, Input, LibraryCard, ToggleGroup } from "../components/ui";
 import { trpc } from "../trpc";
 
@@ -13,16 +14,18 @@ interface Server {
 }
 
 export default function LibraryPage() {
-  // Server selection
-  const [selectedServerId, setSelectedServerId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  // Filters state
-  const [mediaType, setMediaType] = useState<MediaType>("all");
-  const [sortBy, setSortBy] = useState<SortBy>("SortName");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("Ascending");
-  const [search, setSearch] = useState("");
-  const [searchInput, setSearchInput] = useState("");
-  const [page, setPage] = useState(1);
+  // Parse state from URL (with defaults)
+  const selectedServerId = searchParams.get("server") || null;
+  const mediaType = (searchParams.get("type") as MediaType) || "all";
+  const sortBy = (searchParams.get("sortBy") as SortBy) || "SortName";
+  const sortOrder = (searchParams.get("order") as SortOrder) || "Ascending";
+  const search = searchParams.get("search") || "";
+  const page = parseInt(searchParams.get("page") || "1", 10);
+
+  // Local state for search input (before submit)
+  const [searchInput, setSearchInput] = useState(search);
   const limit = 24;
 
   // Get list of servers with media server configured
@@ -32,9 +35,21 @@ export default function LibraryPage() {
   // Auto-select first server when loaded
   useEffect(() => {
     if (servers && servers.length > 0 && !selectedServerId) {
-      setSelectedServerId(servers[0].id);
+      setSearchParams(
+        (prev) => {
+          const newParams = new URLSearchParams(prev);
+          newParams.set("server", servers[0].id);
+          return newParams;
+        },
+        { replace: true }
+      );
     }
-  }, [servers, selectedServerId]);
+  }, [servers, selectedServerId, setSearchParams]);
+
+  // Sync search input with URL param (for browser back/forward)
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
 
   // Get stats for selected server
   const { data: stats } = trpc.servers.mediaStats.useQuery(
@@ -56,26 +71,40 @@ export default function LibraryPage() {
     { enabled: !!selectedServerId }
   );
 
+  // Update URL params helper
+  const updateParams = (updates: Record<string, string | null>) => {
+    setSearchParams(
+      (prev) => {
+        const newParams = new URLSearchParams(prev);
+        for (const [key, value] of Object.entries(updates)) {
+          if (value === null || value === "") {
+            newParams.delete(key);
+          } else {
+            newParams.set(key, value);
+          }
+        }
+        return newParams;
+      },
+      { replace: false }
+    );
+  };
+
   // Handle search submit
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
-    setSearch(searchInput);
-    setPage(1);
+    updateParams({ search: searchInput, page: "1" });
   };
 
   // Clear search
   const clearSearch = () => {
-    setSearch("");
     setSearchInput("");
-    setPage(1);
+    updateParams({ search: null, page: "1" });
   };
 
   // Handle server change
   const handleServerChange = (serverId: string) => {
-    setSelectedServerId(serverId);
-    setPage(1);
-    setSearch("");
     setSearchInput("");
+    updateParams({ server: serverId, page: "1", search: null });
   };
 
   // Loading state
@@ -212,8 +241,7 @@ export default function LibraryPage() {
         <ToggleGroup
           value={mediaType}
           onChange={(v) => {
-            setMediaType(v as MediaType);
-            setPage(1);
+            updateParams({ type: v === "all" ? null : v, page: "1" });
           }}
           options={[
             { value: "all", label: "All" },
@@ -227,8 +255,7 @@ export default function LibraryPage() {
           <select
             value={sortBy}
             onChange={(e) => {
-              setSortBy(e.target.value as SortBy);
-              setPage(1);
+              updateParams({ sortBy: e.target.value === "SortName" ? null : e.target.value, page: "1" });
             }}
             className="bg-white/5 border border-white/10 rounded px-3 py-2 text-sm text-white/80 focus:outline-none focus:border-annex-500/50"
           >
@@ -241,8 +268,10 @@ export default function LibraryPage() {
             variant="ghost"
             size="sm"
             onClick={() => {
-              setSortOrder(sortOrder === "Ascending" ? "Descending" : "Ascending");
-              setPage(1);
+              updateParams({
+                order: sortOrder === "Ascending" ? "Descending" : null,
+                page: "1",
+              });
             }}
             className="px-2"
           >
@@ -334,7 +363,7 @@ export default function LibraryPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => setPage(1)}
+                onClick={() => updateParams({ page: "1" })}
                 disabled={page === 1}
               >
                 First
@@ -342,7 +371,7 @@ export default function LibraryPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => setPage(page - 1)}
+                onClick={() => updateParams({ page: String(page - 1) })}
                 disabled={page === 1}
               >
                 Previous
@@ -353,7 +382,7 @@ export default function LibraryPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => setPage(page + 1)}
+                onClick={() => updateParams({ page: String(page + 1) })}
                 disabled={page >= mediaData.totalPages}
               >
                 Next
@@ -361,7 +390,7 @@ export default function LibraryPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => setPage(mediaData.totalPages)}
+                onClick={() => updateParams({ page: String(mediaData.totalPages) })}
                 disabled={page >= mediaData.totalPages}
               >
                 Last

@@ -10,6 +10,10 @@ import type { Job } from "@prisma/client";
 import { getConfig } from "../config/index.js";
 import { prisma } from "../db/client.js";
 import { getJobEventService, type JobEventData, type JobUpdateType } from "./jobEvents.js";
+import {
+  hydrateLibraryMetadata,
+  refreshStaleMetadata,
+} from "./libraryMetadataHydration.js";
 import { syncAllLibraries, syncServerLibrary } from "./librarySync.js";
 import { getSchedulerService } from "./scheduler.js";
 
@@ -17,6 +21,8 @@ import { getSchedulerService } from "./scheduler.js";
 export type JobType =
   | "library:sync"
   | "library:sync-server"
+  | "library:hydrate-metadata"
+  | "library:refresh-stale-metadata"
   | "mdblist:hydrate-discover"
   | "pipeline:search"
   | "pipeline:download"
@@ -35,6 +41,16 @@ export type JobType =
 interface LibrarySyncServerPayload {
   serverId: string;
   sinceDate?: string; // ISO date string for incremental sync
+}
+
+interface LibraryHydrateMetadataPayload {
+  limit?: number;
+  priorityServerId?: string;
+}
+
+interface LibraryRefreshStaleMetadataPayload {
+  daysStale?: number;
+  limit?: number;
 }
 
 interface MDBListHydratePayload {
@@ -90,6 +106,25 @@ class JobQueueService {
       const result = await syncServerLibrary(serverId, {
         sinceDate: sinceDate ? new Date(sinceDate) : undefined,
       });
+      return result;
+    });
+
+    this.registerHandler("library:hydrate-metadata", async (payload) => {
+      const { limit = 100, priorityServerId } = (payload ||
+        {}) as LibraryHydrateMetadataPayload;
+      const result = await hydrateLibraryMetadata(limit, priorityServerId);
+      console.log(
+        `[LibraryHydration] Metadata hydration: ${result.hydrated} hydrated, ${result.failed} failed, ${result.skipped} skipped`
+      );
+      return result;
+    });
+
+    this.registerHandler("library:refresh-stale-metadata", async (payload) => {
+      const { daysStale = 30, limit = 50 } = (payload || {}) as LibraryRefreshStaleMetadataPayload;
+      const result = await refreshStaleMetadata(daysStale, limit);
+      console.log(
+        `[LibraryHydration] Stale metadata refresh: ${result.hydrated} refreshed, ${result.failed} failed`
+      );
       return result;
     });
 
@@ -416,6 +451,7 @@ class JobQueueService {
    */
   private async startScheduledJobs(): Promise<void> {
     await this.startAllServerSyncSchedulers();
+    await this.startLibraryMetadataHydrationScheduler();
     await this.startAwaitingRetryScheduler();
     await this.startApprovalTimeoutScheduler();
     await this.startTraktCacheCleanupScheduler();
@@ -701,6 +737,46 @@ class JobQueueService {
       `library:sync-server:${serverId}`,
       { priority: 1, maxAttempts: 1 }
     );
+  }
+
+  /**
+   * Register library metadata hydration scheduler
+   * Automatically hydrates library items with metadata (images, ratings, etc)
+   * Runs every 15 minutes to process 100 items at a time
+   */
+  private async startLibraryMetadataHydrationScheduler(): Promise<void> {
+    const scheduler = getSchedulerService();
+    const intervalMs = 15 * 60 * 1000; // 15 minutes
+
+    // Hydrate missing metadata
+    scheduler.register("library-hydrate-metadata", "Library Metadata Hydration", intervalMs, async () => {
+      await this.addJobIfNotExists(
+        "library:hydrate-metadata",
+        { limit: 100 },
+        "library:hydrate-metadata",
+        { priority: 3, maxAttempts: 3 }
+      );
+    });
+
+    console.log("[JobQueue] Registered library metadata hydration task (15m interval)");
+
+    // Refresh stale metadata (once every 24 hours)
+    const staleRefreshIntervalMs = 24 * 60 * 60 * 1000; // 24 hours
+    scheduler.register(
+      "library-refresh-stale-metadata",
+      "Refresh Stale Library Metadata",
+      staleRefreshIntervalMs,
+      async () => {
+        await this.addJobIfNotExists(
+          "library:refresh-stale-metadata",
+          { daysStale: 30, limit: 50 },
+          "library:refresh-stale-metadata",
+          { priority: 5, maxAttempts: 3 }
+        );
+      }
+    );
+
+    console.log("[JobQueue] Registered stale metadata refresh task (24h interval)");
   }
 
   /**
