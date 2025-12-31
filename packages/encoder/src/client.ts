@@ -44,6 +44,8 @@ export class EncoderClient {
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private heartbeatTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastPongReceived: number = 0;
   private activeJobs: Map<string, ActiveJob> = new Map();
   private shuttingDown = false;
 
@@ -108,6 +110,12 @@ Server: ${this.config.serverUrl}
     if (this.heartbeatTimer) {
       clearInterval(this.heartbeatTimer);
       this.heartbeatTimer = null;
+    }
+
+    // Stop heartbeat timeout
+    if (this.heartbeatTimeoutTimer) {
+      clearTimeout(this.heartbeatTimeoutTimer);
+      this.heartbeatTimeoutTimer = null;
     }
 
     // Cancel all active jobs
@@ -188,6 +196,12 @@ Server: ${this.config.serverUrl}
       this.heartbeatTimer = null;
     }
 
+    // Stop heartbeat timeout
+    if (this.heartbeatTimeoutTimer) {
+      clearTimeout(this.heartbeatTimeoutTimer);
+      this.heartbeatTimeoutTimer = null;
+    }
+
     // Attempt reconnection
     if (!this.shuttingDown) {
       this.scheduleReconnect();
@@ -240,6 +254,9 @@ Server: ${this.config.serverUrl}
       clearInterval(this.heartbeatTimer);
     }
 
+    // Initialize last pong time
+    this.lastPongReceived = Date.now();
+
     this.heartbeatTimer = setInterval(() => {
       this.sendHeartbeat();
     }, this.config.heartbeatInterval);
@@ -259,6 +276,25 @@ Server: ${this.config.serverUrl}
     };
 
     this.send(msg);
+
+    // Schedule timeout check (3x heartbeat interval = 90 seconds by default)
+    if (this.heartbeatTimeoutTimer) {
+      clearTimeout(this.heartbeatTimeoutTimer);
+    }
+
+    const timeout = this.config.heartbeatInterval * 3;
+    this.heartbeatTimeoutTimer = setTimeout(() => {
+      const timeSinceLastPong = Date.now() - this.lastPongReceived;
+      if (timeSinceLastPong > timeout) {
+        console.warn(
+          `[Client] No pong received for ${Math.round(timeSinceLastPong / 1000)}s - forcing reconnect`
+        );
+        // Force reconnection by closing the WebSocket
+        if (this.ws) {
+          this.ws.close();
+        }
+      }
+    }, timeout);
   }
 
   /**
@@ -281,7 +317,8 @@ Server: ${this.config.serverUrl}
         break;
 
       case "pong":
-        // Heartbeat acknowledged
+        // Heartbeat acknowledged - update last pong time
+        this.lastPongReceived = Date.now();
         break;
 
       case "job:assign":

@@ -654,6 +654,8 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
     const reader = ffmpeg.stdout.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
+    let lastLoggedProgress = -5; // Log at 0%, 5%, 10%, etc.
+    let lastLogTime = 0;
 
     try {
       while (true) {
@@ -691,6 +693,18 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
             speed: progressState.speed,
             eta,
           });
+
+          // Log progress to journal (throttled to every 5% or 30s)
+          const now = Date.now();
+          const shouldLog =
+            progress - lastLoggedProgress >= 5 || now - lastLogTime >= 30000 || progress >= 99;
+          if (shouldLog && progressState.fps && progressState.speed) {
+            console.log(
+              `[Encoder] Progress: ${progress.toFixed(1)}% | ${progressState.fps.toFixed(1)} fps | ${progressState.speed.toFixed(2)}x speed | ETA: ${Math.floor(eta / 60)}m ${eta % 60}s`
+            );
+            lastLoggedProgress = Math.floor(progress / 5) * 5;
+            lastLogTime = now;
+          }
         }
       }
     } catch {
