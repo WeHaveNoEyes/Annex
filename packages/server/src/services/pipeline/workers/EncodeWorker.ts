@@ -98,6 +98,18 @@ export class EncodeWorker extends BaseWorker {
       throw new Error("No download data found in item context");
     }
 
+    // If sourceFilePath is a directory (from old cached data), find the main video file
+    if (downloadData?.sourceFilePath && item.type === "MOVIE") {
+      const { findMainVideoFile } = await import("./fileUtils.js");
+      const videoFile = await findMainVideoFile(downloadData.sourceFilePath as string);
+      if (videoFile && videoFile !== downloadData.sourceFilePath) {
+        console.log(
+          `[${this.name}] sourceFilePath was a directory, found video file: ${videoFile}`
+        );
+        downloadData.sourceFilePath = videoFile;
+      }
+    }
+
     // Build pipeline context
     const context: PipelineContext = {
       requestId: item.requestId,
