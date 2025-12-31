@@ -610,14 +610,32 @@ export const discoveryRouter = router({
 
         const now = new Date();
 
-        // If fresh (< 6 hours), return immediately
+        // If fresh (< 6 hours), return immediately with re-hydrated status
         if (cached && cached.expiresAt > now) {
           console.log(
             `[TraktCache] Cache hit (fresh): ${input.listType}/${input.type}/page${input.page}`
           );
+
+          // Re-hydrate library/request status (not cached since it changes frequently)
+          const cachedResults = cached.results as unknown as TrendingResult[];
+          const libraryStatusService = getLibraryStatusService();
+          const status = await libraryStatusService.getBatchStatus(
+            cachedResults.map((item) => ({ tmdbId: item.tmdbId, type: item.type }))
+          );
+
+          // Update results with fresh status
+          const resultsWithStatus = cachedResults.map((result) => {
+            const key = `${result.type}-${result.tmdbId}`;
+            return {
+              ...result,
+              inLibrary: status.inLibrary[key] || null,
+              requestStatus: status.requestStatus[key] || null,
+            };
+          });
+
           return {
             configured: true,
-            results: cached.results as unknown as TrendingResult[],
+            results: resultsWithStatus,
             page: input.page,
             totalPages: cached.totalPages,
             totalResults: cached.totalResults,
@@ -625,7 +643,7 @@ export const discoveryRouter = router({
           };
         }
 
-        // If stale but exists, return stale data and refresh in background
+        // If stale but exists, return stale data with re-hydrated status and refresh in background
         if (cached) {
           console.log(
             `[TraktCache] Cache hit (stale): ${input.listType}/${input.type}/page${input.page} - queueing refresh`
@@ -644,9 +662,26 @@ export const discoveryRouter = router({
               console.error("[TraktCache] Failed to queue refresh job:", err);
             });
 
+          // Re-hydrate library/request status
+          const cachedResults = cached.results as unknown as TrendingResult[];
+          const libraryStatusService = getLibraryStatusService();
+          const status = await libraryStatusService.getBatchStatus(
+            cachedResults.map((item) => ({ tmdbId: item.tmdbId, type: item.type }))
+          );
+
+          // Update results with fresh status
+          const resultsWithStatus = cachedResults.map((result) => {
+            const key = `${result.type}-${result.tmdbId}`;
+            return {
+              ...result,
+              inLibrary: status.inLibrary[key] || null,
+              requestStatus: status.requestStatus[key] || null,
+            };
+          });
+
           return {
             configured: true,
-            results: cached.results as unknown as TrendingResult[],
+            results: resultsWithStatus,
             page: input.page,
             totalPages: cached.totalPages,
             totalResults: cached.totalResults,
