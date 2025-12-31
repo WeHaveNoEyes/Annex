@@ -43,8 +43,14 @@ interface ConnectedEncoder {
   lastHeartbeat: Date;
 }
 
-// Path mapping: translate server paths to remote encoder paths
-const PATH_MAPPINGS: Array<{ server: string; remote: string }> = [
+// Path mapping type
+interface PathMapping {
+  server: string;
+  remote: string;
+}
+
+// Default path mappings from environment variables (fallback when DB has no mappings)
+const DEFAULT_PATH_MAPPINGS: PathMapping[] = [
   {
     server: process.env.ENCODER_SERVER_ENCODING_PATH || "/media/encoding",
     remote: process.env.ENCODER_REMOTE_ENCODING_PATH || "/mnt/downloads/encoding",
@@ -55,12 +61,79 @@ const PATH_MAPPINGS: Array<{ server: string; remote: string }> = [
   },
 ];
 
-function translateToRemotePath(serverPath: string): string {
-  for (const mapping of PATH_MAPPINGS) {
+// Path mappings cache with 5-minute TTL
+interface CachedMappings {
+  mappings: PathMapping[];
+  remappingEnabled: boolean;
+  timestamp: number;
+}
+const pathMappingsCache = new Map<string, CachedMappings>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+/**
+ * Get path mappings for a specific encoder
+ * Returns encoder-specific mappings from DB, or falls back to env var defaults
+ */
+async function getPathMappingsForEncoder(encoderId: string): Promise<{
+  mappings: PathMapping[];
+  remappingEnabled: boolean;
+}> {
+  // Check cache first
+  const cached = pathMappingsCache.get(encoderId);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    return { mappings: cached.mappings, remappingEnabled: cached.remappingEnabled };
+  }
+
+  // Fetch from database
+  const encoder = await prisma.remoteEncoder.findUnique({
+    where: { encoderId },
+    select: { pathMappings: true, remappingEnabled: true },
+  });
+
+  if (!encoder) {
+    // Encoder not found, use defaults
+    return { mappings: DEFAULT_PATH_MAPPINGS, remappingEnabled: true };
+  }
+
+  let mappings: PathMapping[];
+  if (encoder.pathMappings && Array.isArray(encoder.pathMappings)) {
+    // Use encoder-specific mappings from database
+    mappings = encoder.pathMappings as PathMapping[];
+  } else {
+    // Fall back to environment variable defaults
+    mappings = DEFAULT_PATH_MAPPINGS;
+  }
+
+  // Cache the result
+  pathMappingsCache.set(encoderId, {
+    mappings,
+    remappingEnabled: encoder.remappingEnabled,
+    timestamp: Date.now(),
+  });
+
+  return { mappings, remappingEnabled: encoder.remappingEnabled };
+}
+
+/**
+ * Translate server path to remote encoder path
+ * If remapping is disabled, returns path unchanged
+ */
+async function translateToRemotePath(serverPath: string, encoderId: string): Promise<string> {
+  const { mappings, remappingEnabled } = await getPathMappingsForEncoder(encoderId);
+
+  // If remapping is disabled, return path unchanged
+  if (!remappingEnabled) {
+    return serverPath;
+  }
+
+  // Apply path mappings (first match wins)
+  for (const mapping of mappings) {
     if (serverPath.startsWith(mapping.server)) {
       return serverPath.replace(mapping.server, mapping.remote);
     }
   }
+
+  // No mapping matched, return original path
   return serverPath;
 }
 
@@ -181,6 +254,20 @@ class EncoderDispatchService {
     }
 
     this.encoders.clear();
+  }
+
+  /**
+   * Invalidate path mappings cache for an encoder
+   * Call this when path mappings are updated via API
+   */
+  invalidatePathMappingsCache(encoderId?: string): void {
+    if (encoderId) {
+      pathMappingsCache.delete(encoderId);
+      console.log(`[EncoderDispatch] Invalidated path mappings cache for ${encoderId}`);
+    } else {
+      pathMappingsCache.clear();
+      console.log("[EncoderDispatch] Cleared all path mappings cache");
+    }
   }
 
   // ==========================================================================
@@ -448,12 +535,16 @@ class EncoderDispatchService {
       const connection = this.encoders.get(encoder.encoderId);
       if (!connection) continue;
 
+      // Translate paths using encoder-specific mappings
+      const inputPath = await translateToRemotePath(job.inputPath, encoder.encoderId);
+      const outputPath = await translateToRemotePath(job.outputPath, encoder.encoderId);
+
       // Send job assignment
       const assignMsg: JobAssignMessage = {
         type: "job:assign",
         jobId: job.jobId,
-        inputPath: translateToRemotePath(job.inputPath),
-        outputPath: translateToRemotePath(job.outputPath),
+        inputPath,
+        outputPath,
         encodingConfig: encodingConfig as unknown as EncodingConfig,
       };
 

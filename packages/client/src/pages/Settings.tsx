@@ -2775,6 +2775,8 @@ function EncodersSettings() {
   const [showHistory, setShowHistory] = useState(false);
   const [editingEncoder, setEditingEncoder] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
+  const [editingPaths, setEditingPaths] = useState<string | null>(null);
+  const [pathMappings, setPathMappings] = useState<Array<{ server: string; remote: string }>>([]);
 
   // Queries
   const encoders = trpc.encoders.list.useQuery(undefined, {
@@ -2803,6 +2805,19 @@ function EncodersSettings() {
   const cancelJob = trpc.encoders.cancelJob.useMutation({
     onSuccess: () => {
       utils.encoders.assignments.invalidate();
+    },
+  });
+
+  const updatePathMappings = trpc.encoders.updatePathMappings.useMutation({
+    onSuccess: () => {
+      utils.encoders.list.invalidate();
+      setEditingPaths(null);
+    },
+  });
+
+  const toggleRemapping = trpc.encoders.toggleRemapping.useMutation({
+    onSuccess: () => {
+      utils.encoders.list.invalidate();
     },
   });
 
@@ -3050,6 +3065,147 @@ function EncodersSettings() {
                           </div>
                         </div>
                       )}
+
+                      {/* Path Mappings */}
+                      <div className="mt-3 pt-3 border-t border-white/10">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-xs font-semibold text-white/60 uppercase tracking-wide">
+                            Path Remapping
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <label className="flex items-center gap-2 text-xs text-white/50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={encoder.remappingEnabled}
+                                onChange={(e) =>
+                                  toggleRemapping.mutate({
+                                    encoderId: encoder.encoderId,
+                                    enabled: e.target.checked,
+                                  })
+                                }
+                                className="rounded"
+                              />
+                              Enabled
+                            </label>
+                            {editingPaths !== encoder.encoderId && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingPaths(encoder.encoderId);
+                                  setPathMappings(
+                                    encoder.pathMappings || [
+                                      {
+                                        server: "/media/encoding",
+                                        remote: "/mnt/downloads/encoding",
+                                      },
+                                      { server: "/media", remote: "/mnt/downloads" },
+                                    ]
+                                  );
+                                }}
+                              >
+                                Edit Paths
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+
+                        {editingPaths === encoder.encoderId ? (
+                          <div className="space-y-2 text-xs">
+                            {pathMappings.map((mapping, idx) => (
+                              <div
+                                key={`${mapping.server}-${mapping.remote}-${idx}`}
+                                className="flex items-center gap-2"
+                              >
+                                <Input
+                                  value={mapping.server}
+                                  onChange={(e) => {
+                                    const newMappings = [...pathMappings];
+                                    newMappings[idx].server = e.target.value;
+                                    setPathMappings(newMappings);
+                                  }}
+                                  placeholder="Server path"
+                                  className="h-7 text-xs flex-1"
+                                />
+                                <span className="text-white/40">→</span>
+                                <Input
+                                  value={mapping.remote}
+                                  onChange={(e) => {
+                                    const newMappings = [...pathMappings];
+                                    newMappings[idx].remote = e.target.value;
+                                    setPathMappings(newMappings);
+                                  }}
+                                  placeholder="Remote path"
+                                  className="h-7 text-xs flex-1"
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setPathMappings(pathMappings.filter((_, i) => i !== idx));
+                                  }}
+                                  disabled={pathMappings.length === 1}
+                                >
+                                  Remove
+                                </Button>
+                              </div>
+                            ))}
+                            <div className="flex items-center gap-2 pt-2">
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => {
+                                  setPathMappings([...pathMappings, { server: "", remote: "" }]);
+                                }}
+                              >
+                                Add Mapping
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => {
+                                  const valid = pathMappings.every(
+                                    (m) => m.server.trim() && m.remote.trim()
+                                  );
+                                  if (!valid) {
+                                    alert("All paths must be filled in");
+                                    return;
+                                  }
+                                  updatePathMappings.mutate({
+                                    encoderId: encoder.encoderId,
+                                    pathMappings,
+                                  });
+                                }}
+                                disabled={updatePathMappings.isPending}
+                              >
+                                {updatePathMappings.isPending ? "Saving..." : "Save"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => setEditingPaths(null)}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-xs text-white/40 space-y-1">
+                            {!encoder.remappingEnabled ? (
+                              <div className="text-white/50 italic">Path remapping disabled</div>
+                            ) : encoder.pathMappings && encoder.pathMappings.length > 0 ? (
+                              encoder.pathMappings.map((mapping, idx) => (
+                                <div key={`${mapping.server}-${mapping.remote}-${idx}`}>
+                                  <span className="text-white/50">{mapping.server}</span>
+                                  <span className="text-white/30"> → </span>
+                                  <span className="text-white/50">{mapping.remote}</span>
+                                </div>
+                              ))
+                            ) : (
+                              <div className="text-white/50 italic">Using global defaults</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 

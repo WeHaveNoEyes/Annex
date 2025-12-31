@@ -36,6 +36,8 @@ export const encodersRouter = router({
       totalJobsCompleted: e.totalJobsCompleted,
       totalJobsFailed: e.totalJobsFailed,
       capabilities: e.capabilities as RemoteEncoderInfo["capabilities"],
+      pathMappings: e.pathMappings as Array<{ server: string; remote: string }> | null,
+      remappingEnabled: e.remappingEnabled,
       createdAt: e.createdAt,
       updatedAt: e.updatedAt,
     }));
@@ -65,6 +67,8 @@ export const encodersRouter = router({
         totalJobsCompleted: encoder.totalJobsCompleted,
         totalJobsFailed: encoder.totalJobsFailed,
         capabilities: encoder.capabilities as RemoteEncoderInfo["capabilities"],
+        pathMappings: encoder.pathMappings as Array<{ server: string; remote: string }> | null,
+        remappingEnabled: encoder.remappingEnabled,
         createdAt: encoder.createdAt,
         updatedAt: encoder.updatedAt,
       };
@@ -109,6 +113,65 @@ export const encodersRouter = router({
 
     return { success: true };
   }),
+
+  /**
+   * Update path mappings for an encoder
+   */
+  updatePathMappings: publicProcedure
+    .input(
+      z.object({
+        encoderId: z.string(),
+        pathMappings: z.array(
+          z.object({
+            server: z.string().min(1),
+            remote: z.string().min(1),
+          })
+        ),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // Validate no duplicate server paths
+      const serverPaths = input.pathMappings.map((m) => m.server);
+      const uniquePaths = new Set(serverPaths);
+      if (serverPaths.length !== uniquePaths.size) {
+        throw new Error("Duplicate server paths are not allowed");
+      }
+
+      // Update encoder path mappings
+      await prisma.remoteEncoder.update({
+        where: { encoderId: input.encoderId },
+        data: { pathMappings: input.pathMappings },
+      });
+
+      // Invalidate cache
+      const dispatch = getEncoderDispatchService();
+      dispatch.invalidatePathMappingsCache(input.encoderId);
+
+      return { success: true };
+    }),
+
+  /**
+   * Toggle path remapping for an encoder
+   */
+  toggleRemapping: publicProcedure
+    .input(
+      z.object({
+        encoderId: z.string(),
+        enabled: z.boolean(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      await prisma.remoteEncoder.update({
+        where: { encoderId: input.encoderId },
+        data: { remappingEnabled: input.enabled },
+      });
+
+      // Invalidate cache
+      const dispatch = getEncoderDispatchService();
+      dispatch.invalidatePathMappingsCache(input.encoderId);
+
+      return { success: true };
+    }),
 
   /**
    * Get all active encoding assignments

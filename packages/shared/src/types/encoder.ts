@@ -196,6 +196,8 @@ export interface RemoteEncoderInfo {
   totalJobsCompleted: number;
   totalJobsFailed: number;
   capabilities?: EncoderCapabilities | null;
+  pathMappings?: Array<{ server: string; remote: string }> | null;
+  remappingEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

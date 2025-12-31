@@ -996,6 +996,10 @@ model RemoteEncoder {
   hostname String?
   version  String?
 
+  // Path Mappings Configuration
+  pathMappings     Json?   // Array of {server: string, remote: string}
+  remappingEnabled Boolean @default(true) // Allow disabling remapping entirely
+
   // Relations
   assignments EncoderAssignment[]
 
