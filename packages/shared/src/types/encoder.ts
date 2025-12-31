@@ -138,6 +138,7 @@ export interface JobAssignMessage {
   jobId: string;
   inputPath: string;
   outputPath: string;
+  finalOutputPath?: string; // Optional: rename to this path on successful completion
   encodingConfig: EncodingConfig;
 }
 

@@ -13,6 +13,7 @@ export interface EncodeJob {
   jobId: string;
   inputPath: string;
   outputPath: string;
+  finalOutputPath?: string; // Optional: rename to this path on successful completion
   encodingConfig: EncodingConfig;
   onProgress: (progress: JobProgressMessage) => void;
   abortSignal?: AbortSignal;
@@ -764,13 +765,28 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
     throw new Error(`FFmpeg exited with code ${exitCode}: ${stderr.slice(-500)}`);
   }
 
-  // Get output file size
+  // Rename to final path if specified (atomic operation)
+  let finalPath = job.outputPath;
+  if (job.finalOutputPath && job.finalOutputPath !== job.outputPath) {
+    try {
+      fs.renameSync(job.outputPath, job.finalOutputPath);
+      finalPath = job.finalOutputPath;
+      console.log(`[Encoder] Renamed: ${job.outputPath} -> ${job.finalOutputPath}`);
+    } catch (e) {
+      console.warn(
+        `[Encoder] WARNING: Could not rename to final path, using temp path: ${e}`
+      );
+      // Continue with temp path if rename fails
+    }
+  }
+
+  // Get output file size and set permissions
   let outputSize = 0;
   try {
-    outputSize = fs.statSync(job.outputPath).size;
+    outputSize = fs.statSync(finalPath).size;
 
     // Set file permissions to allow full access (closed system)
-    fs.chmodSync(job.outputPath, 0o777);
+    fs.chmodSync(finalPath, 0o777);
   } catch (e) {
     console.warn(`[Encoder] WARNING: Could not set output file permissions: ${e}`);
   }
@@ -782,7 +798,7 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
   );
 
   return {
-    outputPath: job.outputPath,
+    outputPath: finalPath,
     outputSize,
     compressionRatio,
     duration,

@@ -533,7 +533,10 @@ class EncoderDispatchService {
       });
       if (!jobRecord) continue;
 
-      const payload = jobRecord.payload as { encodingConfig?: Record<string, unknown> };
+      const payload = jobRecord.payload as {
+        encodingConfig?: Record<string, unknown>;
+        finalOutputPath?: string;
+      };
       const encodingConfig = payload.encodingConfig;
       if (!encodingConfig) continue;
 
@@ -544,6 +547,9 @@ class EncoderDispatchService {
       // Translate paths using encoder-specific mappings
       const inputPath = await translateToRemotePath(job.inputPath, encoder.encoderId);
       const outputPath = await translateToRemotePath(job.outputPath, encoder.encoderId);
+      const finalOutputPath = payload.finalOutputPath
+        ? await translateToRemotePath(payload.finalOutputPath, encoder.encoderId)
+        : undefined;
 
       // Send job assignment
       const assignMsg: JobAssignMessage = {
@@ -551,6 +557,7 @@ class EncoderDispatchService {
         jobId: job.jobId,
         inputPath,
         outputPath,
+        finalOutputPath,
         encodingConfig: encodingConfig as unknown as EncodingConfig,
       };
 

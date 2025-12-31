@@ -227,45 +227,6 @@ export class EncodeStep extends BaseStep {
       };
     }
 
-    // Clean up any partial files from cancelled/failed jobs
-    const cancelledOrFailedJobs = await prisma.encoderAssignment.findMany({
-      where: {
-        jobId: {
-          in: (
-            await prisma.job.findMany({
-              where: {
-                type: "remote:encode",
-                requestId,
-              },
-              select: { id: true },
-              orderBy: { createdAt: "desc" },
-              take: 10,
-            })
-          ).map((j: { id: string }) => j.id),
-        },
-        status: { in: [AssignmentStatus.CANCELLED, AssignmentStatus.FAILED] },
-      },
-    });
-
-    for (const job of cancelledOrFailedJobs) {
-      if (job.outputPath) {
-        try {
-          const file = Bun.file(job.outputPath);
-          if (await file.exists()) {
-            await Bun.write(job.outputPath, ""); // Truncate
-            await import("node:fs/promises").then((fs) => fs.unlink(job.outputPath));
-            await this.logActivity(
-              requestId,
-              ActivityType.INFO,
-              `Cleaned up partial file from ${job.status} job: ${job.outputPath}`
-            );
-          }
-        } catch {
-          // Ignore cleanup errors
-        }
-      }
-    }
-
     // Check if we have a recent completed encoding job for this request
     // This allows retry to skip re-encoding if the encoded file still exists
     const recentCompletedJob = await prisma.encoderAssignment.findFirst({
@@ -376,7 +337,21 @@ export class EncodeStep extends BaseStep {
       container: cfg.container || "MKV",
     };
 
-    // Create Job record
+    // Determine output paths using processingItemId for deterministic naming
+    // Use temp suffix during encoding to avoid confusion with completed files
+    const inputDir = sourceFilePath.substring(0, sourceFilePath.lastIndexOf("/"));
+    const processingItemId = (context as { processingItemId?: string }).processingItemId;
+    const timestamp = Date.now();
+    const tempOutputFilename = processingItemId
+      ? `encoded_${processingItemId}_temp_${timestamp}.mkv`
+      : `encoded_temp_${timestamp}.mkv`;
+    const finalOutputFilename = processingItemId
+      ? `encoded_${processingItemId}.mkv`
+      : `encoded_${timestamp}.mkv`;
+    const tempOutputPath = `${inputDir}/${tempOutputFilename}`;
+    const finalOutputPath = `${inputDir}/${finalOutputFilename}`;
+
+    // Create Job record with finalOutputPath in payload
     const job = await prisma.job.create({
       data: {
         type: "remote:encode",
@@ -385,26 +360,19 @@ export class EncodeStep extends BaseStep {
           requestId,
           mediaType,
           inputPath: sourceFilePath,
+          finalOutputPath, // Store final path for rename on completion
           encodingConfig,
         } as Prisma.JsonObject,
         dedupeKey: `encode:${requestId}`,
       },
     });
 
-    // Determine output path using processingItemId for deterministic naming
-    const inputDir = sourceFilePath.substring(0, sourceFilePath.lastIndexOf("/"));
-    const processingItemId = (context as { processingItemId?: string }).processingItemId;
-    const outputFilename = processingItemId
-      ? `encoded_${processingItemId}.mkv`
-      : `encoded_${Date.now()}.mkv`;
-    const outputPath = `${inputDir}/${outputFilename}`;
-
-    // Queue encoding job with encoder dispatch service
+    // Queue encoding job with encoder dispatch service (use temp path for encoding)
     const encoderService = getEncoderDispatchService();
     const assignment = await encoderService.queueEncodingJob(
       job.id,
       sourceFilePath,
-      outputPath,
+      tempOutputPath,
       encodingConfig
     );
 
@@ -506,7 +474,7 @@ export class EncodeStep extends BaseStep {
               encodedFiles: [
                 {
                   profileId: context.targets[0]?.encodingProfileId || "default",
-                  path: assignmentStatus.outputPath || outputPath,
+                  path: assignmentStatus.outputPath || finalOutputPath,
                   targetServerIds,
                   resolution: encodingConfig.maxResolution,
                   codec,

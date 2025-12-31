@@ -350,7 +350,7 @@ Server: ${this.config.serverUrl}
    * Handle job assignment
    */
   private async handleJobAssign(msg: JobAssignMessage): Promise<void> {
-    const { jobId, inputPath, outputPath, encodingConfig } = msg;
+    const { jobId, inputPath, outputPath, finalOutputPath, encodingConfig } = msg;
 
     // Check capacity
     if (this.activeJobs.size >= this.config.maxConcurrent) {
@@ -374,6 +374,9 @@ Server: ${this.config.serverUrl}
     console.log(`[Client] Received job ${jobId}`);
     console.log(`  Input: ${inputPath}`);
     console.log(`  Output: ${outputPath}`);
+    if (finalOutputPath) {
+      console.log(`  Final: ${finalOutputPath}`);
+    }
     console.log(
       `  Config: videoEncoder="${encodingConfig.videoEncoder}" hwAccel="${encodingConfig.hwAccel}"`
     );
@@ -404,6 +407,7 @@ Server: ${this.config.serverUrl}
         jobId,
         inputPath,
         outputPath,
+        finalOutputPath,
         encodingConfig,
         onProgress: (progress) => this.send(progress),
         abortSignal: abortController.signal,
