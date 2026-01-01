@@ -23,8 +23,6 @@ export class DownloadRecoveryWorker extends BaseWorker {
   readonly name = "DownloadRecoveryWorker";
 
   protected async processItem(item: ProcessingItem): Promise<void> {
-    console.log(`[${this.name}] Checking ${item.type} ${item.title} for recovery`);
-
     // Get the search context to find the release info
     const stepContext = item.stepContext as Record<string, unknown>;
 
@@ -35,7 +33,6 @@ export class DownloadRecoveryWorker extends BaseWorker {
       (stepContext.selectedRelease as Record<string, unknown> | undefined);
 
     if (!selectedRelease || typeof selectedRelease.title !== "string") {
-      console.log(`[${this.name}] No release info in context, skipping ${item.title}`);
       return;
     }
     const releaseName = selectedRelease.title as string;
@@ -59,20 +56,18 @@ export class DownloadRecoveryWorker extends BaseWorker {
     });
 
     if (!matchingTorrent) {
-      console.log(`[${this.name}] No matching torrent found in qBittorrent for ${releaseName}`);
       return;
     }
-
-    console.log(`[${this.name}] Found matching torrent: ${matchingTorrent.name}`);
-    console.log(`[${this.name}]   Hash: ${matchingTorrent.hash}`);
-    console.log(`[${this.name}]   Progress: ${matchingTorrent.progress}%`);
-    console.log(`[${this.name}]   Complete: ${matchingTorrent.isComplete}`);
 
     // Only recover if torrent is complete
     if (!matchingTorrent.isComplete || matchingTorrent.progress < 100) {
-      console.log(`[${this.name}] Torrent not yet complete, skipping recovery`);
       return;
     }
+
+    // Torrent is complete - proceed with recovery
+    console.log(`[${this.name}] Recovering ${item.type} ${item.title}`);
+    console.log(`[${this.name}]   Torrent: ${matchingTorrent.name}`);
+    console.log(`[${this.name}]   Hash: ${matchingTorrent.hash}`);
 
     // Get the video file path
     let sourceFilePath = matchingTorrent.contentPath;
