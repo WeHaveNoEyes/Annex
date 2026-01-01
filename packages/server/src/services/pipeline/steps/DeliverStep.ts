@@ -537,7 +537,18 @@ export class DeliverStep extends BaseStep {
           : `Delivered to ${deliveredServers.length} servers, failed ${failedServers.length}`;
 
       if (deliveredServers.length > 0) {
-        // Partial success
+        // Partial success - log as warning since some servers failed
+        await this.logActivity(
+          requestId,
+          ActivityType.WARNING,
+          `Partial delivery success: ${deliveredServers.length} succeeded, ${failedServers.length} failed`
+        );
+        await this.logActivity(
+          requestId,
+          ActivityType.INFO,
+          `Encoded files preserved for retry to failed servers`
+        );
+
         await prisma.mediaRequest.update({
           where: { id: requestId },
           data: {
@@ -550,6 +561,9 @@ export class DeliverStep extends BaseStep {
         });
       } else {
         // Total failure - update request to FAILED
+        await this.logActivity(requestId, ActivityType.ERROR, `Delivery failed: ${error}`);
+        await this.logActivity(requestId, ActivityType.INFO, `Encoded files preserved for retry`);
+
         await prisma.mediaRequest.update({
           where: { id: requestId },
           data: {
@@ -558,8 +572,6 @@ export class DeliverStep extends BaseStep {
             completedAt: new Date(),
           },
         });
-
-        await this.logActivity(requestId, ActivityType.ERROR, `Delivery failed: ${error}`);
       }
 
       // Update episode status if delivery failed completely
