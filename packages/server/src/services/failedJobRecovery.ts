@@ -45,6 +45,26 @@ export async function recoverFailedJobs(): Promise<void> {
 
     // Only update if request is still in ENCODING status
     if (job.request?.status === "ENCODING") {
+      // Check if there are any newer jobs for this request
+      // If a retry was started, there will be newer jobs that are active
+      const newerActiveJobs = await prisma.job.findMany({
+        where: {
+          type: "remote:encode",
+          requestId: job.requestId,
+          createdAt: { gt: job.createdAt },
+          encoderAssignment: {
+            status: { in: ["PENDING", "ASSIGNED", "ENCODING"] },
+          },
+        },
+      });
+
+      if (newerActiveJobs.length > 0) {
+        console.log(
+          `[FailedJobRecovery] ${job.request.title}: Skipping (${newerActiveJobs.length} newer active job(s) found)`
+        );
+        continue;
+      }
+
       const error = job.encoderAssignment?.error || "Unknown encoding error";
 
       console.log(`[FailedJobRecovery] ${job.request.title}: Marking as FAILED (${error})`);
