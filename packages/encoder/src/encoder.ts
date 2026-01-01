@@ -214,7 +214,8 @@ async function stripDolbyVision(
   outputPath: string,
   jobId: string,
   duration: number,
-  onProgress: (progress: JobProgressMessage) => void
+  onProgress: (progress: JobProgressMessage) => void,
+  abortSignal?: AbortSignal
 ): Promise<void> {
   validateFilePath(inputPath);
   validateFilePath(outputPath);
@@ -251,6 +252,14 @@ async function stripDolbyVision(
     stdout: "pipe",
     stderr: "pipe",
   });
+
+  // Handle abort signal
+  if (abortSignal) {
+    abortSignal.addEventListener("abort", () => {
+      console.log(`[Encoder] DV strip cancelled for job ${jobId}, killing ffmpeg`);
+      proc.kill(9); // SIGKILL
+    });
+  }
 
   const progressState = {
     outTimeUs: 0,
@@ -343,8 +352,22 @@ async function stripDolbyVision(
   await Promise.all([stdoutReader, stderrReader]);
 
   if (exitCode !== 0) {
+    // Clean up partial output file
+    try {
+      if (fs.existsSync(outputPath)) {
+        fs.unlinkSync(outputPath);
+        console.log("[Encoder] Cleaned up partial DV strip output");
+      }
+    } catch {
+      /* ignore cleanup errors */
+    }
+
     const stderr = stderrLines.join("\n");
-    throw new Error(`Dolby Vision removal failed: ${stderr.slice(-500)}`);
+    const errorMsg =
+      exitCode === 9 || stderr.includes("Immediate exit requested")
+        ? "Dolby Vision removal cancelled"
+        : `Dolby Vision removal failed: ${stderr.slice(-500)}`;
+    throw new Error(errorMsg);
   }
 
   console.log("[Encoder] Dolby Vision metadata stripped successfully");
@@ -857,7 +880,8 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
         intermediateFilePath,
         job.jobId,
         mediaInfo.duration,
-        job.onProgress
+        job.onProgress,
+        job.abortSignal
       );
 
       // Use intermediate file as input for main encode
