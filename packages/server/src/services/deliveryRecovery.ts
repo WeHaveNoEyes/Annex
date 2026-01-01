@@ -44,17 +44,33 @@ export async function recoverStuckDeliveries(): Promise<void> {
   const cutoff = new Date(Date.now() - stallTimeout);
 
   for (const request of stuckRequests) {
-    // Check if file exists in library (delivery may have completed)
-    const libraryItem = await prisma.libraryItem.findFirst({
-      where: {
-        tmdbId: request.tmdbId,
-        type: request.type,
-      },
-      orderBy: { addedAt: "desc" },
+    // Check if ALL ProcessingItems are actually completed
+    const items = await prisma.processingItem.findMany({
+      where: { requestId: request.id },
+      select: { id: true, status: true },
     });
 
-    if (libraryItem) {
-      console.log(`[DeliveryRecovery] ${request.title}: Found in library, marking as COMPLETED`);
+    const allCompleted = items.every(
+      (item: { status: ProcessingStatus }) =>
+        item.status === ProcessingStatus.COMPLETED ||
+        item.status === ProcessingStatus.FAILED ||
+        item.status === ProcessingStatus.CANCELLED
+    );
+
+    const hasActiveDeliveries = items.some(
+      (item: { status: ProcessingStatus }) => item.status === ProcessingStatus.DELIVERING
+    );
+
+    // Skip if items are actively delivering
+    if (hasActiveDeliveries) {
+      console.log(
+        `[DeliveryRecovery] ${request.title}: Items actively delivering (${items.filter((i: { status: ProcessingStatus }) => i.status === ProcessingStatus.DELIVERING).length}/${items.length}), skipping`
+      );
+      continue;
+    }
+
+    if (allCompleted) {
+      console.log(`[DeliveryRecovery] ${request.title}: All items completed, marking request as COMPLETED`);
 
       // Get pipeline context to find encoded files for cleanup
       const pipelineExecution = await prisma.pipelineExecution.findFirst({
