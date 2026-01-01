@@ -13,36 +13,48 @@ export class DeliverWorker extends BaseWorker {
   readonly processingStatus = "ENCODED" as const;
   readonly nextStatus = "COMPLETED" as const;
   readonly name = "DeliverWorker";
-  readonly concurrency = 3; // Deliver up to 3 files in parallel
+  readonly concurrency = 2; // Deliver up to 2 files in parallel (reduced to prevent connection overload)
 
   private deliverStep = new DeliverStep();
+  private isProcessing = false; // Prevent overlapping batches
 
   /**
    * Override to pick up both ENCODED (new) and DELIVERING (resume/retry) items
    */
   async processBatch(): Promise<void> {
-    // Get items in ENCODED (new work) and DELIVERING (resume work)
-    const encodedItems = await pipelineOrchestrator.getItemsForProcessing("ENCODED");
-    const deliveringItems = await pipelineOrchestrator.getItemsForProcessing("DELIVERING");
-    const items = [...encodedItems, ...deliveringItems];
-
-    if (items.length === 0) {
+    // Skip if already processing to prevent overlapping batches and connection overload
+    if (this.isProcessing) {
+      console.log(`[${this.name}] Skipping batch - previous batch still processing`);
       return;
     }
 
-    console.log(
-      `[${this.name}] Processing ${items.length} items (${encodedItems.length} new, ${deliveringItems.length} resuming)`
-    );
+    this.isProcessing = true;
+    try {
+      // Get items in ENCODED (new work) and DELIVERING (resume work)
+      const encodedItems = await pipelineOrchestrator.getItemsForProcessing("ENCODED");
+      const deliveringItems = await pipelineOrchestrator.getItemsForProcessing("DELIVERING");
+      const items = [...encodedItems, ...deliveringItems];
 
-    // Process items in parallel (with concurrency limit)
-    for (let i = 0; i < items.length; i += this.concurrency) {
-      const batch = items.slice(i, i + this.concurrency);
-      await Promise.allSettled(
-        batch.map((item) => {
-          // Call the base class's processItemSafe method
-          return (this as any).processItemSafe(item);
-        })
+      if (items.length === 0) {
+        return;
+      }
+
+      console.log(
+        `[${this.name}] Processing ${items.length} items (${encodedItems.length} new, ${deliveringItems.length} resuming)`
       );
+
+      // Process items in parallel (with concurrency limit)
+      for (let i = 0; i < items.length; i += this.concurrency) {
+        const batch = items.slice(i, i + this.concurrency);
+        await Promise.allSettled(
+          batch.map((item) => {
+            // Call the base class's processItemSafe method
+            return (this as any).processItemSafe(item);
+          })
+        );
+      }
+    } finally {
+      this.isProcessing = false;
     }
   }
 

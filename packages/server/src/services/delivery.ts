@@ -453,7 +453,7 @@ class DeliveryService {
         host: server.host,
         port: server.port,
         username: server.username,
-        readyTimeout: 30000,
+        readyTimeout: 10000, // Reduced from 30s to 10s - fail fast on handshake timeout
       };
 
       // Use password if provided
@@ -480,8 +480,18 @@ class DeliveryService {
         }
       }
 
-      // Connect
-      await sftp.connect(connectionOptions);
+      // Connect with explicit error handling
+      try {
+        await sftp.connect(connectionOptions);
+      } catch (connectError) {
+        // Ensure connection is cleaned up on handshake failure
+        try {
+          await sftp.end();
+        } catch {
+          // Ignore cleanup errors
+        }
+        throw connectError;
+      }
 
       // Ensure remote directory exists
       const remoteDir = dirname(remotePath);
