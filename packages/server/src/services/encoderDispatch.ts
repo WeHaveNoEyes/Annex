@@ -915,6 +915,7 @@ class EncoderDispatchService {
       data: {
         status: "COMPLETED",
         progress: 100,
+        outputPath: msg.outputPath, // Update to actual final path (after rename from temp)
         outputSize: BigInt(msg.outputSize),
         compressionRatio: msg.compressionRatio,
         encodeDuration: msg.duration,

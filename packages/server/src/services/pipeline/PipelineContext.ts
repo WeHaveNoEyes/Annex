@@ -21,6 +21,9 @@ export interface PipelineContext {
     encodingProfileId?: string;
   }>;
 
+  // Processing metadata for deterministic file naming across retries
+  processingItemId?: string;
+
   // Step outputs (accumulated as pipeline executes)
   search?: {
     selectedRelease?: {

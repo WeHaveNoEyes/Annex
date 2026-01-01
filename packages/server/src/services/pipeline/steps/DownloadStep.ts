@@ -67,6 +67,22 @@ export class DownloadStep extends BaseStep {
     const pollInterval = cfg.pollInterval || 5000;
     const timeout = cfg.timeout || 24 * 60 * 60 * 1000; // 24 hours
 
+    // Check if download already completed (recovery scenario from pipeline resume)
+    if (context.download?.sourceFilePath) {
+      await this.logActivity(
+        requestId,
+        ActivityType.INFO,
+        "Download already completed, skipping (recovered from restart)"
+      );
+
+      return {
+        success: true,
+        data: {
+          download: context.download,
+        },
+      };
+    }
+
     // For episode branch pipelines: Check if episode file is already extracted
     console.log(
       `[DownloadStep] Episode recovery check: episodeId=${episodeId}, mediaType=${mediaType}`

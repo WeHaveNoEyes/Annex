@@ -80,10 +80,6 @@ export async function recoverStuckEncodings(): Promise<void> {
 
     // Check if encoding completed while server was down
     if (assignment.status === AssignmentStatus.COMPLETED && assignment.outputPath) {
-      console.log(
-        `[EncodingRecovery] ${request.title}: Encoding completed at ${assignment.completedAt?.toISOString()} - recovering`
-      );
-
       // Find the pipeline execution
       const pipelineExecution = await prisma.pipelineExecution.findFirst({
         where: {
@@ -99,6 +95,34 @@ export async function recoverStuckEncodings(): Promise<void> {
         );
         continue;
       }
+
+      // Check if context already has the encoded file (normal flow is handling it)
+      const context = pipelineExecution.context as {
+        encode?: { encodedFiles?: unknown[] };
+        targets?: Array<{ serverId: string; encodingProfileId?: string }>;
+        download?: { sourceFilePath: string };
+      };
+
+      if (context.encode?.encodedFiles && context.encode.encodedFiles.length > 0) {
+        console.log(
+          `[EncodingRecovery] ${request.title}: Encoding already in context, normal flow handling it - skipping recovery`
+        );
+        continue;
+      }
+
+      // Check if request was updated recently (active polling in progress)
+      const timeSinceUpdate = Date.now() - request.updatedAt.getTime();
+      if (timeSinceUpdate < 60000) {
+        // Less than 1 minute since last update
+        console.log(
+          `[EncodingRecovery] ${request.title}: Request updated ${Math.round(timeSinceUpdate / 1000)}s ago, normal flow active - skipping recovery`
+        );
+        continue;
+      }
+
+      console.log(
+        `[EncodingRecovery] ${request.title}: Encoding completed at ${assignment.completedAt?.toISOString()} but pipeline stuck - recovering`
+      );
 
       // Reconstruct the encode step output from the completed assignment
       const jobPayload = job.payload as {
@@ -120,9 +144,6 @@ export async function recoverStuckEncodings(): Promise<void> {
             : "H264";
 
       // Get target servers from context
-      const context = pipelineExecution.context as {
-        targets?: Array<{ serverId: string; encodingProfileId?: string }>;
-      };
       const targetServerIds = context.targets?.map((t) => t.serverId) || [];
 
       // Build the encode step output as it would have been

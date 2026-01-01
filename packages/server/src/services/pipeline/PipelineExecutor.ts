@@ -63,6 +63,7 @@ export class PipelineExecutor {
           | Array<{ season: number; episode: number }>
           | undefined,
         targets: request.targets as Array<{ serverId: string; encodingProfileId?: string }>,
+        processingItemId: request.id, // Use requestId for deterministic file naming across retries
       };
 
       // Clean up stale state from previous pipeline runs
