@@ -108,6 +108,7 @@ export class DeliverWorker extends BaseWorker {
       search: searchData,
       download: downloadData,
       encode: encodeData,
+      processingItemId: item.id, // Pass ProcessingItem ID for progress updates
     };
 
     // For TV episodes, add episode context
