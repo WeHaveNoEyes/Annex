@@ -232,20 +232,26 @@ export class EncodeStep extends BaseStep {
 
     // Check if we have a recent completed encoding job for this request
     // This allows retry to skip re-encoding if the encoded file still exists
+    const recentJobs = await prisma.job.findMany({
+      where: {
+        type: "remote:encode",
+        requestId, // Use requestId column for efficient querying
+      },
+      select: { id: true },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+    });
+
+    await this.logActivity(
+      requestId,
+      ActivityType.INFO,
+      `Checking for existing encoded files (found ${recentJobs.length} recent encode jobs)`
+    );
+
     const recentCompletedJob = await prisma.encoderAssignment.findFirst({
       where: {
         jobId: {
-          in: (
-            await prisma.job.findMany({
-              where: {
-                type: "remote:encode",
-                requestId, // Use requestId column for efficient querying
-              },
-              select: { id: true },
-              orderBy: { createdAt: "desc" },
-              take: 5,
-            })
-          ).map((j: { id: string }) => j.id),
+          in: recentJobs.map((j: { id: string }) => j.id),
         },
         status: AssignmentStatus.COMPLETED,
       },
@@ -253,6 +259,12 @@ export class EncodeStep extends BaseStep {
     });
 
     if (recentCompletedJob?.outputPath) {
+      await this.logActivity(
+        requestId,
+        ActivityType.INFO,
+        `Found completed encode job with output: ${recentCompletedJob.outputPath}`
+      );
+
       // Check if encoded file still exists
       try {
         const encodedFileExists = await Bun.file(recentCompletedJob.outputPath).exists();
@@ -260,7 +272,7 @@ export class EncodeStep extends BaseStep {
           await this.logActivity(
             requestId,
             ActivityType.INFO,
-            "Reusing existing encoded file from previous attempt"
+            "Reusing existing encoded file from previous attempt (source may have changed but encoded file is valid)"
           );
 
           await prisma.mediaRequest.update({
