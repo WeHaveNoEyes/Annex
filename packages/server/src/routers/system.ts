@@ -194,7 +194,17 @@ export const systemRouter = router({
     get: publicProcedure.query(async () => {
       const config = getConfig();
 
-      return {
+      // Load database overrides
+      const dbSettings = await prisma.setting.findMany({
+        where: {
+          key: {
+            startsWith: "config.",
+          },
+        },
+      });
+
+      // Start with base config
+      const result = {
         downloads: {
           directory: config.downloads.directory,
           seedRatioLimit: config.downloads.seedRatioLimit,
@@ -214,6 +224,22 @@ export const systemRouter = router({
           baseDir: config.qbittorrent.baseDir,
         },
       };
+
+      // Apply database overrides
+      for (const setting of dbSettings) {
+        // Parse key like "config.encoding.ffmpegPath" -> ["encoding", "ffmpegPath"]
+        const keyParts = setting.key.replace("config.", "").split(".");
+        if (keyParts.length === 2) {
+          const [section, key] = keyParts;
+          if (section in result && key in result[section as keyof typeof result]) {
+            const value = JSON.parse(setting.value);
+            // @ts-expect-error - Dynamic key access
+            result[section][key] = value;
+          }
+        }
+      }
+
+      return result;
     }),
 
     set: publicProcedure
