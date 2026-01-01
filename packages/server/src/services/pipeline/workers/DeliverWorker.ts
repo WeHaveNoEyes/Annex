@@ -1,5 +1,7 @@
 import type { MediaType, ProcessingItem } from "@prisma/client";
+import { prisma } from "../../../db/client.js";
 import type { PipelineContext } from "../PipelineContext";
+import { pipelineOrchestrator } from "../PipelineOrchestrator.js";
 import { DeliverStep } from "../steps/DeliverStep";
 import { BaseWorker } from "./BaseWorker";
 
@@ -15,14 +17,67 @@ export class DeliverWorker extends BaseWorker {
 
   private deliverStep = new DeliverStep();
 
+  /**
+   * Override to pick up both ENCODED (new) and DELIVERING (resume/retry) items
+   */
+  async processBatch(): Promise<void> {
+    // Get items in ENCODED (new work) and DELIVERING (resume work)
+    const encodedItems = await pipelineOrchestrator.getItemsForProcessing("ENCODED");
+    const deliveringItems = await pipelineOrchestrator.getItemsForProcessing("DELIVERING");
+    const items = [...encodedItems, ...deliveringItems];
+
+    if (items.length === 0) {
+      return;
+    }
+
+    console.log(
+      `[${this.name}] Processing ${items.length} items (${encodedItems.length} new, ${deliveringItems.length} resuming)`
+    );
+
+    // Process items in parallel (with concurrency limit)
+    for (let i = 0; i < items.length; i += this.concurrency) {
+      const batch = items.slice(i, i + this.concurrency);
+      await Promise.allSettled(
+        batch.map((item) => {
+          // Call the base class's processItemSafe method
+          return (this as any).processItemSafe(item);
+        })
+      );
+    }
+  }
+
   protected async processItem(item: ProcessingItem): Promise<void> {
     console.log(`[${this.name}] Processing ${item.type} ${item.title}`);
 
-    // Transition to DELIVERING
-    const { pipelineOrchestrator } = await import("../PipelineOrchestrator");
-    await pipelineOrchestrator.transitionStatus(item.id, "DELIVERING", {
-      currentStep: "deliver",
-    });
+    // For items already in DELIVERING, check if another worker is processing it
+    if (item.status === "DELIVERING") {
+      // Re-fetch to check current state (another worker might have picked it up)
+      const currentItem = await prisma.processingItem.findUnique({
+        where: { id: item.id },
+        select: { status: true, currentStep: true, updatedAt: true },
+      });
+
+      if (!currentItem || currentItem.status !== "DELIVERING") {
+        console.log(`[${this.name}] ${item.title}: Status changed, skipping`);
+        return;
+      }
+
+      // If updated very recently (within 30s), another worker is likely processing it
+      const thirtySecondsAgo = new Date(Date.now() - 30000);
+      if (currentItem.updatedAt > thirtySecondsAgo) {
+        console.log(
+          `[${this.name}] ${item.title}: Recently updated, likely being processed elsewhere, skipping`
+        );
+        return;
+      }
+
+      console.log(`[${this.name}] ${item.title}: Resuming delivery (stuck for >30s)`);
+    } else {
+      // Transition to DELIVERING for new items
+      await pipelineOrchestrator.transitionStatus(item.id, "DELIVERING", {
+        currentStep: "deliver",
+      });
+    }
 
     // Get request details
     const request = await this.getRequest(item.requestId);
