@@ -483,37 +483,41 @@ export class DeliverStep extends BaseStep {
         }
       }
 
-      // NOTE: We intentionally DO NOT delete encoded files here because:
-      // 1. Retries may reuse the encoded file if source changes (e.g., Dolby Atmos upgrade)
-      // 2. Partial delivery failures need the file for retry
-      // 3. Manual cleanup scripts can remove orphaned files older than 1 hour
-      // This allows the EncoderDispatch reuse logic to work correctly on retries.
-      //
-      // Clean up encoded files (keep source files for seeding) - DISABLED
-      // for (const encodedFile of encodedFiles) {
-      //   const encodedPath = (encodedFile as { path: string }).path;
-      //   try {
-      //     await Bun.file(encodedPath)
-      //       .exists()
-      //       .then((exists) => {
-      //         if (exists) {
-      //           return Bun.file(encodedPath).delete();
-      //         }
-      //       });
-      //     await this.logActivity(
-      //       requestId,
-      //       ActivityType.INFO,
-      //       `Cleaned up encoded file: ${encodedPath}`
-      //     );
-      //   } catch (err) {
-      //     // Log but don't fail delivery on cleanup errors
-      //     await this.logActivity(
-      //       requestId,
-      //       ActivityType.WARNING,
-      //       `Failed to clean up encoded file: ${err instanceof Error ? err.message : "Unknown error"}`
-      //     );
-      //   }
-      // }
+      // Clean up encoded files ONLY on complete success (keep source files for seeding)
+      // Only delete if ALL servers succeeded - this prevents deleting files that may be
+      // needed for retry when partial delivery fails or when adding to additional servers
+      if (failedServers.length === 0) {
+        for (const encodedFile of encodedFiles) {
+          const encodedPath = (encodedFile as { path: string }).path;
+          try {
+            await Bun.file(encodedPath)
+              .exists()
+              .then((exists) => {
+                if (exists) {
+                  return Bun.file(encodedPath).delete();
+                }
+              });
+            await this.logActivity(
+              requestId,
+              ActivityType.INFO,
+              `Cleaned up encoded file: ${encodedPath}`
+            );
+          } catch (err) {
+            // Log but don't fail delivery on cleanup errors
+            await this.logActivity(
+              requestId,
+              ActivityType.WARNING,
+              `Failed to clean up encoded file: ${err instanceof Error ? err.message : "Unknown error"}`
+            );
+          }
+        }
+      } else {
+        await this.logActivity(
+          requestId,
+          ActivityType.INFO,
+          `Preserving encoded files for retry (${failedServers.length} server(s) failed delivery)`
+        );
+      }
 
       return {
         success: true,
