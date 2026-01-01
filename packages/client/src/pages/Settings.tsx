@@ -19,6 +19,7 @@ import CardigannIndexerForm from "./Settings/Cardigann/IndexerForm";
 import Notifications from "./Settings/Notifications";
 import PipelineEditor from "./Settings/PipelineEditor";
 import Pipelines from "./Settings/Pipelines";
+import Users from "./Settings/Users";
 
 interface StorageServer {
   id: string;
@@ -83,6 +84,7 @@ const settingsNavItems = [
   { to: "/settings/encoders", label: "Remote Encoders" },
   { to: "/settings/pipelines", label: "Pipelines" },
   { to: "/settings/notifications", label: "Notifications" },
+  { to: "/settings/users", label: "Users" },
   { to: "/settings/jobs", label: "Jobs" },
   { to: "/settings/scheduler", label: "Scheduler" },
 ];
@@ -261,6 +263,13 @@ function GeneralSettings() {
   const [retryInterval, setRetryInterval] = useState<string>("6");
   const [retryIntervalSaved, setRetryIntervalSaved] = useState(false);
 
+  // Fetch Dolby Vision removal setting
+  const removeDolbyVisionQuery = trpc.system.settings.get.useQuery({
+    key: "encoding.removeDolbyVision",
+  });
+  const [removeDolbyVision, setRemoveDolbyVision] = useState<string>("false");
+  const [removeDolbyVisionSaved, setRemoveDolbyVisionSaved] = useState(false);
+
   // Config values
   const configQuery = trpc.system.config.get.useQuery();
   const [configValues, setConfigValues] = useState({
@@ -293,6 +302,14 @@ function GeneralSettings() {
     }
   }, [retryIntervalQuery.data, retryInterval, retryIntervalSaved]);
 
+  // Set initial Dolby Vision removal value when query loads
+  useEffect(() => {
+    const currentValue = removeDolbyVisionQuery.data?.value as boolean | undefined;
+    if (currentValue !== undefined && removeDolbyVision === "false" && !removeDolbyVisionSaved) {
+      setRemoveDolbyVision(String(currentValue));
+    }
+  }, [removeDolbyVisionQuery.data, removeDolbyVision, removeDolbyVisionSaved]);
+
   // Load config values when query returns
   useEffect(() => {
     if (configQuery.data && !configValues.downloads.directory) {
@@ -306,10 +323,16 @@ function GeneralSettings() {
   }, [configQuery.data, configValues.downloads.directory]);
 
   const setSettingMutation = trpc.system.settings.set.useMutation({
-    onSuccess: () => {
-      utils.system.settings.get.invalidate({ key: "search.retryIntervalHours" });
-      setRetryIntervalSaved(true);
-      setTimeout(() => setRetryIntervalSaved(false), 2000);
+    onSuccess: (_data, variables) => {
+      if (variables.key === "search.retryIntervalHours") {
+        utils.system.settings.get.invalidate({ key: "search.retryIntervalHours" });
+        setRetryIntervalSaved(true);
+        setTimeout(() => setRetryIntervalSaved(false), 2000);
+      } else if (variables.key === "encoding.removeDolbyVision") {
+        utils.system.settings.get.invalidate({ key: "encoding.removeDolbyVision" });
+        setRemoveDolbyVisionSaved(true);
+        setTimeout(() => setRemoveDolbyVisionSaved(false), 2000);
+      }
     },
   });
 
@@ -324,6 +347,11 @@ function GeneralSettings() {
     if (value >= 1) {
       setSettingMutation.mutate({ key: "search.retryIntervalHours", value });
     }
+  };
+
+  const handleSaveRemoveDolbyVision = () => {
+    const value = removeDolbyVision === "true";
+    setSettingMutation.mutate({ key: "encoding.removeDolbyVision", value });
   };
 
   const handleSaveConfig = (
@@ -635,6 +663,28 @@ function GeneralSettings() {
               size="sm"
             >
               {configSaved["encoding.maxConcurrent"] ? "Saved!" : "Save"}
+            </Button>
+          </div>
+        </div>
+
+        <div>
+          <Label hint="Strip Dolby Vision metadata while preserving HDR10 base layer">
+            Remove Dolby Vision
+          </Label>
+          <div className="flex gap-2 items-center">
+            <Select
+              value={removeDolbyVision}
+              onChange={(e) => setRemoveDolbyVision(e.target.value)}
+            >
+              <option value="false">No</option>
+              <option value="true">Yes</option>
+            </Select>
+            <Button
+              onClick={handleSaveRemoveDolbyVision}
+              disabled={setSettingMutation.isLoading}
+              size="sm"
+            >
+              {removeDolbyVisionSaved ? "Saved!" : "Save"}
             </Button>
           </div>
         </div>
@@ -3714,6 +3764,7 @@ export default function SettingsPage() {
           <Route path="pipelines" element={<Pipelines />} />
           <Route path="pipelines/:id" element={<PipelineEditor />} />
           <Route path="notifications" element={<Notifications />} />
+          <Route path="users" element={<Users />} />
           <Route path="jobs" element={<JobsSettings />} />
           <Route path="scheduler" element={<SchedulerSettings />} />
         </Routes>

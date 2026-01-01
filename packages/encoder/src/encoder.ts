@@ -201,6 +201,12 @@ function buildFfmpegArgs(
     args.push("-c:s", "copy");
   }
 
+  // Dolby Vision removal (bitstream filter)
+  if (encodingConfig.removeDolbyVision) {
+    console.log("[Encoder] Stripping Dolby Vision metadata");
+    args.push("-bsf:v", "dovi_rpu=remove");
+  }
+
   // Limit internal muxing queue to prevent memory buildup
   args.push("-max_muxing_queue_size", "1024");
 

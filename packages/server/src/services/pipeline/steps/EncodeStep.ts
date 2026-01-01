@@ -47,6 +47,9 @@ interface EncodeStepConfig {
   // Output container format
   container?: "MKV" | "MP4" | "WEBM";
 
+  // Strip Dolby Vision metadata (preserves HDR10 base layer)
+  removeDolbyVision?: boolean;
+
   // Execution settings
   pollInterval?: number;
   timeout?: number;
@@ -321,6 +324,15 @@ export class EncodeStep extends BaseStep {
 
     await this.logActivity(requestId, ActivityType.INFO, "Starting encoding job");
 
+    // Fetch Dolby Vision removal setting if not specified in config
+    let removeDolbyVision = cfg.removeDolbyVision ?? false;
+    if (cfg.removeDolbyVision === undefined) {
+      const setting = await prisma.setting.findUnique({
+        where: { key: "encoding.removeDolbyVision" },
+      });
+      removeDolbyVision = setting?.value === "true";
+    }
+
     // Build encoding configuration with defaults
     const encodingConfig = {
       videoEncoder: cfg.videoEncoder || "libsvtav1",
@@ -335,6 +347,7 @@ export class EncodeStep extends BaseStep {
       audioFlags: cfg.audioFlags || {},
       subtitlesMode: cfg.subtitlesMode || "COPY",
       container: cfg.container || "MKV",
+      removeDolbyVision,
     };
 
     // Determine output paths using processingItemId for deterministic naming
@@ -549,6 +562,15 @@ export class EncodeStep extends BaseStep {
     const pollInterval = cfg.pollInterval || 5000;
     const timeout = cfg.timeout || 12 * 60 * 60 * 1000; // 12 hours
 
+    // Fetch Dolby Vision removal setting if not specified in config
+    let removeDolbyVision = cfg.removeDolbyVision ?? false;
+    if (cfg.removeDolbyVision === undefined) {
+      const setting = await prisma.setting.findUnique({
+        where: { key: "encoding.removeDolbyVision" },
+      });
+      removeDolbyVision = setting?.value === "true";
+    }
+
     // Build encoding configuration with defaults
     const encodingConfig = {
       videoEncoder: cfg.videoEncoder || "libsvtav1",
@@ -563,6 +585,7 @@ export class EncodeStep extends BaseStep {
       audioFlags: cfg.audioFlags || {},
       subtitlesMode: cfg.subtitlesMode || "COPY",
       container: cfg.container || "MKV",
+      removeDolbyVision,
     };
 
     // Create Job record
@@ -795,6 +818,15 @@ export class EncodeStep extends BaseStep {
           ? "HEVC"
           : "H264";
 
+    // Fetch Dolby Vision removal setting if not specified in config
+    let removeDolbyVisionEp = cfg.removeDolbyVision ?? false;
+    if (cfg.removeDolbyVision === undefined) {
+      const setting = await prisma.setting.findUnique({
+        where: { key: "encoding.removeDolbyVision" },
+      });
+      removeDolbyVisionEp = setting?.value === "true";
+    }
+
     // Build encoding config
     const encodingConfig = {
       videoEncoder: cfg.videoEncoder || "av1_qsv",
@@ -809,6 +841,7 @@ export class EncodeStep extends BaseStep {
       audioFlags: cfg.audioFlags || {},
       subtitlesMode: cfg.subtitlesMode || "COPY",
       container: cfg.container || "MKV",
+      removeDolbyVision: removeDolbyVisionEp,
     };
 
     const pollInterval = cfg.pollInterval || 2000;

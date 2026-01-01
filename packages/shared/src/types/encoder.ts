@@ -180,6 +180,7 @@ export interface EncodingConfig {
   audioFlags: Record<string, unknown>;
   subtitlesMode: string;
   container: string;
+  removeDolbyVision?: boolean;
 }
 
 /**
