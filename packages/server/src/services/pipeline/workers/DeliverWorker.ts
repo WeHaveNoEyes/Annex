@@ -74,9 +74,18 @@ export class DeliverWorker extends BaseWorker {
       console.log(`[${this.name}] ${item.title}: Resuming delivery (stuck for >30s)`);
     } else {
       // Transition to DELIVERING for new items
-      await pipelineOrchestrator.transitionStatus(item.id, "DELIVERING", {
-        currentStep: "deliver",
-      });
+      try {
+        await pipelineOrchestrator.transitionStatus(item.id, "DELIVERING", {
+          currentStep: "deliver",
+        });
+      } catch (error) {
+        // If already DELIVERING (race condition), just continue
+        if (error instanceof Error && error.message.includes("Cannot transition from DELIVERING to DELIVERING")) {
+          console.log(`[${this.name}] ${item.title}: Already DELIVERING, continuing`);
+        } else {
+          throw error;
+        }
+      }
     }
 
     // Get request details

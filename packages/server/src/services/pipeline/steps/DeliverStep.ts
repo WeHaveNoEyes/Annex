@@ -399,6 +399,7 @@ export class DeliverStep extends BaseStep {
       // For TV shows, check if all episodes are complete before marking request done
       let allEpisodesComplete = true;
       let remainingEpisodes = 0;
+      let inProgressEpisodes = 0;
 
       if (mediaType === MediaType.TV) {
         const episodeStats = await prisma.processingItem.groupBy({
@@ -425,11 +426,25 @@ export class DeliverStep extends BaseStep {
         remainingEpisodes = totalEpisodes - completedEpisodes;
         allEpisodesComplete = remainingEpisodes === 0;
 
+        // Check if remaining episodes are in-progress (encoding, delivering, etc) or need searching
+        inProgressEpisodes = episodeStats
+          .filter(
+            (stat: { status: ProcessingStatus }) =>
+              stat.status === ProcessingStatus.DOWNLOADED ||
+              stat.status === ProcessingStatus.ENCODING ||
+              stat.status === ProcessingStatus.ENCODED ||
+              stat.status === ProcessingStatus.DELIVERING
+          )
+          .reduce(
+            (sum: number, stat: { _count: { status: number } }) => sum + stat._count.status,
+            0
+          );
+
         await this.logActivity(
           requestId,
           ActivityType.INFO,
-          `Episode progress: ${completedEpisodes}/${totalEpisodes} complete`,
-          { completedEpisodes, totalEpisodes, remainingEpisodes }
+          `Episode progress: ${completedEpisodes}/${totalEpisodes} complete, ${inProgressEpisodes} in progress`,
+          { completedEpisodes, totalEpisodes, remainingEpisodes, inProgressEpisodes }
         );
       }
 
@@ -449,41 +464,53 @@ export class DeliverStep extends BaseStep {
 
         await this.logActivity(requestId, ActivityType.SUCCESS, "Request completed successfully");
       } else {
-        // More episodes needed - reset to pending to search for remaining episodes
-        await prisma.mediaRequest.update({
-          where: { id: requestId },
-          data: {
-            status: RequestStatus.PENDING,
-            progress: 50,
-            currentStep: `${remainingEpisodes} episode${remainingEpisodes !== 1 ? "s" : ""} remaining`,
-            currentStepStartedAt: new Date(),
-            error: null,
-            // Clear selected release to force new search
-            selectedRelease: Prisma.JsonNull,
-          },
-        });
+        // Check if remaining episodes are in-progress or need to be searched for
+        const needsSearch = remainingEpisodes > inProgressEpisodes;
 
-        await this.logActivity(
-          requestId,
-          ActivityType.INFO,
-          `Delivered episode(s), ${remainingEpisodes} more needed - continuing search`
-        );
+        if (needsSearch) {
+          // More episodes needed - reset to pending to search for remaining episodes
+          await prisma.mediaRequest.update({
+            where: { id: requestId },
+            data: {
+              status: RequestStatus.PENDING,
+              progress: 50,
+              currentStep: `${remainingEpisodes - inProgressEpisodes} episode${remainingEpisodes - inProgressEpisodes !== 1 ? "s" : ""} needed`,
+              currentStepStartedAt: new Date(),
+              error: null,
+              // Clear selected release to force new search
+              selectedRelease: Prisma.JsonNull,
+            },
+          });
 
-        // Restart pipeline execution for remaining episodes
-        const execution = await prisma.pipelineExecution.findFirst({
-          where: { requestId, parentExecutionId: null },
-          orderBy: { startedAt: "desc" },
-        });
+          await this.logActivity(
+            requestId,
+            ActivityType.INFO,
+            `Delivered episode(s), ${remainingEpisodes - inProgressEpisodes} more needed - continuing search`
+          );
 
-        if (execution) {
-          const { getPipelineExecutor } = await import("../PipelineExecutor.js");
-          const executor = getPipelineExecutor();
-          // Schedule continuation after a brief delay to allow current execution to complete
-          setTimeout(() => {
-            executor.startExecution(requestId, execution.templateId).catch((error) => {
-              console.error(`Failed to continue pipeline for request ${requestId}:`, error);
-            });
-          }, 2000);
+          // Restart pipeline execution for remaining episodes
+          const execution = await prisma.pipelineExecution.findFirst({
+            where: { requestId, parentExecutionId: null },
+            orderBy: { startedAt: "desc" },
+          });
+
+          if (execution) {
+            const { getPipelineExecutor } = await import("../PipelineExecutor.js");
+            const executor = getPipelineExecutor();
+            // Schedule continuation after a brief delay to allow current execution to complete
+            setTimeout(() => {
+              executor.startExecution(requestId, execution.templateId).catch((error) => {
+                console.error(`Failed to continue pipeline for request ${requestId}:`, error);
+              });
+            }, 2000);
+          }
+        } else {
+          // All remaining episodes are in progress (encoding/delivering) - just wait for them
+          await this.logActivity(
+            requestId,
+            ActivityType.INFO,
+            `Delivered episode(s), ${inProgressEpisodes} more in progress (will complete shortly)`
+          );
         }
       }
 
