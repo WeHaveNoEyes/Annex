@@ -430,14 +430,14 @@ export class DeliverStep extends BaseStep {
         remainingEpisodes = totalEpisodes - completedEpisodes;
         allEpisodesComplete = remainingEpisodes === 0;
 
-        // Check if remaining episodes are in-progress (encoding, delivering, etc) or need searching
+        // Check if remaining episodes are in-progress (any non-terminal status) or need searching
+        // Count all statuses except terminal ones (COMPLETED, FAILED, CANCELLED)
         inProgressEpisodes = episodeStats
           .filter(
             (stat: { status: ProcessingStatus }) =>
-              stat.status === ProcessingStatus.DOWNLOADED ||
-              stat.status === ProcessingStatus.ENCODING ||
-              stat.status === ProcessingStatus.ENCODED ||
-              stat.status === ProcessingStatus.DELIVERING
+              stat.status !== ProcessingStatus.COMPLETED &&
+              stat.status !== ProcessingStatus.FAILED &&
+              stat.status !== ProcessingStatus.CANCELLED
           )
           .reduce(
             (sum: number, stat: { _count: { status: number } }) => sum + stat._count.status,
