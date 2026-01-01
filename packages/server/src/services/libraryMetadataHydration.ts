@@ -45,15 +45,24 @@ export async function hydrateLibraryMetadata(
   try {
     // Find library items without corresponding MediaItem records
     // Prioritize recently added items
-    const missingItems = await prisma.$queryRaw<Array<{ tmdbId: number; type: MediaType }>>`
-      SELECT DISTINCT li.tmdbId, li.type
-      FROM "LibraryItem" li
-      LEFT JOIN "MediaItem" mi ON mi.tmdbId = li.tmdbId AND mi.type = li.type
-      WHERE mi.id IS NULL
-      ${priorityServerId ? prisma.$queryRawUnsafe`AND li."serverId" = '${priorityServerId}'` : prisma.$queryRawUnsafe``}
-      ORDER BY li."addedAt" DESC NULLS LAST, li."syncedAt" DESC
-      LIMIT ${limit}
-    `;
+    const missingItems = priorityServerId
+      ? await prisma.$queryRaw<Array<{ tmdbId: number; type: MediaType }>>`
+          SELECT DISTINCT li.tmdbId, li.type
+          FROM "LibraryItem" li
+          LEFT JOIN "MediaItem" mi ON mi.tmdbId = li.tmdbId AND mi.type = li.type
+          WHERE mi.id IS NULL
+            AND li."serverId" = ${priorityServerId}
+          ORDER BY li."addedAt" DESC NULLS LAST, li."syncedAt" DESC
+          LIMIT ${limit}
+        `
+      : await prisma.$queryRaw<Array<{ tmdbId: number; type: MediaType }>>`
+          SELECT DISTINCT li.tmdbId, li.type
+          FROM "LibraryItem" li
+          LEFT JOIN "MediaItem" mi ON mi.tmdbId = li.tmdbId AND mi.type = li.type
+          WHERE mi.id IS NULL
+          ORDER BY li."addedAt" DESC NULLS LAST, li."syncedAt" DESC
+          LIMIT ${limit}
+        `;
 
     if (missingItems.length === 0) {
       console.log("[LibraryHydration] No items need hydration");
