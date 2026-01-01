@@ -286,10 +286,20 @@ async function stripDolbyVision(
           const parsed = parseProgress(line.trim());
           Object.assign(progressState, parsed);
 
+          // Only send progress if we have valid time data
+          if (!progressState.outTimeUs || progressState.outTimeUs <= 0) {
+            continue;
+          }
+
           // Calculate progress percentage (DV strip uses 0-10% of total progress)
           const elapsedTime = progressState.outTimeUs / 1_000_000;
           const stripProgress = duration > 0 ? Math.min(100, (elapsedTime / duration) * 100) : 0;
-          const scaledProgress = stripProgress * 0.1; // Scale to 0-10%
+          const scaledProgress = Math.max(0, Math.min(10, stripProgress * 0.1)); // Scale to 0-10%, clamped
+
+          // Validate progress before sending
+          if (!Number.isFinite(scaledProgress)) {
+            continue;
+          }
 
           // Send progress update
           onProgress({
@@ -301,7 +311,7 @@ async function stripDolbyVision(
             bitrate: 0,
             totalSize: 0,
             elapsedTime,
-            speed: progressState.speed,
+            speed: progressState.speed || 0,
             eta: 0,
           });
 
@@ -309,7 +319,7 @@ async function stripDolbyVision(
           const now = Date.now();
           if (now - lastLogTime >= 30000 || stripProgress >= 99) {
             console.log(
-              `[Encoder] DV Strip Progress: ${stripProgress.toFixed(1)}% (scaled: ${scaledProgress.toFixed(1)}%) | ${progressState.speed.toFixed(2)}x speed`
+              `[Encoder] DV Strip Progress: ${stripProgress.toFixed(1)}% (scaled: ${scaledProgress.toFixed(1)}%) | ${(progressState.speed || 0).toFixed(2)}x speed`
             );
             lastLogTime = now;
           }
