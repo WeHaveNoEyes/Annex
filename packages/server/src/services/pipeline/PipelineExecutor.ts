@@ -65,10 +65,53 @@ export class PipelineExecutor {
         targets: request.targets as Array<{ serverId: string; encodingProfileId?: string }>,
       };
 
-      // Delete any existing execution for this request (in case of retry)
+      // Clean up stale state from previous pipeline runs
+      logger.info(`Cleaning up stale state for request ${requestId}`);
+
+      // 1. Delete any existing pipeline executions
       await prisma.pipelineExecution.deleteMany({
         where: { requestId },
       });
+
+      // 2. Clear old errors and reset request state
+      await prisma.mediaRequest.update({
+        where: { id: requestId },
+        data: {
+          error: null,
+          status: "PENDING",
+          progress: 0,
+          currentStep: null,
+          currentStepStartedAt: null,
+        },
+      });
+
+      // 3. Cancel/cleanup orphaned encoding jobs from previous attempts
+      const orphanedJobs = await prisma.job.findMany({
+        where: {
+          requestId,
+          type: "remote:encode",
+        },
+        include: { encoderAssignment: true },
+      });
+
+      for (const job of orphanedJobs) {
+        if (job.encoderAssignment) {
+          const assignment = job.encoderAssignment;
+          // Cancel if still in active state
+          if (["PENDING", "ASSIGNED", "ENCODING"].includes(assignment.status)) {
+            await prisma.encoderAssignment.update({
+              where: { id: assignment.id },
+              data: {
+                status: "CANCELLED",
+                error: "Cancelled due to pipeline restart/retry",
+              },
+            });
+            logger.info(`Cancelled orphaned encoding assignment ${assignment.id} for retry`);
+          }
+        }
+      }
+
+      logger.info(`Stale state cleaned up for request ${requestId}`);
 
       // Create pipeline execution
       const execution = await prisma.pipelineExecution.create({
