@@ -187,11 +187,10 @@ class DeliveryService {
     }
 
     // Check if file exists
-    let fileSize: number;
-    try {
-      const stats = await fs.stat(localPath);
-      fileSize = stats.size;
-    } catch {
+    // Check file exists and get size using Bun's native API (more reliable than Node's fs)
+    const file = Bun.file(localPath);
+    const fileExists = await file.exists();
+    if (!fileExists) {
       return {
         success: false,
         serverId,
@@ -204,6 +203,7 @@ class DeliveryService {
         libraryScanTriggered: false,
       };
     }
+    const fileSize = file.size;
 
     console.log(
       `[Delivery] Transferring to ${server.name} via ${server.protocol}: ${localPath} -> ${remotePath}`
