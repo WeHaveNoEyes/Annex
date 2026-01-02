@@ -4,6 +4,7 @@ import { prisma } from "../db/client.js";
 import { getDownloadService } from "../services/download.js";
 import { getPipelineExecutor } from "../services/pipeline/PipelineExecutor.js";
 import { pipelineOrchestrator } from "../services/pipeline/PipelineOrchestrator.js";
+import { requestStatusComputer } from "../services/requestStatusComputer.js";
 import { getTraktService } from "../services/trakt.js";
 import { publicProcedure, router } from "../trpc.js";
 
@@ -551,12 +552,30 @@ export const requestsRouter = router({
       const serverMap = new Map(servers.map((s: ServerData) => [s.id, s.name]));
       const posterMap = new Map(mediaItems.map((m: MediaItemData) => [m.id, m.posterPath]));
 
+      // Compute status for all requests using batch operation
+      const requestIds = results.map((r: MediaRequestWithEpisodes) => r.id);
+      const statusMap = await requestStatusComputer.batchComputeStatus(requestIds);
+
+      // Get release metadata for all requests
+      const releaseMetadataPromises = requestIds.map((id) =>
+        requestStatusComputer.getReleaseMetadata(id)
+      );
+      const releaseMetadataList = await Promise.all(releaseMetadataPromises);
+      const releaseMetadataMap = new Map(
+        requestIds.map((id, index) => [id, releaseMetadataList[index]])
+      );
+
       return results.map((r: MediaRequestWithEpisodes) => {
         const targets = r.targets as unknown as RequestTarget[];
         const availableReleases = r.availableReleases as unknown[] | null;
         // Use stored posterPath, or fall back to MediaItem lookup for legacy requests
         const mediaItemId = `tmdb-${r.type === MediaType.MOVIE ? "movie" : "tv"}-${r.tmdbId}`;
         const posterPath = r.posterPath ?? posterMap.get(mediaItemId) ?? null;
+
+        // Get computed status and release metadata
+        const computed = statusMap.get(r.id);
+        const releaseMetadata = releaseMetadataMap.get(r.id);
+
         return {
           id: r.id,
           type: fromMediaType(r.type),
@@ -572,32 +591,32 @@ export const requestsRouter = router({
             : [],
           requestedSeasons: r.requestedSeasons,
           requestedEpisodes: r.requestedEpisodes as { season: number; episode: number }[] | null,
-          status: fromRequestStatus(r.status),
-          progress: r.progress,
-          currentStep: r.currentStep,
-          currentStepStartedAt: r.currentStepStartedAt,
-          error: r.error,
+          status: computed ? fromRequestStatus(computed.status) : fromRequestStatus(r.status),
+          progress: computed?.progress ?? r.progress,
+          currentStep: computed?.currentStep ?? r.currentStep,
+          currentStepStartedAt: computed?.currentStepStartedAt ?? r.currentStepStartedAt,
+          error: computed?.error ?? r.error,
           requiredResolution: r.requiredResolution,
           hasAlternatives:
-            r.status === RequestStatus.QUALITY_UNAVAILABLE &&
+            (computed?.status ?? r.status) === RequestStatus.QUALITY_UNAVAILABLE &&
             Array.isArray(availableReleases) &&
             availableReleases.length > 0,
           qualitySearchedAt: r.qualitySearchedAt,
           createdAt: r.createdAt,
           updatedAt: r.updatedAt,
           completedAt: r.completedAt,
-          releaseMetadata: r.releaseFileSize
+          releaseMetadata: releaseMetadata
             ? {
-                fileSize: Number(r.releaseFileSize),
-                indexerName: r.releaseIndexerName,
-                seeders: r.releaseSeeders,
-                leechers: r.releaseLeechers,
-                resolution: r.releaseResolution,
-                source: r.releaseSource,
-                codec: r.releaseCodec,
-                score: r.releaseScore,
-                publishDate: r.releasePublishDate,
-                name: r.releaseName,
+                fileSize: releaseMetadata.fileSize,
+                indexerName: releaseMetadata.indexerName,
+                seeders: releaseMetadata.seeders,
+                leechers: releaseMetadata.leechers,
+                resolution: releaseMetadata.resolution,
+                source: releaseMetadata.source,
+                codec: releaseMetadata.codec,
+                score: releaseMetadata.score,
+                publishDate: releaseMetadata.publishDate,
+                name: releaseMetadata.name,
               }
             : null,
         };
@@ -655,6 +674,12 @@ export const requestsRouter = router({
 
     const serverMap = new Map(servers.map((s: ServerInfo) => [s.id, s.name]));
 
+    // Compute status from ProcessingItems
+    const computed = await requestStatusComputer.computeStatus(input.id);
+
+    // Get release metadata
+    const releaseMetadata = await requestStatusComputer.getReleaseMetadata(input.id);
+
     // For TV shows, get episode count
     let episodeCount: number | null = null;
     if (r.type === MediaType.TV) {
@@ -675,26 +700,26 @@ export const requestsRouter = router({
       })),
       requestedSeasons: r.requestedSeasons,
       requestedEpisodes: r.requestedEpisodes as { season: number; episode: number }[] | null,
-      status: fromRequestStatus(r.status),
-      progress: r.progress,
-      currentStep: r.currentStep,
-      currentStepStartedAt: r.currentStepStartedAt,
-      error: r.error,
+      status: fromRequestStatus(computed.status),
+      progress: computed.progress,
+      currentStep: computed.currentStep,
+      currentStepStartedAt: computed.currentStepStartedAt,
+      error: computed.error,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       completedAt: r.completedAt,
-      releaseMetadata: r.releaseFileSize
+      releaseMetadata: releaseMetadata
         ? {
-            fileSize: Number(r.releaseFileSize),
-            indexerName: r.releaseIndexerName,
-            seeders: r.releaseSeeders,
-            leechers: r.releaseLeechers,
-            resolution: r.releaseResolution,
-            source: r.releaseSource,
-            codec: r.releaseCodec,
-            score: r.releaseScore,
-            publishDate: r.releasePublishDate,
-            name: r.releaseName,
+            fileSize: releaseMetadata.fileSize,
+            indexerName: releaseMetadata.indexerName,
+            seeders: releaseMetadata.seeders,
+            leechers: releaseMetadata.leechers,
+            resolution: releaseMetadata.resolution,
+            source: releaseMetadata.source,
+            codec: releaseMetadata.codec,
+            score: releaseMetadata.score,
+            publishDate: releaseMetadata.publishDate,
+            name: releaseMetadata.name,
             episodeCount,
           }
         : null,
