@@ -22,6 +22,27 @@ interface HydrationResult {
   skipped: number;
 }
 
+interface TraktImageArray {
+  poster?: string[];
+  fanart?: string[];
+  banner?: string[];
+  thumb?: string[];
+  screenshot?: string[];
+}
+
+function extractTraktImage(
+  images: TraktImageArray | undefined,
+  type: "poster" | "fanart" | "banner" | "thumb" | "screenshot"
+): string | null {
+  const url = images?.[type]?.[0];
+  if (!url) return null;
+  return url.startsWith("http") ? url : `https://${url}`;
+}
+
+function extractTraktBackdrop(images: TraktImageArray | undefined): string | null {
+  return extractTraktImage(images, "fanart") || extractTraktImage(images, "banner");
+}
+
 /**
  * Hydrate library items that don't have MediaItem records
  *
@@ -194,6 +215,8 @@ async function hydrateMediaItemFromTrakt(
               ? data.first_aired?.split("T")[0]
               : null,
         overview: data.overview || null,
+        posterPath: extractTraktImage(data.images, "poster"),
+        backdropPath: extractTraktBackdrop(data.images),
         tagline: type === "movie" && "tagline" in data ? data.tagline : null,
         genres: data.genres || [],
         certification: data.certification || null,
@@ -220,6 +243,8 @@ async function hydrateMediaItemFromTrakt(
               ? data.first_aired?.split("T")[0]
               : undefined,
         overview: data.overview || undefined,
+        posterPath: extractTraktImage(data.images, "poster"),
+        backdropPath: extractTraktBackdrop(data.images),
         tagline: type === "movie" && "tagline" in data ? data.tagline : undefined,
         genres: data.genres || [],
         certification: data.certification || undefined,
