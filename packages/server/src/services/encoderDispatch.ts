@@ -143,6 +143,29 @@ async function translateToRemotePath(serverPath: string, encoderId: string): Pro
   return serverPath;
 }
 
+/**
+ * Translate remote encoder path back to server path
+ * If remapping is disabled, returns path unchanged
+ */
+async function translateToServerPath(remotePath: string, encoderId: string): Promise<string> {
+  const { mappings, remappingEnabled } = await getPathMappingsForEncoder(encoderId);
+
+  // If remapping is disabled, return path unchanged
+  if (!remappingEnabled) {
+    return remotePath;
+  }
+
+  // Apply reverse path mappings (first match wins)
+  for (const mapping of mappings) {
+    if (remotePath.startsWith(mapping.remote)) {
+      return remotePath.replace(mapping.remote, mapping.server);
+    }
+  }
+
+  // No mapping matched, return original path
+  return remotePath;
+}
+
 // =============================================================================
 // Encoder Dispatch Service
 // =============================================================================
@@ -912,12 +935,29 @@ class EncoderDispatchService {
   }
 
   private async handleJobComplete(msg: JobCompleteMessage): Promise<void> {
+    // First get the assignment to find the encoder ID
+    const existingAssignment = await prisma.encoderAssignment.findUnique({
+      where: { jobId: msg.jobId },
+      select: { encoderId: true },
+    });
+
+    if (!existingAssignment) {
+      console.error(`[EncoderDispatch] Assignment not found for job ${msg.jobId}`);
+      return;
+    }
+
+    // Translate output path from encoder's remote path to server's local path
+    const serverOutputPath = await translateToServerPath(
+      msg.outputPath,
+      existingAssignment.encoderId
+    );
+
     const assignment = await prisma.encoderAssignment.update({
       where: { jobId: msg.jobId },
       data: {
         status: "COMPLETED",
         progress: 100,
-        outputPath: msg.outputPath, // Update to actual final path (after rename from temp)
+        outputPath: serverOutputPath, // Use translated server path instead of encoder's remote path
         outputSize: BigInt(msg.outputSize),
         compressionRatio: msg.compressionRatio,
         encodeDuration: msg.duration,
