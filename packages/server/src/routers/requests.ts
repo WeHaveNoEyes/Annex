@@ -1458,6 +1458,7 @@ export const requestsRouter = router({
         where: { id: input.itemId },
         data: {
           status: ProcessingStatus.ENCODED,
+          progress: 0,
           lastError: null,
           deliveredAt: null,
         },
