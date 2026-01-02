@@ -32,7 +32,7 @@ interface MediaRequest {
 const TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p";
 
 const statusConfig: Record<
-  RequestStatus,
+  string,
   {
     label: string;
     color: string;
@@ -46,13 +46,43 @@ const statusConfig: Record<
     bgColor: "bg-yellow-500/20",
     variant: "warning",
   },
+  PENDING: {
+    label: "Pending",
+    color: "text-yellow-400",
+    bgColor: "bg-yellow-500/20",
+    variant: "warning",
+  },
   searching: {
     label: "Searching",
     color: "text-blue-400",
     bgColor: "bg-blue-500/20",
     variant: "info",
   },
+  SEARCHING: {
+    label: "Searching",
+    color: "text-blue-400",
+    bgColor: "bg-blue-500/20",
+    variant: "info",
+  },
+  processing: {
+    label: "Processing",
+    color: "text-blue-400",
+    bgColor: "bg-blue-500/20",
+    variant: "info",
+  },
+  PROCESSING: {
+    label: "Processing",
+    color: "text-blue-400",
+    bgColor: "bg-blue-500/20",
+    variant: "info",
+  },
   awaiting: {
+    label: "Awaiting",
+    color: "text-amber-400",
+    bgColor: "bg-amber-500/20",
+    variant: "warning",
+  },
+  AWAITING: {
     label: "Awaiting",
     color: "text-amber-400",
     bgColor: "bg-amber-500/20",
@@ -64,7 +94,19 @@ const statusConfig: Record<
     bgColor: "bg-orange-500/20",
     variant: "warning",
   },
+  QUALITY_UNAVAILABLE: {
+    label: "Quality N/A",
+    color: "text-orange-400",
+    bgColor: "bg-orange-500/20",
+    variant: "warning",
+  },
   downloading: {
+    label: "Downloading",
+    color: "text-purple-400",
+    bgColor: "bg-purple-500/20",
+    variant: "info",
+  },
+  DOWNLOADING: {
     label: "Downloading",
     color: "text-purple-400",
     bgColor: "bg-purple-500/20",
@@ -76,7 +118,19 @@ const statusConfig: Record<
     bgColor: "bg-cyan-500/20",
     variant: "info",
   },
+  ENCODING: {
+    label: "Encoding",
+    color: "text-cyan-400",
+    bgColor: "bg-cyan-500/20",
+    variant: "info",
+  },
   delivering: {
+    label: "Delivering",
+    color: "text-teal-400",
+    bgColor: "bg-teal-500/20",
+    variant: "info",
+  },
+  DELIVERING: {
     label: "Delivering",
     color: "text-teal-400",
     bgColor: "bg-teal-500/20",
@@ -88,19 +142,75 @@ const statusConfig: Record<
     bgColor: "bg-green-500/20",
     variant: "success",
   },
-  failed: { label: "Failed", color: "text-red-400", bgColor: "bg-red-500/20", variant: "danger" },
+  COMPLETED: {
+    label: "Completed",
+    color: "text-green-400",
+    bgColor: "bg-green-500/20",
+    variant: "success",
+  },
+  partial: {
+    label: "Partial",
+    color: "text-yellow-400",
+    bgColor: "bg-yellow-500/20",
+    variant: "warning",
+  },
+  PARTIAL: {
+    label: "Partial",
+    color: "text-yellow-400",
+    bgColor: "bg-yellow-500/20",
+    variant: "warning",
+  },
+  failed: {
+    label: "Failed",
+    color: "text-red-400",
+    bgColor: "bg-red-500/20",
+    variant: "danger",
+  },
+  FAILED: {
+    label: "Failed",
+    color: "text-red-400",
+    bgColor: "bg-red-500/20",
+    variant: "danger",
+  },
+  cancelled: {
+    label: "Cancelled",
+    color: "text-gray-400",
+    bgColor: "bg-gray-500/20",
+    variant: "default",
+  },
+  CANCELLED: {
+    label: "Cancelled",
+    color: "text-gray-400",
+    bgColor: "bg-gray-500/20",
+    variant: "default",
+  },
 };
 
-const episodeStatusColors: Record<EpisodeStatus, string> = {
+const episodeStatusColors: Record<string, string> = {
   pending: "bg-yellow-500/20 text-yellow-400",
+  PENDING: "bg-yellow-500/20 text-yellow-400",
   searching: "bg-blue-500/20 text-blue-400",
+  SEARCHING: "bg-blue-500/20 text-blue-400",
+  processing: "bg-blue-500/20 text-blue-400",
+  PROCESSING: "bg-blue-500/20 text-blue-400",
   awaiting: "bg-amber-500/20 text-amber-400",
+  AWAITING: "bg-amber-500/20 text-amber-400",
   quality_unavailable: "bg-orange-500/20 text-orange-400",
+  QUALITY_UNAVAILABLE: "bg-orange-500/20 text-orange-400",
   downloading: "bg-purple-500/20 text-purple-400",
+  DOWNLOADING: "bg-purple-500/20 text-purple-400",
   encoding: "bg-cyan-500/20 text-cyan-400",
+  ENCODING: "bg-cyan-500/20 text-cyan-400",
   delivering: "bg-teal-500/20 text-teal-400",
+  DELIVERING: "bg-teal-500/20 text-teal-400",
   completed: "bg-green-500/20 text-green-400",
+  COMPLETED: "bg-green-500/20 text-green-400",
+  partial: "bg-yellow-500/20 text-yellow-400",
+  PARTIAL: "bg-yellow-500/20 text-yellow-400",
   failed: "bg-red-500/20 text-red-400",
+  FAILED: "bg-red-500/20 text-red-400",
+  cancelled: "bg-gray-500/20 text-gray-400",
+  CANCELLED: "bg-gray-500/20 text-gray-400",
   available: "bg-emerald-500/20 text-emerald-400",
 };
 
@@ -489,8 +599,13 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
   });
 
   const status = request.status as RequestStatus;
-  const config = statusConfig[status];
-  const isActive = ["pending", "searching", "downloading", "encoding", "delivering"].includes(
+  const config = statusConfig[status] || {
+    label: status,
+    color: "text-gray-400",
+    bgColor: "bg-gray-500/20",
+    variant: "default" as const,
+  };
+  const isActive = ["pending", "searching", "downloading", "encoding", "delivering", "PENDING", "SEARCHING", "DOWNLOADING", "ENCODING", "DELIVERING", "PROCESSING", "processing"].includes(
     status
   );
   const isAwaiting = status === "awaiting";
