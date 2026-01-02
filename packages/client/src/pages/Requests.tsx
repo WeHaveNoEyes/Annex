@@ -214,6 +214,41 @@ const episodeStatusColors: Record<string, string> = {
   available: "bg-emerald-500/20 text-emerald-400",
 };
 
+function formatCurrentStep(step: string | null): string | null {
+  if (!step) return null;
+
+  // Map technical step names to user-friendly descriptions
+  const stepMessages: Record<string, string> = {
+    // Search phase
+    search: "Searching for releases",
+    searching: "Searching for releases",
+
+    // Download phase
+    download: "Downloading from torrent",
+    downloading: "Downloading from torrent",
+    download_complete: "Download complete",
+
+    // Encode phase
+    encode: "Encoding video",
+    encoding: "Encoding video",
+    encode_complete: "Encoding complete",
+
+    // Deliver phase
+    deliver: "Uploading to server",
+    delivering: "Uploading to server",
+    deliver_complete: "Upload complete",
+
+    // Processing
+    processing: "Processing request",
+  };
+
+  // Return mapped message or capitalize the step name
+  return (
+    stepMessages[step.toLowerCase()] ||
+    step.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
+  );
+}
+
 function ProgressRing({
   progress,
   size = 40,
@@ -448,7 +483,8 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
                 // Build detailed tooltip
                 let tooltipText = `Episode ${episode.episodeNumber}: ${episode.status}`;
                 if (episode.currentStep) {
-                  tooltipText += `\n${episode.currentStep}`;
+                  const stepMessage = formatCurrentStep(episode.currentStep);
+                  tooltipText += `\n${stepMessage}`;
                 } else if (hasProgress) {
                   tooltipText += ` - ${Math.round(episode.progress || 0)}%`;
                 }
@@ -738,7 +774,7 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
             )}
             {request.currentStep && isActive && (
               <div className="flex items-center gap-2 text-xs text-white/40">
-                <span>{request.currentStep}</span>
+                <span>{formatCurrentStep(request.currentStep)}</span>
                 {request.currentStepStartedAt && (
                   <span className="text-white/30">
                     ({formatRelativeTime(request.currentStepStartedAt)})
