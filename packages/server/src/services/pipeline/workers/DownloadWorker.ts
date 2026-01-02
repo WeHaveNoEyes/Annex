@@ -109,10 +109,10 @@ export class DownloadWorker extends BaseWorker {
     };
 
     // Transition to DOWNLOADED with results
+    // Note: downloadId already set on ProcessingItem via callback, don't override
     await this.transitionToNext(item.id, {
       currentStep: "download_complete",
       stepContext: newStepContext,
-      downloadId: downloadContext.torrentHash,
     });
 
     console.log(`[${this.name}] Downloaded ${item.title}`);
@@ -297,7 +297,7 @@ export class DownloadWorker extends BaseWorker {
         await pipelineOrchestrator.transitionStatus(item.id, "DOWNLOADED", {
           currentStep: "download_complete",
           stepContext: newStepContext,
-          downloadId: torrentHash,
+          // Note: downloadId already set on ProcessingItem earlier, don't override
         });
 
         return;
