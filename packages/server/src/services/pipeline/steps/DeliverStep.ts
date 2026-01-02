@@ -292,14 +292,6 @@ export class DeliverStep extends BaseStep {
           `Delivering ${displayName} to ${server.name}: ${remotePath}`
         );
 
-        // Mark episode as DELIVERING if this is a TV episode
-        if (episodeId) {
-          await prisma.processingItem.update({
-            where: { id: episodeId },
-            data: { status: ProcessingStatus.DELIVERING },
-          });
-        }
-
         await prisma.mediaRequest.update({
           where: { id: requestId },
           data: {
@@ -343,12 +335,11 @@ export class DeliverStep extends BaseStep {
             }
           );
 
-          // Update ProcessingItem status if this is a TV episode
+          // Update deliveredAt timestamp if this is a TV episode
           if (episodeId) {
             await prisma.processingItem.update({
               where: { id: episodeId },
               data: {
-                status: ProcessingStatus.COMPLETED,
                 deliveredAt: new Date(),
               },
             });

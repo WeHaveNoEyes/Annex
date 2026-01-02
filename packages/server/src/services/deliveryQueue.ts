@@ -14,6 +14,7 @@ import { ProcessingStatus } from "@prisma/client";
 import { prisma } from "../db/client.js";
 import { getDeliveryService } from "./delivery.js";
 import { getNamingService } from "./naming.js";
+import { pipelineOrchestrator } from "./pipeline/PipelineOrchestrator.js";
 
 // =============================================================================
 // Constants
@@ -88,11 +89,22 @@ class DeliveryQueueService {
       `[DeliveryQueue] Enqueued S${String(job.season).padStart(2, "0")}E${String(job.episode).padStart(2, "0")} for ${job.title} to ${job.targetServers.length} server(s) (queue: ${this.queue.length}, active: ${totalActive})`
     );
 
-    // Update episode status to DELIVERING
-    await prisma.processingItem.update({
-      where: { id: job.episodeId },
-      data: { status: ProcessingStatus.DELIVERING },
-    });
+    // Update episode status to DELIVERING using state machine
+    try {
+      await pipelineOrchestrator.transitionStatus(job.episodeId, ProcessingStatus.DELIVERING, {
+        currentStep: "delivery",
+      });
+    } catch (error) {
+      // If already DELIVERING (race condition), just continue
+      if (
+        error instanceof Error &&
+        error.message.includes("Cannot transition from DELIVERING to DELIVERING")
+      ) {
+        console.log(`[DeliveryQueue] Episode ${job.episodeId} already DELIVERING, continuing`);
+      } else {
+        throw error;
+      }
+    }
 
     // Start processing if not already running
     if (!this.processing) {
@@ -281,21 +293,20 @@ class DeliveryQueueService {
       const deliveredToAll = libraryItems.length === serverIds.length;
 
       if (deliveredToAll) {
+        await pipelineOrchestrator.transitionStatus(episodeId, ProcessingStatus.COMPLETED, {
+          currentStep: "delivery_complete",
+        });
         await prisma.processingItem.update({
           where: { id: episodeId },
           data: {
-            status: ProcessingStatus.COMPLETED,
             deliveredAt: new Date(),
             lastError: null,
           },
         });
       } else {
-        await prisma.processingItem.update({
-          where: { id: episodeId },
-          data: {
-            status: ProcessingStatus.FAILED,
-            lastError: `Only delivered to ${libraryItems.length}/${serverIds.length} servers`,
-          },
+        await pipelineOrchestrator.transitionStatus(episodeId, ProcessingStatus.FAILED, {
+          currentStep: "delivery_failed",
+          error: `Only delivered to ${libraryItems.length}/${serverIds.length} servers`,
         });
       }
 
