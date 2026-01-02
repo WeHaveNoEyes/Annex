@@ -6,37 +6,43 @@ const brokenEpisodes = [
     id: "6450e177-56eb-4366-b368-ac3aba5c4454",
     season: 2,
     episode: 4,
-    brokenPath: "/media/downloads/completed/The.Sopranos.S01-S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S02.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S02E04.Commendatori.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP.mkv",
+    brokenPath:
+      "/media/downloads/completed/The.Sopranos.S01-S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S02.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S02E04.Commendatori.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP.mkv",
   },
   {
     id: "a8c323eb-1b4a-4b8d-897a-3922957d6889",
     season: 2,
     episode: 10,
-    brokenPath: "/media/downloads/completed/The.Sopranos.S01-S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S02.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S02E10.Bust.Out.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP.mkv",
+    brokenPath:
+      "/media/downloads/completed/The.Sopranos.S01-S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S02.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S02E10.Bust.Out.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP.mkv",
   },
   {
     id: "4add7d47-17f6-4bb4-8aea-8a9b0f813421",
     season: 3,
     episode: 3,
-    brokenPath: "/media/downloads/completed/The.Sopranos.S01-S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S03.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S03E03.Fortunate.Son.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP.mkv",
+    brokenPath:
+      "/media/downloads/completed/The.Sopranos.S01-S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S03.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S03E03.Fortunate.Son.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP.mkv",
   },
   {
     id: "2a60fd52-462f-4eae-8cdf-bdd51a34273e",
     season: 4,
     episode: 13,
-    brokenPath: "/media/downloads/completed/The.Sopranos.S01-S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S04.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S04E13.Whitecaps.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP.mkv",
+    brokenPath:
+      "/media/downloads/completed/The.Sopranos.S01-S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S04.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S04E13.Whitecaps.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP.mkv",
   },
   {
     id: "21c54327-60c2-4695-a518-4c8aa80421cd",
     season: 5,
     episode: 4,
-    brokenPath: "/media/downloads/completed/The.Sopranos.S01-S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S05.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S05E04.All.Happy.Families.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP.mkv",
+    brokenPath:
+      "/media/downloads/completed/The.Sopranos.S01-S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S05.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S05E04.All.Happy.Families.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP.mkv",
   },
   {
     id: "8414eb2a-0b29-4f95-8202-b218f8430283",
     season: 6,
     episode: 3,
-    brokenPath: "/media/downloads/completed/The.Sopranos.S01-S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S06E03.Mayham.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP.mkv",
+    brokenPath:
+      "/media/downloads/completed/The.Sopranos.S01-S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S06.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP /The.Sopranos.S06E03.Mayham.1080p.BluRay.REMUX.AVC.DTS-HD.MA.5.1-NOGRP.mkv",
   },
 ];
 

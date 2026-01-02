@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 
 interface ContextMenuItem {
   label: string;
@@ -47,7 +47,7 @@ export function ContextMenu({ items, children }: ContextMenuProps) {
         >
           {items.map((item, index) => (
             <button
-              key={index}
+              key={`${item.label}-${index}`}
               onClick={() => {
                 if (!item.disabled) {
                   item.onClick();

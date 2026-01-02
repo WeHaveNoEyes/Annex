@@ -1124,7 +1124,10 @@ export const requestsRouter = router({
         let progress: number | null = null;
         if (ep.status === ProcessingStatus.DOWNLOADING) {
           progress = downloadProgress?.progress ?? null;
-        } else if (ep.status === ProcessingStatus.ENCODING || ep.status === ProcessingStatus.DELIVERING) {
+        } else if (
+          ep.status === ProcessingStatus.ENCODING ||
+          ep.status === ProcessingStatus.DELIVERING
+        ) {
           progress = ep.progress;
         }
 
@@ -1407,10 +1410,19 @@ export const requestsRouter = router({
         throw new Error("Episode not found");
       }
 
+      // Extract stepContext and download data
+      const stepContext = (item.stepContext as Record<string, unknown>) || {};
+      const downloadData = stepContext.download as Record<string, unknown> | undefined;
+
       // Verify episode has download file path before resetting to DOWNLOADED
-      if (!item.downloadFilePath) {
+      if (!downloadData?.sourceFilePath && !item.sourceFilePath) {
         throw new Error("Episode missing download file path - cannot re-encode");
       }
+
+      // Preserve download context, fallback to top-level sourceFilePath if needed
+      const preservedDownloadContext = downloadData || {
+        sourceFilePath: item.sourceFilePath,
+      };
 
       // Reset to downloaded status so encoding can restart
       await prisma.processingItem.update({
@@ -1419,7 +1431,12 @@ export const requestsRouter = router({
           status: ProcessingStatus.DOWNLOADED,
           lastError: null,
           encodingJobId: null,
-          currentStep: null,
+          currentStep: "download",
+          stepContext: {
+            ...stepContext,
+            download: preservedDownloadContext,
+          },
+          progress: 0,
         },
       });
 
@@ -1454,10 +1471,17 @@ export const requestsRouter = router({
         throw new Error("Only episodes can be re-delivered");
       }
 
+      // Extract stepContext and encoded data
+      const stepContext = (item.stepContext as Record<string, unknown>) || {};
+      const encodeData = stepContext.encode as Record<string, unknown> | undefined;
+      const encodedFiles = encodeData?.encodedFiles as Array<{ path: string }> | undefined;
+
       // Verify episode has output file path before re-delivering
-      if (!item.outputPath) {
+      if (!encodedFiles?.[0]?.path) {
         throw new Error("Episode missing encoded output file - cannot re-deliver");
       }
+
+      const outputPath = encodedFiles[0].path;
 
       // Reset to encoded status
       await prisma.processingItem.update({
@@ -1467,7 +1491,7 @@ export const requestsRouter = router({
           progress: 0,
           lastError: null,
           deliveredAt: null,
-          currentStep: null,
+          currentStep: "deliver",
         },
       });
 
@@ -1486,7 +1510,7 @@ export const requestsRouter = router({
         episode: item.episode,
         title: item.request.title,
         year: item.request.year ?? new Date().getFullYear(),
-        sourceFilePath: item.outputPath ?? "",
+        sourceFilePath: outputPath,
         targetServers: targets,
       });
 

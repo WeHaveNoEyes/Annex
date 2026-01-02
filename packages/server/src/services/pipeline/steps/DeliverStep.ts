@@ -567,9 +567,7 @@ export class DeliverStep extends BaseStep {
       };
     } else {
       // Build detailed error message with actual failure reasons
-      const errorDetails = failedServers
-        .map((f) => `${f.serverName}: ${f.error}`)
-        .join("; ");
+      const errorDetails = failedServers.map((f) => `${f.serverName}: ${f.error}`).join("; ");
 
       const error =
         deliveredServers.length === 0

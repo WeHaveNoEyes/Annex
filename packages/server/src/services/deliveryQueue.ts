@@ -39,13 +39,6 @@ interface DeliveryJob {
   }>;
 }
 
-interface DeliveryResult {
-  success: boolean;
-  deliveredServers: string[];
-  failedServers: string[];
-  error?: string;
-}
-
 interface ServerDeliveryJob {
   episodeId: string;
   requestId: string;
@@ -143,7 +136,7 @@ class DeliveryQueueService {
             if (!this.activeDeliveriesByServer.has(target.serverId)) {
               this.activeDeliveriesByServer.set(target.serverId, new Set());
             }
-            this.activeDeliveriesByServer.get(target.serverId)!.add(job.episodeId);
+            this.activeDeliveriesByServer.get(target.serverId)?.add(job.episodeId);
 
             // Start delivery to this server
             const serverJob: ServerDeliveryJob = {
@@ -187,10 +180,7 @@ class DeliveryQueueService {
   /**
    * Deliver a single episode to a single server
    */
-  private async deliverToServer(
-    job: ServerDeliveryJob,
-    totalServers: number
-  ): Promise<void> {
+  private async deliverToServer(job: ServerDeliveryJob, totalServers: number): Promise<void> {
     const epNum = `S${String(job.season).padStart(2, "0")}E${String(job.episode).padStart(2, "0")}`;
 
     try {
@@ -205,9 +195,7 @@ class DeliveryQueueService {
         return;
       }
 
-      console.log(
-        `[DeliveryQueue] Delivering ${epNum} for ${job.title} to ${server.name}`
-      );
+      console.log(`[DeliveryQueue] Delivering ${epNum} for ${job.title} to ${server.name}`);
 
       const delivery = getDeliveryService();
       const naming = getNamingService();
@@ -249,7 +237,7 @@ class DeliveryQueueService {
   private async checkEpisodeCompletion(
     episodeId: string,
     requestId: string,
-    totalServers: number
+    _totalServers: number
   ): Promise<void> {
     // Check if episode is still active on any server
     const isStillActive = Array.from(this.activeDeliveriesByServer.values()).some((episodes) =>

@@ -70,7 +70,9 @@ export async function recoverStuckDeliveries(): Promise<void> {
     }
 
     if (allCompleted) {
-      console.log(`[DeliveryRecovery] ${request.title}: All items completed, marking request as COMPLETED`);
+      console.log(
+        `[DeliveryRecovery] ${request.title}: All items completed, marking request as COMPLETED`
+      );
 
       // Get pipeline context to find encoded files for cleanup
       const pipelineExecution = await prisma.pipelineExecution.findFirst({

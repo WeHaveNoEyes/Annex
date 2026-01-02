@@ -49,6 +49,7 @@ export class DeliverWorker extends BaseWorker {
         await Promise.allSettled(
           batch.map((item) => {
             // Call the base class's processItemSafe method
+            // biome-ignore lint/suspicious/noExplicitAny: accessing private method for batch processing
             return (this as any).processItemSafe(item);
           })
         );
@@ -92,7 +93,10 @@ export class DeliverWorker extends BaseWorker {
         });
       } catch (error) {
         // If already DELIVERING (race condition), just continue
-        if (error instanceof Error && error.message.includes("Cannot transition from DELIVERING to DELIVERING")) {
+        if (
+          error instanceof Error &&
+          error.message.includes("Cannot transition from DELIVERING to DELIVERING")
+        ) {
           console.log(`[${this.name}] ${item.title}: Already DELIVERING, continuing`);
         } else {
           throw error;
