@@ -1,4 +1,4 @@
-import { ActivityType, MediaType, type Prisma, ProcessingStatus, StepType } from "@prisma/client";
+import { ActivityType, MediaType, ProcessingStatus, StepType } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { getDownloadService } from "../../download.js";
 import { downloadManager } from "../../downloadManager.js";
@@ -10,7 +10,6 @@ import {
   getResolutionLabel,
   type RequestTarget,
   rankReleasesWithQualityFilter,
-  releasesToStorageFormat,
   resolutionMeetsRequirement,
 } from "../../qualityService.js";
 import { getTraktService } from "../../trakt.js";
@@ -172,10 +171,7 @@ export class SearchStep extends BaseStep {
     const requiredResolution = await deriveRequiredResolution(targets as RequestTarget[]);
     const resolutionLabel = getResolutionLabel(requiredResolution);
 
-    await prisma.mediaRequest.update({
-      where: { id: requestId },
-      data: { requiredResolution },
-    });
+    // requiredResolution computed on-demand, not stored in MediaRequest
 
     await this.logActivity(
       requestId,
@@ -908,12 +904,7 @@ export class SearchStep extends BaseStep {
 
       // No downloaded episodes to process
       // Status/progress/error now handled by ProcessingItem
-      await prisma.mediaRequest.update({
-        where: { id: requestId },
-        data: {
-          qualitySearchedAt: new Date(),
-        },
-      });
+      // qualitySearchedAt tracked per ProcessingItem if needed
       await this.logActivity(
         requestId,
         ActivityType.WARNING,
@@ -964,17 +955,11 @@ export class SearchStep extends BaseStep {
     if (matching.length === 0) {
       if (belowQuality.length > 0) {
         const bestAvailable = getBestAvailableResolution(belowQuality);
-        const storedAlternatives = releasesToStorageFormat(belowQuality.slice(0, 10));
 
         // Store alternative releases and quality search timestamp
         // Status/progress/error now handled by ProcessingItem
-        await prisma.mediaRequest.update({
-          where: { id: requestId },
-          data: {
-            availableReleases: storedAlternatives as unknown as Prisma.InputJsonValue,
-            qualitySearchedAt: new Date(),
-          },
-        });
+        // availableReleases stored in ProcessingItem (not MediaRequest)
+        // qualitySearchedAt tracked per ProcessingItem if needed
 
         await this.logActivity(
           requestId,
@@ -1071,25 +1056,9 @@ export class SearchStep extends BaseStep {
       }
     );
 
-    // BACKWARDS COMPATIBILITY: Save release metadata to MediaRequest (will be moved to Download in Phase 2)
-    // NOTE: selectedRelease is now stored in ProcessingItem.stepContext via step return data
+    // Release metadata now stored in Download model (not MediaRequest)
+    // selectedRelease is stored in ProcessingItem.stepContext via step return data
     // Status/progress are handled by ProcessingItem, not MediaRequest
-    await prisma.mediaRequest.update({
-      where: { id: requestId },
-      data: {
-        // Capture initial torrent metadata (DEPRECATED - for backwards compatibility only)
-        releaseFileSize: BigInt(bestRelease.size),
-        releaseIndexerName: bestRelease.indexerName,
-        releaseSeeders: bestRelease.seeders,
-        releaseLeechers: bestRelease.leechers,
-        releaseResolution: bestRelease.resolution,
-        releaseSource: bestRelease.source,
-        releaseCodec: bestRelease.codec,
-        releaseScore: rankedMatching[0].score,
-        releasePublishDate: bestRelease.publishDate,
-        releaseName: bestRelease.title,
-      },
-    });
 
     return {
       success: true,
