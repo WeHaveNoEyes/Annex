@@ -1,25 +1,28 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { beforeEach, describe, expect, mock, test } from "bun:test";
 import type { MediaType, ProcessingStatus, RequestStatus } from "@prisma/client";
-import { prisma } from "../../db/client.js";
+import { createMockPrisma } from "../setup.js";
+
+// Mock the db/client module
+const mockPrisma = createMockPrisma();
+mock.module("../../db/client.js", () => ({
+  prisma: mockPrisma,
+}));
+
+// Import after mocking
 import { RequestStatusComputer } from "../../services/requestStatusComputer.js";
 
 describe("RequestStatusComputer", () => {
   const computer = new RequestStatusComputer();
 
   beforeEach(async () => {
-    // Clean up test data
-    await prisma.processingItem.deleteMany({
-      where: { requestId: { startsWith: "test-" } },
-    });
-    await prisma.mediaRequest.deleteMany({
-      where: { id: { startsWith: "test-" } },
-    });
+    // Clear mock data
+    mockPrisma._clear();
   });
 
   describe("computeStatus", () => {
     test("returns COMPLETED when all items are completed", async () => {
       // Create test request
-      const request = await prisma.mediaRequest.create({
+      const request = await mockPrisma.mediaRequest.create({
         data: {
           id: "test-completed",
           type: "MOVIE" as MediaType,
@@ -35,7 +38,7 @@ describe("RequestStatusComputer", () => {
       });
 
       // Create completed processing items
-      await prisma.processingItem.createMany({
+      await mockPrisma.processingItem.createMany({
         data: [
           {
             id: "test-item-1",
@@ -71,7 +74,7 @@ describe("RequestStatusComputer", () => {
     });
 
     test("returns FAILED when all items are failed", async () => {
-      const request = await prisma.mediaRequest.create({
+      const request = await mockPrisma.mediaRequest.create({
         data: {
           id: "test-failed",
           type: "MOVIE" as MediaType,
@@ -86,7 +89,7 @@ describe("RequestStatusComputer", () => {
         },
       });
 
-      await prisma.processingItem.create({
+      await mockPrisma.processingItem.create({
         data: {
           id: "test-item-3",
           requestId: request.id,
@@ -109,7 +112,7 @@ describe("RequestStatusComputer", () => {
     });
 
     test("returns PARTIAL when some items completed and some failed", async () => {
-      const request = await prisma.mediaRequest.create({
+      const request = await mockPrisma.mediaRequest.create({
         data: {
           id: "test-partial",
           type: "TV" as MediaType,
@@ -124,7 +127,7 @@ describe("RequestStatusComputer", () => {
         },
       });
 
-      await prisma.processingItem.createMany({
+      await mockPrisma.processingItem.createMany({
         data: [
           {
             id: "test-item-4",
@@ -162,7 +165,7 @@ describe("RequestStatusComputer", () => {
     });
 
     test("returns DOWNLOADING when any item is downloading", async () => {
-      const request = await prisma.mediaRequest.create({
+      const request = await mockPrisma.mediaRequest.create({
         data: {
           id: "test-downloading",
           type: "MOVIE" as MediaType,
@@ -177,7 +180,7 @@ describe("RequestStatusComputer", () => {
         },
       });
 
-      await prisma.processingItem.create({
+      await mockPrisma.processingItem.create({
         data: {
           id: "test-item-6",
           requestId: request.id,
@@ -199,7 +202,7 @@ describe("RequestStatusComputer", () => {
     });
 
     test("falls back to MediaRequest fields when no ProcessingItems exist", async () => {
-      const request = await prisma.mediaRequest.create({
+      const request = await mockPrisma.mediaRequest.create({
         data: {
           id: "test-legacy",
           type: "MOVIE" as MediaType,
@@ -232,7 +235,7 @@ describe("RequestStatusComputer", () => {
     test("computes status for multiple requests efficiently", async () => {
       // Create multiple test requests
       const requests = await Promise.all([
-        prisma.mediaRequest.create({
+        mockPrisma.mediaRequest.create({
           data: {
             id: "test-batch-1",
             type: "MOVIE" as MediaType,
@@ -246,7 +249,7 @@ describe("RequestStatusComputer", () => {
             failedItems: 0,
           },
         }),
-        prisma.mediaRequest.create({
+        mockPrisma.mediaRequest.create({
           data: {
             id: "test-batch-2",
             type: "MOVIE" as MediaType,
@@ -263,7 +266,7 @@ describe("RequestStatusComputer", () => {
       ]);
 
       // Create items for first request
-      await prisma.processingItem.create({
+      await mockPrisma.processingItem.create({
         data: {
           id: "test-batch-item-1",
           requestId: requests[0].id,
@@ -276,7 +279,7 @@ describe("RequestStatusComputer", () => {
       });
 
       // Create items for second request
-      await prisma.processingItem.create({
+      await mockPrisma.processingItem.create({
         data: {
           id: "test-batch-item-2",
           requestId: requests[1].id,
@@ -305,7 +308,7 @@ describe("RequestStatusComputer", () => {
 
   describe("getReleaseMetadata", () => {
     test("returns metadata from Download model", async () => {
-      const request = await prisma.mediaRequest.create({
+      const request = await mockPrisma.mediaRequest.create({
         data: {
           id: "test-metadata",
           type: "MOVIE" as MediaType,
@@ -320,7 +323,7 @@ describe("RequestStatusComputer", () => {
         },
       });
 
-      await prisma.download.create({
+      await mockPrisma.download.create({
         data: {
           id: "test-download-1",
           requestId: request.id,
@@ -355,7 +358,7 @@ describe("RequestStatusComputer", () => {
     });
 
     test("falls back to MediaRequest fields when Download has no metadata", async () => {
-      const request = await prisma.mediaRequest.create({
+      const request = await mockPrisma.mediaRequest.create({
         data: {
           id: "test-metadata-legacy",
           type: "MOVIE" as MediaType,
@@ -392,7 +395,7 @@ describe("RequestStatusComputer", () => {
     });
 
     test("returns null when no metadata exists", async () => {
-      const request = await prisma.mediaRequest.create({
+      const request = await mockPrisma.mediaRequest.create({
         data: {
           id: "test-no-metadata",
           type: "MOVIE" as MediaType,

@@ -318,16 +318,37 @@ export function createMockPrisma() {
       }),
     },
     processingItem: {
+      create: mock(async ({ data }: { data: any }) => {
+        const id = data.id || generateId();
+        const record = { id, ...data, createdAt: new Date(), updatedAt: new Date() };
+        processingItemStore.set(id, record);
+        return record;
+      }),
+      createMany: mock(async ({ data }: { data: any[] }) => {
+        const records = data.map((item) => {
+          const id = item.id || generateId();
+          const record = { id, ...item, createdAt: new Date(), updatedAt: new Date() };
+          processingItemStore.set(id, record);
+          return record;
+        });
+        return { count: records.length };
+      }),
       findUnique: mock(async ({ where }: { where: { id: string } }) => {
         return processingItemStore.get(where.id) || null;
       }),
-      findMany: mock(async ({ where }: { where?: any } = {}) => {
-        const values = Array.from(processingItemStore.values());
-        if (!where) return values;
+      findMany: mock(async ({ where, select }: { where?: any; select?: any } = {}) => {
+        let results = Array.from(processingItemStore.values());
+        if (!where) return results;
 
-        return values.filter((v) =>
+        results = results.filter((v) =>
           Object.keys(where).every((key) => {
-            if (key === "requestId") return v.requestId === where.requestId;
+            if (key === "requestId") {
+              // Handle { in: [...] } syntax
+              if (where.requestId?.in) {
+                return where.requestId.in.includes(v.requestId);
+              }
+              return v.requestId === where.requestId;
+            }
             if (key === "status" && where.status?.notIn) {
               return !where.status.notIn.includes(v.status);
             }
@@ -335,6 +356,19 @@ export function createMockPrisma() {
             return v[key] === where[key];
           })
         );
+
+        // Apply select if provided
+        if (select) {
+          results = results.map((r: any) => {
+            const selected: any = {};
+            Object.keys(select).forEach((key) => {
+              if (select[key]) selected[key] = r[key];
+            });
+            return selected;
+          });
+        }
+
+        return results;
       }),
       count: mock(async ({ where }: { where?: any } = {}) => {
         const values = Array.from(processingItemStore.values());
@@ -618,6 +652,43 @@ export function createMockPrisma() {
         downloadStore.set(id, record);
         return record;
       }),
+      findFirst: mock(
+        async ({ where, orderBy, select }: { where?: any; orderBy?: any; select?: any } = {}) => {
+          let values = Array.from(downloadStore.values());
+
+          // Apply where filter
+          if (where) {
+            values = values.filter((v) =>
+              Object.keys(where).every((key) => {
+                if (key === "requestId") return v.requestId === where.requestId;
+                return v[key] === where[key];
+              })
+            );
+          }
+
+          // Apply orderBy
+          if (orderBy?.createdAt === "desc") {
+            values.sort(
+              (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+            );
+          }
+
+          const result = values[0] || null;
+
+          // Apply select
+          if (result && select) {
+            const selectedFields: any = {};
+            for (const key of Object.keys(select)) {
+              if (select[key]) {
+                selectedFields[key] = result[key];
+              }
+            }
+            return selectedFields;
+          }
+
+          return result;
+        }
+      ),
       deleteMany: mock(async () => {
         const count = downloadStore.size;
         downloadStore.clear();
