@@ -1,11 +1,4 @@
-import {
-  ActivityType,
-  MediaType,
-  type Prisma,
-  ProcessingStatus,
-  RequestStatus,
-  StepType,
-} from "@prisma/client";
+import { ActivityType, MediaType, type Prisma, ProcessingStatus, StepType } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { getDownloadService } from "../../download.js";
 import { downloadManager } from "../../downloadManager.js";
@@ -125,13 +118,34 @@ export class SearchStep extends BaseStep {
       }
     }
 
-    // Check if a release was already selected (e.g., user accepted alternative)
-    const existingRequest = await prisma.mediaRequest.findUnique({
-      where: { id: requestId },
-      select: { selectedRelease: true },
-    });
+    // Check if a release was already selected (e.g., user accepted alternative, or resuming)
+    // NEW: Check ProcessingItem.stepContext first (source of truth)
+    let selectedRelease = null;
+    if (context.processingItemId) {
+      const processingItem = await prisma.processingItem.findUnique({
+        where: { id: context.processingItemId },
+        select: { stepContext: true },
+      });
 
-    if (existingRequest?.selectedRelease) {
+      if (processingItem?.stepContext && typeof processingItem.stepContext === "object") {
+        const stepContext = processingItem.stepContext as Record<string, unknown>;
+        if (stepContext.search && typeof stepContext.search === "object") {
+          const searchData = stepContext.search as Record<string, unknown>;
+          selectedRelease = searchData.selectedRelease || null;
+        }
+      }
+    }
+
+    // BACKWARDS COMPATIBILITY: Fall back to MediaRequest.selectedRelease
+    if (!selectedRelease) {
+      const existingRequest = await prisma.mediaRequest.findUnique({
+        where: { id: requestId },
+        select: { selectedRelease: true },
+      });
+      selectedRelease = existingRequest?.selectedRelease || null;
+    }
+
+    if (selectedRelease) {
       await this.logActivity(
         requestId,
         ActivityType.INFO,
@@ -144,24 +158,14 @@ export class SearchStep extends BaseStep {
         nextStep: "download",
         data: {
           search: {
-            selectedRelease: existingRequest.selectedRelease,
+            selectedRelease,
             qualityMet: true,
           },
         },
       };
     }
 
-    // Update request status
-    await prisma.mediaRequest.update({
-      where: { id: requestId },
-      data: {
-        status: RequestStatus.SEARCHING,
-        progress: 5,
-        currentStep: "Checking for existing downloads...",
-        currentStepStartedAt: new Date(),
-      },
-    });
-
+    // Status/progress is now handled by ProcessingItem, not MediaRequest
     await this.logActivity(requestId, ActivityType.INFO, "Starting search");
 
     // Derive quality requirements from targets
@@ -286,16 +290,7 @@ export class SearchStep extends BaseStep {
       }
     }
 
-    // Search indexers
-    await prisma.mediaRequest.update({
-      where: { id: requestId },
-      data: {
-        progress: 10,
-        currentStep: "Searching indexers...",
-        currentStepStartedAt: new Date(),
-      },
-    });
-
+    // Search indexers (status/progress now handled by ProcessingItem)
     // Get IMDb ID from cache or Trakt
     let imdbId: string | undefined;
     const mediaItemId = `tmdb-${mediaType === MediaType.MOVIE ? "movie" : "tv"}-${tmdbId}`;
@@ -690,17 +685,7 @@ export class SearchStep extends BaseStep {
             `Spawned ${spawnedBranches} episode branch pipeline(s) - processing in parallel`
           );
 
-          // Update request to show branches are running
-          await prisma.mediaRequest.update({
-            where: { id: requestId },
-            data: {
-              status: RequestStatus.DOWNLOADING,
-              progress: 20,
-              currentStep: `Processing ${spawnedBranches} episode(s) in parallel`,
-              currentStepStartedAt: new Date(),
-            },
-          });
-
+          // Status/progress now handled by ProcessingItem
           // Return success - branches are now running independently
           return {
             success: true,
@@ -921,15 +906,11 @@ export class SearchStep extends BaseStep {
         }
       }
 
-      // No downloaded episodes to process, mark as awaiting
+      // No downloaded episodes to process
+      // Status/progress/error now handled by ProcessingItem
       await prisma.mediaRequest.update({
         where: { id: requestId },
         data: {
-          status: RequestStatus.AWAITING,
-          progress: 0,
-          currentStep: "Waiting for release availability",
-          currentStepStartedAt: new Date(),
-          error: null,
           qualitySearchedAt: new Date(),
         },
       });
@@ -985,16 +966,13 @@ export class SearchStep extends BaseStep {
         const bestAvailable = getBestAvailableResolution(belowQuality);
         const storedAlternatives = releasesToStorageFormat(belowQuality.slice(0, 10));
 
+        // Store alternative releases and quality search timestamp
+        // Status/progress/error now handled by ProcessingItem
         await prisma.mediaRequest.update({
           where: { id: requestId },
           data: {
-            status: RequestStatus.QUALITY_UNAVAILABLE,
             availableReleases: storedAlternatives as unknown as Prisma.InputJsonValue,
             qualitySearchedAt: new Date(),
-            progress: 0,
-            currentStep: `No ${resolutionLabel} releases found (best: ${bestAvailable})`,
-            currentStepStartedAt: new Date(),
-            error: null,
           },
         });
 
@@ -1093,12 +1071,13 @@ export class SearchStep extends BaseStep {
       }
     );
 
-    // Save selected release to request
+    // BACKWARDS COMPATIBILITY: Save release metadata to MediaRequest (will be moved to Download in Phase 2)
+    // NOTE: selectedRelease is now stored in ProcessingItem.stepContext via step return data
+    // Status/progress are handled by ProcessingItem, not MediaRequest
     await prisma.mediaRequest.update({
       where: { id: requestId },
       data: {
-        selectedRelease: bestRelease as unknown as Prisma.JsonObject,
-        // Capture initial torrent metadata
+        // Capture initial torrent metadata (DEPRECATED - for backwards compatibility only)
         releaseFileSize: BigInt(bestRelease.size),
         releaseIndexerName: bestRelease.indexerName,
         releaseSeeders: bestRelease.seeders,
@@ -1109,10 +1088,6 @@ export class SearchStep extends BaseStep {
         releaseScore: rankedMatching[0].score,
         releasePublishDate: bestRelease.publishDate,
         releaseName: bestRelease.title,
-        status: RequestStatus.SEARCHING,
-        progress: 15,
-        currentStep: `Selected: ${bestRelease.title}`,
-        currentStepStartedAt: new Date(),
       },
     });
 
