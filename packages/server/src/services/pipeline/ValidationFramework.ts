@@ -45,12 +45,13 @@ export class ValidationFramework {
         break;
 
       case "FOUND": {
-        // Requires either a selected release or existing download in stepContext
+        // Requires either a selected release, season packs, or existing download in stepContext
         const searchContext = item.stepContext as Record<string, unknown>;
         const hasSelectedRelease = !!searchContext?.selectedRelease;
+        const hasSelectedPacks = !!searchContext?.selectedPacks;
         const hasExistingDownload = !!searchContext?.existingDownload;
 
-        if (!hasSelectedRelease && !hasExistingDownload) {
+        if (!hasSelectedRelease && !hasSelectedPacks && !hasExistingDownload) {
           errors.push("No release selected from search results");
         }
         break;
