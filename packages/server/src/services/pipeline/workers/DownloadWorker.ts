@@ -99,7 +99,28 @@ export class DownloadWorker extends BaseWorker {
       throw new Error(output.error || "Download failed");
     }
 
-    // Extract download results
+    // Check if bulk downloads were created for season packs
+    const resultData = output.data?.search as Record<string, unknown> | undefined;
+    if (resultData?.bulkDownloadsCreated) {
+      // For season packs, the download monitor will handle extraction and create branches
+      // Transition to COMPLETED since this processing item's job is done
+      await pipelineOrchestrator.transitionStatus(item.id, "COMPLETED", {
+        currentStep: "bulk_download_created",
+        stepContext: {
+          ...stepContext,
+          bulkDownloadInfo: {
+            downloadCount: resultData.downloadCount,
+            createdAt: new Date(),
+          },
+        },
+      });
+      console.log(
+        `[${this.name}] Created ${resultData.downloadCount} bulk download(s) for ${item.title}`
+      );
+      return;
+    }
+
+    // Extract download results for individual files
     const downloadContext = output.data?.download as PipelineContext["download"];
     if (!downloadContext?.sourceFilePath && !downloadContext?.episodeFiles) {
       throw new Error("No download results found");
