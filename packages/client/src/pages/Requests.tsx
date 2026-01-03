@@ -1,5 +1,13 @@
 import { useMemo, useState } from "react";
-import { AlternativesModal, Button, ContextMenu, Input, Select, Skeleton } from "../components/ui";
+import {
+  AlternativesModal,
+  Button,
+  ContextMenu,
+  Input,
+  ManualSearchModal,
+  Select,
+  Skeleton,
+} from "../components/ui";
 import { trpc } from "../trpc";
 
 type RequestStatus =
@@ -1184,6 +1192,7 @@ export default function RequestsPage() {
   const [typeFilter, setTypeFilter] = useState<FilterType>("all");
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [alternativesRequestId, setAlternativesRequestId] = useState<string | null>(null);
+  const [manualSearchRequestId, setManualSearchRequestId] = useState<string | null>(null);
 
   const requests = trpc.requests.list.useQuery({ limit: 100 }, { refetchInterval: 5000 });
 
@@ -1440,6 +1449,13 @@ export default function RequestsPage() {
         isOpen={alternativesRequestId !== null}
         onClose={() => setAlternativesRequestId(null)}
         requestId={alternativesRequestId}
+      />
+
+      {/* Manual Search Modal */}
+      <ManualSearchModal
+        isOpen={manualSearchRequestId !== null}
+        onClose={() => setManualSearchRequestId(null)}
+        requestId={manualSearchRequestId}
       />
     </div>
   );

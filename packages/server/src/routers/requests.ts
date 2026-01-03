@@ -1299,6 +1299,138 @@ export const requestsRouter = router({
     }),
 
   /**
+   * Manual search for releases when processing items have no downloadId
+   */
+  manualSearch: publicProcedure
+    .input(z.object({ requestId: z.string() }))
+    .query(async ({ input }) => {
+      const request = await prisma.mediaRequest.findUnique({
+        where: { id: input.requestId },
+        include: { processingItems: true },
+      });
+
+      if (!request) {
+        throw new Error("Request not found");
+      }
+
+      const seasonsNeedingDownloads =
+        request.type === MediaType.TV
+          ? [
+              ...new Set(
+                request.processingItems
+                  .filter(
+                    (item: { downloadId: string | null; season: number | null }) =>
+                      !item.downloadId && item.season !== null
+                  )
+                  .map((item: { season: number | null }) => item.season as number)
+              ),
+            ]
+          : [];
+
+      const { getIndexerService } = await import("../services/indexer.js");
+      const indexerService = getIndexerService();
+      const releases = await indexerService.search({
+        type: request.type === MediaType.MOVIE ? "movie" : "tv",
+        tmdbId: request.tmdbId,
+        year: request.year,
+        season: seasonsNeedingDownloads[0] as number | undefined,
+      });
+
+      return {
+        releases: releases.releases,
+        requestInfo: {
+          type: fromMediaType(request.type),
+          title: request.title,
+          year: request.year,
+          seasonsNeedingDownloads,
+        },
+      };
+    }),
+
+  /**
+   * Select a manual release for download
+   */
+  selectManualRelease: publicProcedure
+    .input(
+      z.object({
+        requestId: z.string(),
+        release: releaseSchema,
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { requestId, release } = input;
+
+      const request = await prisma.mediaRequest.findUnique({
+        where: { id: requestId },
+        include: {
+          processingItems: {
+            where: { downloadId: null },
+          },
+        },
+      });
+
+      if (!request) {
+        throw new Error("Request not found");
+      }
+
+      const { parseTorrentName, createDownload } = await import("../services/downloadManager.js");
+      const parsed = parseTorrentName(release.title);
+      const isSeasonPack = parsed.season !== undefined && parsed.episode === undefined;
+
+      const download = await createDownload({
+        requestId,
+        mediaType: request.type,
+        release,
+        isSeasonPack,
+        season: parsed.season,
+      });
+
+      if (!download) {
+        throw new Error("Failed to create download");
+      }
+
+      let affectedItems = request.processingItems;
+
+      if (request.type === MediaType.TV) {
+        if (isSeasonPack && parsed.season !== null) {
+          affectedItems = request.processingItems.filter(
+            (item: { season: number | null }) => item.season === parsed.season
+          );
+        } else if (parsed.episode !== null && parsed.season !== null) {
+          affectedItems = request.processingItems.filter(
+            (item: { season: number | null; episode: number | null }) =>
+              item.season === parsed.season && item.episode === parsed.episode
+          );
+        }
+      }
+
+      await prisma.$transaction([
+        prisma.processingItem.updateMany({
+          where: { id: { in: affectedItems.map((i: { id: string }) => i.id) } },
+          data: {
+            downloadId: download.id,
+            status: ProcessingStatus.DOWNLOADING,
+            currentStep: "download",
+            stepContext: Prisma.JsonNull,
+          },
+        }),
+        prisma.activityLog.create({
+          data: {
+            type: "DOWNLOAD_MANUAL_SEARCH",
+            message: `Manual search: selected "${release.title}" for ${affectedItems.length} items`,
+            requestId,
+          },
+        }),
+      ]);
+
+      return {
+        success: true,
+        downloadId: download.id,
+        affectedItems: affectedItems.length,
+      };
+    }),
+
+  /**
    * Re-search for quality releases for a quality-unavailable request
    */
   refreshQualitySearch: publicProcedure
