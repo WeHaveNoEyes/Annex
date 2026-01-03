@@ -56,6 +56,14 @@ export class DownloadRecoveryWorker extends BaseWorker {
       const torrentName = t.name.toLowerCase().replace(/[.\s_-]+/g, " ");
       const searchName = releaseName.toLowerCase().replace(/[.\s_-]+/g, " ");
 
+      // For movies, require exact year match to avoid matching sequels (Toy Story vs Toy Story 2)
+      if (item.type === "MOVIE" && item.year) {
+        const yearStr = String(item.year);
+        if (!torrentName.includes(yearStr)) {
+          return false;
+        }
+      }
+
       // Check if torrent name contains the main parts of the release name
       const releaseWords = searchName.split(" ").filter((w: string) => w.length > 2);
       const matchCount = releaseWords.filter((word: string) => torrentName.includes(word)).length;
