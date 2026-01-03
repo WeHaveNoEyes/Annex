@@ -82,11 +82,24 @@ export class DownloadWorker extends BaseWorker {
         `[${this.name}] Download created for ${item.title}, setting downloadId=${downloadId}`
       );
 
-      // Update ProcessingItem with downloadId immediately (before waiting for completion)
-      await prisma.processingItem.update({
-        where: { id: item.id },
-        data: { downloadId },
-      });
+      // For season packs, atomically link ALL episodes in this season to the download
+      // This prevents race conditions where some episodes create separate downloads
+      if (item.type === "EPISODE" && item.season !== null && searchData?.selectedPacks) {
+        const linkedCount = await this.linkAllSeasonEpisodesToDownload(
+          item.requestId,
+          item.season,
+          downloadId
+        );
+        console.log(
+          `[${this.name}] Season pack: linked ${linkedCount} episodes to download ${downloadId}`
+        );
+      } else {
+        // For individual releases, just update this item
+        await prisma.processingItem.update({
+          where: { id: item.id },
+          data: { downloadId },
+        });
+      }
     });
 
     // Execute download
@@ -167,6 +180,17 @@ export class DownloadWorker extends BaseWorker {
     let download = await prisma.download.findUnique({
       where: { torrentHash },
     });
+
+    // For season pack episodes, atomically link ALL episodes in this season
+    // This prevents race conditions where some episodes get linked and others don't
+    if (item.type === "EPISODE" && item.season !== null) {
+      const linkedCount = await this.linkAllSeasonEpisodesToDownload(
+        item.requestId,
+        item.season,
+        download?.id || torrentHash // Use download.id if exists, else torrentHash as temp ID
+      );
+      console.log(`[${this.name}] Linked ${linkedCount} episodes to download ${torrentHash}`);
+    }
 
     if (!download) {
       console.log(`[${this.name}] Creating Download record for existing torrent ${torrentHash}`);
@@ -361,6 +385,50 @@ export class DownloadWorker extends BaseWorker {
     }
 
     throw new Error(`Download timeout after ${maxWaitTime / 1000 / 60} minutes`);
+  }
+
+  /**
+   * Atomically link all episodes in a season to a download
+   * Prevents race conditions where some episodes get linked and others don't
+   */
+  private async linkAllSeasonEpisodesToDownload(
+    requestId: string,
+    season: number,
+    downloadId: string
+  ): Promise<number> {
+    // Find all episodes in this season that need linking
+    const episodes = await prisma.processingItem.findMany({
+      where: {
+        requestId,
+        season,
+        type: "EPISODE",
+        status: { in: ["FOUND", "SEARCHING", "PENDING"] },
+      },
+    });
+
+    if (episodes.length === 0) {
+      return 0;
+    }
+
+    console.log(
+      `[${this.name}] Found ${episodes.length} episodes in season ${season} to link to download ${downloadId}`
+    );
+
+    // Atomic batch update - all episodes get linked together or none do
+    await prisma.$transaction(
+      episodes.map((ep: ProcessingItem) =>
+        prisma.processingItem.update({
+          where: { id: ep.id },
+          data: {
+            downloadId,
+            status: "DOWNLOADING",
+            currentStep: "download",
+          },
+        })
+      )
+    );
+
+    return episodes.length;
   }
 
   /**

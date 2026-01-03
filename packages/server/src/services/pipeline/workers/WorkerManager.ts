@@ -6,6 +6,7 @@ import { downloadWorker } from "./DownloadWorker";
 import { encoderMonitorWorker } from "./EncoderMonitorWorker";
 import { encodeWorker } from "./EncodeWorker";
 import { searchWorker } from "./SearchWorker";
+import { stuckItemRecoveryWorker } from "./StuckItemRecoveryWorker";
 
 /**
  * WorkerManager - Manages all pipeline workers
@@ -24,6 +25,7 @@ export class WorkerManager {
       encodeWorker,
       encoderMonitorWorker,
       deliverWorker,
+      stuckItemRecoveryWorker,
     ];
   }
 

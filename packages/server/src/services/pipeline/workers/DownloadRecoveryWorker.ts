@@ -31,11 +31,20 @@ export class DownloadRecoveryWorker extends BaseWorker {
     const selectedRelease =
       searchData?.selectedRelease ||
       (stepContext.selectedRelease as Record<string, unknown> | undefined);
+    const selectedPacks = searchData?.selectedPacks;
 
-    if (!selectedRelease || typeof selectedRelease.title !== "string") {
+    // For season packs, use the first pack's title
+    let releaseName: string | undefined;
+    if (selectedPacks && Array.isArray(selectedPacks) && selectedPacks.length > 0) {
+      const firstPack = selectedPacks[0] as Record<string, unknown>;
+      releaseName = firstPack?.title as string;
+    } else if (selectedRelease && typeof selectedRelease.title === "string") {
+      releaseName = selectedRelease.title as string;
+    }
+
+    if (!releaseName) {
       return;
     }
-    const releaseName = selectedRelease.title as string;
 
     // Search qBittorrent for a matching torrent
     const qb = getDownloadService();
