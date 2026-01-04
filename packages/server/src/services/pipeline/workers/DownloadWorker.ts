@@ -132,6 +132,13 @@ export class DownloadWorker extends BaseWorker {
     const release = searchData.selectedRelease;
 
     if (!release || (!release.magnetUri && !release.downloadUrl)) {
+      console.error(`[${this.name}] Release validation failed for ${item.title}:`);
+      console.error(`[${this.name}]   release exists: ${!!release}`);
+      if (release) {
+        console.error(`[${this.name}]   magnetUri: ${release.magnetUri || "undefined"}`);
+        console.error(`[${this.name}]   downloadUrl: ${release.downloadUrl || "undefined"}`);
+        console.error(`[${this.name}]   release fields: ${Object.keys(release).join(", ")}`);
+      }
       throw new Error("No magnet URI or download URL in selected release");
     }
 
