@@ -1019,6 +1019,8 @@ export const requestsRouter = router({
           checkpoint: Prisma.JsonNull,
           currentStep: null,
           skipUntil: null,
+          nextRetryAt: null,
+          attempts: 0,
         },
       });
 
