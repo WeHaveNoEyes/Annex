@@ -21,8 +21,20 @@ export class SearchWorker extends BaseWorker {
       return;
     }
 
-    // Transition to SEARCHING first
     const { pipelineOrchestrator } = await import("../PipelineOrchestrator");
+
+    // Early exit: if item already has a downloadId, skip search and fast-forward to FOUND
+    if (item.downloadId) {
+      console.log(
+        `[${this.name}] Early exit: ${item.title} already has download, promoting to FOUND`
+      );
+      await pipelineOrchestrator.transitionStatus(item.id, "FOUND", {
+        currentStep: "search_complete",
+      });
+      return;
+    }
+
+    // Transition to SEARCHING first
     await pipelineOrchestrator.transitionStatus(item.id, "SEARCHING", { currentStep: "search" });
 
     // Get request details
@@ -70,26 +82,68 @@ export class SearchWorker extends BaseWorker {
     // Extract search results
     const searchContext = output.data?.search as PipelineContext["search"];
 
-    // Either a new release or existing download must be found
-    if (!searchContext?.selectedRelease && !searchContext?.existingDownload) {
-      throw new Error("No release found for this item");
+    // Check if we found alternatives but they don't meet quality requirements
+    const hasAlternatives =
+      searchContext?.alternativeReleases && searchContext.alternativeReleases.length > 0;
+    const qualityNotMet = searchContext?.qualityMet === false;
+
+    // Either a new release, season packs, existing download, OR alternatives must be found
+    if (
+      !searchContext?.selectedRelease &&
+      !searchContext?.selectedPacks &&
+      !searchContext?.existingDownload &&
+      !hasAlternatives
+    ) {
+      throw new Error("No releases found for this item");
     }
 
     // Store search results in stepContext
     const stepContext = {
       selectedRelease: searchContext.selectedRelease,
+      selectedPacks: searchContext.selectedPacks,
       alternativeReleases: searchContext.alternativeReleases || [],
       qualityMet: searchContext.qualityMet,
       existingDownload: searchContext.existingDownload,
+      bulkDownloadsForSeasonPacks: searchContext.bulkDownloadsForSeasonPacks,
+      bestAvailableQuality: (output.data as { bestAvailableQuality?: string })
+        ?.bestAvailableQuality,
     };
 
-    console.log(
-      `[${this.name}] Found ${searchContext.existingDownload ? "existing download" : "new release"} for ${request.title}`
-    );
+    // Determine what was found and log appropriately
+    let foundType: string;
+    let shouldProceed = true;
+
+    if (searchContext.existingDownload) {
+      foundType = "existing download";
+    } else if (searchContext.selectedPacks) {
+      foundType = `${searchContext.selectedPacks.length} season pack(s)`;
+    } else if (searchContext.selectedRelease) {
+      foundType = "new release";
+    } else if (
+      hasAlternatives &&
+      qualityNotMet &&
+      searchContext.alternativeReleases &&
+      searchContext.alternativeReleases.length > 0
+    ) {
+      foundType = `${searchContext.alternativeReleases.length} alternative(s) below quality threshold`;
+      shouldProceed = false;
+    } else {
+      foundType = "unknown";
+    }
+
+    console.log(`[${this.name}] Found ${foundType} for ${request.title}`);
+
+    if (!shouldProceed && qualityNotMet) {
+      console.log(
+        `[${this.name}] Quality not met for ${request.title}, best available: ${stepContext.bestAvailableQuality}`
+      );
+    }
 
     // Transition to FOUND with search results
+    // Even if qualityMet=false, we transition to FOUND so UI can show "Accept Lower Quality"
+    // The stepContext contains all info the UI needs: alternativeReleases, qualityMet, bestAvailableQuality
     await this.transitionToNext(item.id, {
-      currentStep: "search_complete",
+      currentStep: qualityNotMet ? "search_quality_unavailable" : "search_complete",
       stepContext,
     });
   }

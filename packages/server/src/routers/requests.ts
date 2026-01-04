@@ -1,9 +1,19 @@
-import { MediaType, Prisma, ProcessingStatus, RequestStatus } from "@prisma/client";
+import {
+  type ExecutionStatus,
+  MediaType,
+  Prisma,
+  ProcessingStatus,
+  RequestStatus,
+} from "@prisma/client";
 import { z } from "zod";
 import { prisma } from "../db/client.js";
 import { getDownloadService } from "../services/download.js";
+import { getEncoderDispatchService } from "../services/encoderDispatch.js";
+import type { PipelineContext } from "../services/pipeline/PipelineContext.js";
+import type { StepTree } from "../services/pipeline/PipelineExecutor.js";
 import { getPipelineExecutor } from "../services/pipeline/PipelineExecutor.js";
 import { pipelineOrchestrator } from "../services/pipeline/PipelineOrchestrator.js";
+import { requestStatusComputer } from "../services/requestStatusComputer.js";
 import { getTraktService } from "../services/trakt.js";
 import { publicProcedure, router } from "../trpc.js";
 
@@ -106,6 +116,78 @@ async function getDefaultTemplate(mediaType: "MOVIE" | "TV"): Promise<string> {
   return template.id;
 }
 
+/**
+ * Create PipelineExecution record to store template configuration.
+ * Workers read this to get encoding settings and other pipeline config.
+ * Does NOT execute the old pipeline - workers handle all processing.
+ */
+async function storePipelineTemplate(
+  requestId: string,
+  mediaType: "MOVIE" | "TV",
+  pipelineTemplateId?: string
+): Promise<void> {
+  // Get template ID (provided or default)
+  const templateId = pipelineTemplateId || (await getDefaultTemplate(mediaType));
+
+  // Fetch the template
+  const template = await prisma.pipelineTemplate.findUnique({
+    where: { id: templateId },
+  });
+
+  if (!template) {
+    throw new Error(`Pipeline template ${templateId} not found`);
+  }
+
+  // Fetch the request for context
+  const request = await prisma.mediaRequest.findUnique({
+    where: { id: requestId },
+  });
+
+  if (!request) {
+    throw new Error(`Request ${requestId} not found`);
+  }
+
+  // Parse steps tree from template
+  const stepsTree = template.steps as unknown as StepTree[];
+
+  // Initialize context from request
+  const initialContext: PipelineContext = {
+    requestId: request.id,
+    mediaType: request.type,
+    tmdbId: request.tmdbId,
+    title: request.title,
+    year: request.year,
+    requestedSeasons: request.requestedSeasons,
+    requestedEpisodes: request.requestedEpisodes as
+      | Array<{ season: number; episode: number }>
+      | undefined,
+    targets: request.targets as Array<{ serverId: string; encodingProfileId?: string }>,
+    processingItemId: request.id,
+  };
+
+  // Delete any existing pipeline executions for this request
+  await prisma.pipelineExecution.deleteMany({
+    where: { requestId },
+  });
+
+  // Create pipeline execution record (for workers to read config)
+  await prisma.pipelineExecution.create({
+    data: {
+      requestId,
+      templateId,
+      status: "RUNNING" as ExecutionStatus,
+      currentStep: 0,
+      steps: stepsTree as unknown as Prisma.JsonArray,
+      context: initialContext as unknown as Prisma.JsonObject,
+      startedAt: new Date(),
+    },
+  });
+
+  console.log(
+    `[StorePipelineTemplate] Stored template ${templateId} config for request ${requestId}`
+  );
+}
+
 // =============================================================================
 // Router
 // =============================================================================
@@ -147,6 +229,9 @@ export const requestsRouter = router({
             : undefined,
         },
       });
+
+      // Store pipeline template configuration for workers
+      await storePipelineTemplate(requestId, "MOVIE", input.pipelineTemplateId);
 
       console.log(
         `[Requests] Created movie request ${requestId} with ${items.length} ProcessingItem(s)`
@@ -383,6 +468,9 @@ export const requestsRouter = router({
           `[Requests] Created TV request ${newRequestId} with ${items.length} ProcessingItem(s)`
         );
 
+        // Store pipeline template configuration for workers
+        await storePipelineTemplate(newRequestId, "TV", input.pipelineTemplateId);
+
         // Delete the old request we created earlier, use the new one from orchestrator
         await prisma.mediaRequest.delete({ where: { id: request.id } });
 
@@ -447,6 +535,7 @@ export const requestsRouter = router({
               episode: true,
               attempts: true,
               lastError: true,
+              stepContext: true,
             },
           },
           totalItems: true,
@@ -487,6 +576,22 @@ export const requestsRouter = router({
           targets: true;
           requestedSeasons: true;
           requestedEpisodes: true;
+          processingItems: {
+            select: {
+              id: true;
+              type: true;
+              status: true;
+              progress: true;
+              season: true;
+              episode: true;
+              attempts: true;
+              lastError: true;
+              stepContext: true;
+            };
+          };
+          totalItems: true;
+          completedItems: true;
+          failedItems: true;
           status: true;
           progress: true;
           currentStep: true;
@@ -551,12 +656,31 @@ export const requestsRouter = router({
       const serverMap = new Map(servers.map((s: ServerData) => [s.id, s.name]));
       const posterMap = new Map(mediaItems.map((m: MediaItemData) => [m.id, m.posterPath]));
 
+      // Compute status for all requests using batch operation
+      const requestIds = results.map((r: MediaRequestWithEpisodes) => r.id);
+      const statusMap = await requestStatusComputer.batchComputeStatus(requestIds);
+
+      // Get release metadata for all requests
+      const releaseMetadataPromises = requestIds.map((id: string) =>
+        requestStatusComputer.getReleaseMetadata(id)
+      );
+      const releaseMetadataList = await Promise.all(releaseMetadataPromises);
+      const releaseMetadataMap = new Map(
+        requestIds.map((id: string, index: number) => [id, releaseMetadataList[index]])
+      );
+
       return results.map((r: MediaRequestWithEpisodes) => {
         const targets = r.targets as unknown as RequestTarget[];
-        const availableReleases = r.availableReleases as unknown[] | null;
         // Use stored posterPath, or fall back to MediaItem lookup for legacy requests
         const mediaItemId = `tmdb-${r.type === MediaType.MOVIE ? "movie" : "tv"}-${r.tmdbId}`;
         const posterPath = r.posterPath ?? posterMap.get(mediaItemId) ?? null;
+
+        // Get computed status and release metadata
+        const computed = statusMap.get(r.id);
+        const releaseMetadata = (releaseMetadataMap.get(r.id) ?? null) as Awaited<
+          ReturnType<typeof requestStatusComputer.getReleaseMetadata>
+        >;
+
         return {
           id: r.id,
           type: fromMediaType(r.type),
@@ -572,32 +696,36 @@ export const requestsRouter = router({
             : [],
           requestedSeasons: r.requestedSeasons,
           requestedEpisodes: r.requestedEpisodes as { season: number; episode: number }[] | null,
-          status: fromRequestStatus(r.status),
-          progress: r.progress,
-          currentStep: r.currentStep,
-          currentStepStartedAt: r.currentStepStartedAt,
-          error: r.error,
+          status: computed ? fromRequestStatus(computed.status) : fromRequestStatus(r.status),
+          progress: computed?.progress ?? r.progress,
+          currentStep: computed?.currentStep ?? r.currentStep,
+          currentStepStartedAt: computed?.currentStepStartedAt ?? r.currentStepStartedAt,
+          error: computed?.error ?? r.error,
           requiredResolution: r.requiredResolution,
-          hasAlternatives:
-            r.status === RequestStatus.QUALITY_UNAVAILABLE &&
-            Array.isArray(availableReleases) &&
-            availableReleases.length > 0,
+          hasAlternatives: r.processingItems.some((item: { stepContext: unknown }) => {
+            const stepContext = item.stepContext as Record<string, unknown>;
+            return (
+              stepContext?.qualityMet === false &&
+              Array.isArray(stepContext?.alternativeReleases) &&
+              stepContext.alternativeReleases.length > 0
+            );
+          }),
           qualitySearchedAt: r.qualitySearchedAt,
           createdAt: r.createdAt,
           updatedAt: r.updatedAt,
           completedAt: r.completedAt,
-          releaseMetadata: r.releaseFileSize
+          releaseMetadata: releaseMetadata
             ? {
-                fileSize: Number(r.releaseFileSize),
-                indexerName: r.releaseIndexerName,
-                seeders: r.releaseSeeders,
-                leechers: r.releaseLeechers,
-                resolution: r.releaseResolution,
-                source: r.releaseSource,
-                codec: r.releaseCodec,
-                score: r.releaseScore,
-                publishDate: r.releasePublishDate,
-                name: r.releaseName,
+                fileSize: releaseMetadata.fileSize,
+                indexerName: releaseMetadata.indexerName,
+                seeders: releaseMetadata.seeders,
+                leechers: releaseMetadata.leechers,
+                resolution: releaseMetadata.resolution,
+                source: releaseMetadata.source,
+                codec: releaseMetadata.codec,
+                score: releaseMetadata.score,
+                publishDate: releaseMetadata.publishDate,
+                name: releaseMetadata.name,
               }
             : null,
         };
@@ -655,6 +783,12 @@ export const requestsRouter = router({
 
     const serverMap = new Map(servers.map((s: ServerInfo) => [s.id, s.name]));
 
+    // Compute status from ProcessingItems
+    const computed = await requestStatusComputer.computeStatus(input.id);
+
+    // Get release metadata
+    const releaseMetadata = await requestStatusComputer.getReleaseMetadata(input.id);
+
     // For TV shows, get episode count
     let episodeCount: number | null = null;
     if (r.type === MediaType.TV) {
@@ -675,26 +809,26 @@ export const requestsRouter = router({
       })),
       requestedSeasons: r.requestedSeasons,
       requestedEpisodes: r.requestedEpisodes as { season: number; episode: number }[] | null,
-      status: fromRequestStatus(r.status),
-      progress: r.progress,
-      currentStep: r.currentStep,
-      currentStepStartedAt: r.currentStepStartedAt,
-      error: r.error,
+      status: fromRequestStatus(computed.status),
+      progress: computed.progress,
+      currentStep: computed.currentStep,
+      currentStepStartedAt: computed.currentStepStartedAt,
+      error: computed.error,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
       completedAt: r.completedAt,
-      releaseMetadata: r.releaseFileSize
+      releaseMetadata: releaseMetadata
         ? {
-            fileSize: Number(r.releaseFileSize),
-            indexerName: r.releaseIndexerName,
-            seeders: r.releaseSeeders,
-            leechers: r.releaseLeechers,
-            resolution: r.releaseResolution,
-            source: r.releaseSource,
-            codec: r.releaseCodec,
-            score: r.releaseScore,
-            publishDate: r.releasePublishDate,
-            name: r.releaseName,
+            fileSize: releaseMetadata.fileSize,
+            indexerName: releaseMetadata.indexerName,
+            seeders: releaseMetadata.seeders,
+            leechers: releaseMetadata.leechers,
+            resolution: releaseMetadata.resolution,
+            source: releaseMetadata.source,
+            codec: releaseMetadata.codec,
+            score: releaseMetadata.score,
+            publishDate: releaseMetadata.publishDate,
+            name: releaseMetadata.name,
             episodeCount,
           }
         : null,
@@ -718,10 +852,32 @@ export const requestsRouter = router({
       }
     }
 
-    // Update request status
-    await prisma.mediaRequest.update({
-      where: { id: input.id },
-      data: { status: RequestStatus.FAILED, error: "Cancelled by user" },
+    // Cancel any encoding jobs for this request
+    const itemsWithJobs = await prisma.processingItem.findMany({
+      where: {
+        requestId: input.id,
+        encodingJobId: { not: null },
+      },
+      select: { encodingJobId: true },
+    });
+
+    if (itemsWithJobs.length > 0) {
+      const encoderDispatch = getEncoderDispatchService();
+
+      for (const item of itemsWithJobs) {
+        if (item.encodingJobId) {
+          await encoderDispatch.cancelJob(item.encodingJobId, "Request cancelled by user");
+        }
+      }
+    }
+
+    // Update all ProcessingItems to CANCELLED (MediaRequest status computed from items)
+    await prisma.processingItem.updateMany({
+      where: { requestId: input.id },
+      data: {
+        status: ProcessingStatus.CANCELLED,
+        lastError: "Cancelled by user",
+      },
     });
 
     return { success: true };
@@ -780,7 +936,7 @@ export const requestsRouter = router({
   }),
 
   /**
-   * Retry a failed request by intelligently resuming from the appropriate step
+   * Reprocess a request from scratch - deletes encoded files and resets all items to PENDING
    */
   retry: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
     const request = await prisma.mediaRequest.findUnique({
@@ -809,51 +965,26 @@ export const requestsRouter = router({
       const mediaType = request.type === MediaType.MOVIE ? "MOVIE" : "TV";
       templateId = await getDefaultTemplate(mediaType);
       console.log(
-        `[Retry] Found branch template ${execution.templateId}, using default ${mediaType} template ${templateId} instead`
+        `[Reprocess] Found branch template ${execution.templateId}, using default ${mediaType} template ${templateId} instead`
       );
     }
 
-    // Analyze current state to determine where to resume from
-    let status: RequestStatus = RequestStatus.PENDING;
-    let progress = 0;
-    let currentStep = "Starting pipeline...";
+    // Collect file paths and job IDs to delete BEFORE starting transaction
+    const processingItems = await prisma.processingItem.findMany({
+      where: { requestId: input.id },
+    });
 
-    if (request.type === "TV") {
-      // Check episode statuses to determine resume point
-      const episodes = await prisma.processingItem.findMany({
-        where: { requestId: input.id, type: "EPISODE" },
-        select: { status: true },
-      });
+    const filesToDelete: string[] = [];
+    for (const item of processingItems) {
+      const stepContext = item.stepContext as Record<string, unknown>;
+      const encodeData = stepContext?.encode as Record<string, unknown>;
+      const encodedFiles = encodeData?.encodedFiles as Array<{ path: string }>;
 
-      if (episodes.length > 0) {
-        const statusCounts = episodes.reduce(
-          (acc: Record<string, number>, ep: { status: ProcessingStatus }) => {
-            acc[ep.status] = (acc[ep.status] || 0) + 1;
-            return acc;
-          },
-          {} as Record<string, number>
-        );
-
-        const downloadedOrLater =
-          (statusCounts.DOWNLOADED || 0) +
-          (statusCounts.ENCODING || 0) +
-          (statusCounts.ENCODED || 0) +
-          (statusCounts.DELIVERING || 0) +
-          (statusCounts.COMPLETED || 0);
-
-        // If most episodes are downloaded or beyond, skip search/download
-        if (downloadedOrLater > episodes.length / 2) {
-          status = RequestStatus.DOWNLOADING;
-          progress = 50;
-          currentStep = `${downloadedOrLater} episodes ready - resuming from encoding`;
-          console.log(
-            `[Retry] Skipping search/download for ${request.title} - ${downloadedOrLater}/${episodes.length} episodes already downloaded`
-          );
-        }
+      if (encodedFiles && encodedFiles.length > 0) {
+        filesToDelete.push(...encodedFiles.map((f) => f.path));
       }
     }
 
-    // Check for active encoding jobs to avoid duplicates
     const activeEncodingJobs = await prisma.job.findMany({
       where: {
         requestId: input.id,
@@ -865,50 +996,128 @@ export const requestsRouter = router({
       },
     });
 
-    if (activeEncodingJobs.length > 0) {
-      console.log(
-        `[Retry] Found ${activeEncodingJobs.length} active encoding jobs for ${request.title}, cancelling them first`
-      );
+    // Execute database updates in a transaction
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Cancel active encoding jobs
+      if (activeEncodingJobs.length > 0) {
+        console.log(
+          `[Reprocess] Cancelling ${activeEncodingJobs.length} active encoding jobs for ${request.title}`
+        );
 
-      // Cancel active encoding assignments
-      for (const job of activeEncodingJobs) {
-        if (job.encoderAssignment) {
-          const assignment = job.encoderAssignment;
-          if (["PENDING", "ASSIGNED", "ENCODING"].includes(assignment.status)) {
-            await prisma.encoderAssignment.update({
-              where: { id: assignment.id },
-              data: { status: "CANCELLED" },
-            });
+        for (const job of activeEncodingJobs) {
+          if (job.encoderAssignment) {
+            const assignment = job.encoderAssignment;
+            if (["PENDING", "ASSIGNED", "ENCODING"].includes(assignment.status)) {
+              await tx.encoderAssignment.update({
+                where: { id: assignment.id },
+                data: { status: "CANCELLED" },
+              });
+            }
           }
+          await tx.job.update({
+            where: { id: job.id },
+            data: { status: "FAILED" },
+          });
         }
-        // Mark job as failed so it can be retried
-        await prisma.job.update({
-          where: { id: job.id },
-          data: { status: "FAILED" },
-        });
+      }
+
+      // Reset ALL ProcessingItems to PENDING and clear context (including COMPLETED)
+      await tx.processingItem.updateMany({
+        where: {
+          requestId: input.id,
+        },
+        data: {
+          status: ProcessingStatus.PENDING,
+          lastError: null,
+          stepContext: Prisma.JsonNull,
+          downloadId: null,
+          encodingJobId: null,
+          progress: 0,
+          lastProgressUpdate: null,
+          lastProgressValue: null,
+          checkpoint: Prisma.JsonNull,
+          currentStep: null,
+          skipUntil: null,
+          nextRetryAt: null,
+          attempts: 0,
+        },
+      });
+
+      // Delete existing pipeline executions
+      await tx.pipelineExecution.deleteMany({
+        where: { requestId: input.id },
+      });
+
+      // Fetch template for new execution
+      const template = await tx.pipelineTemplate.findUnique({
+        where: { id: templateId },
+      });
+
+      if (!template) {
+        throw new Error(`Pipeline template ${templateId} not found`);
+      }
+
+      // Create new pipeline execution
+      const initialContext: PipelineContext = {
+        requestId: request.id,
+        mediaType: request.type,
+        tmdbId: request.tmdbId,
+        title: request.title,
+        year: request.year,
+        requestedSeasons: request.requestedSeasons,
+        requestedEpisodes: request.requestedEpisodes as
+          | Array<{ season: number; episode: number }>
+          | undefined,
+        targets: request.targets as Array<{ serverId: string; encodingProfileId?: string }>,
+        processingItemId: request.id,
+      };
+
+      await tx.pipelineExecution.create({
+        data: {
+          requestId: input.id,
+          templateId,
+          status: "RUNNING" as ExecutionStatus,
+          currentStep: 0,
+          steps: template.steps as unknown as Prisma.JsonArray,
+          context: initialContext as unknown as Prisma.JsonObject,
+          startedAt: new Date(),
+        },
+      });
+    });
+
+    // Delete files AFTER transaction completes (so DB is consistent even if file deletion fails)
+    for (const filePath of filesToDelete) {
+      try {
+        const fileObj = Bun.file(filePath);
+        if (await fileObj.exists()) {
+          await Bun.$`rm -f ${filePath}`.quiet();
+          console.log(`[Reprocess] Deleted encoded file: ${filePath}`);
+        }
+      } catch (err) {
+        console.warn(
+          `[Reprocess] Failed to delete encoded file: ${err instanceof Error ? err.message : "Unknown"}`
+        );
       }
     }
 
-    // Reset request status to resume point
-    await prisma.mediaRequest.update({
-      where: { id: input.id },
-      data: {
-        status,
-        progress,
-        currentStep,
-        error: null,
-      },
-    });
+    console.log(
+      `[Reprocess] Reset request ${request.title} to PENDING with template ${templateId}`
+    );
 
-    // Start a new pipeline execution
-    const executor = getPipelineExecutor();
-    executor.startExecution(request.id, templateId).catch(async (error) => {
-      console.error(`Pipeline retry failed for request ${request.id}:`, error);
-      await prisma.mediaRequest.update({
-        where: { id: request.id },
-        data: { status: RequestStatus.FAILED, error: error.message },
-      });
-    });
+    // NOTE: Old pipeline executor disabled - workers now handle all processing
+    // Items in PENDING status will be picked up automatically by SearchWorker
+    // const executor = getPipelineExecutor();
+    // executor.startExecution(request.id, templateId).catch(async (error) => {
+    //   console.error(`Pipeline retry failed for request ${request.id}:`, error);
+    //   // Mark all ProcessingItems as failed (MediaRequest status computed from items)
+    //   await prisma.processingItem.updateMany({
+    //     where: { requestId: request.id },
+    //     data: {
+    //       status: ProcessingStatus.FAILED,
+    //       lastError: `Pipeline failed to start: ${error.message}`,
+    //     },
+    //   });
+    // });
 
     return { success: true };
   }),
@@ -1185,26 +1394,47 @@ export const requestsRouter = router({
 
   /**
    * Get alternative releases for a quality-unavailable request
+   * NEW: Reads from ProcessingItem.stepContext instead of MediaRequest
    */
   getAlternatives: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
     const request = await prisma.mediaRequest.findUnique({
       where: { id: input.id },
-      select: {
-        status: true,
-        requiredResolution: true,
-        availableReleases: true,
-        title: true,
-        year: true,
-        type: true,
+      include: {
+        processingItems: {
+          where: {
+            status: ProcessingStatus.FOUND,
+          },
+        },
       },
     });
 
     if (!request) return null;
 
+    // Find items with alternativeReleases in stepContext
+    const itemsWithAlternatives = request.processingItems.filter(
+      (item: { stepContext: unknown }) => {
+        const stepContext = item.stepContext as Record<string, unknown>;
+        return (
+          stepContext?.qualityMet === false &&
+          Array.isArray(stepContext?.alternativeReleases) &&
+          stepContext.alternativeReleases.length > 0
+        );
+      }
+    );
+
+    // If no items with alternatives, return null
+    if (itemsWithAlternatives.length === 0) {
+      return null;
+    }
+
+    // Get data from first item (all items should have same alternatives for a request)
+    const firstItem = itemsWithAlternatives[0];
+    const stepContext = firstItem.stepContext as Record<string, unknown>;
+
     return {
       status: fromRequestStatus(request.status),
-      requiredResolution: request.requiredResolution,
-      availableReleases: request.availableReleases as unknown[] | null,
+      requiredResolution: (stepContext?.bestAvailableQuality as string) || "Unknown",
+      availableReleases: (stepContext?.alternativeReleases as unknown[]) || [],
       title: request.title,
       year: request.year,
       type: fromMediaType(request.type),
@@ -1213,6 +1443,7 @@ export const requestsRouter = router({
 
   /**
    * Accept a lower-quality release for a quality-unavailable request
+   * NEW: Works with ProcessingItem.stepContext instead of MediaRequest.availableReleases
    */
   acceptLowerQuality: publicProcedure
     .input(
@@ -1224,68 +1455,201 @@ export const requestsRouter = router({
     .mutation(async ({ input }) => {
       const request = await prisma.mediaRequest.findUnique({
         where: { id: input.id },
+        include: {
+          processingItems: {
+            where: {
+              status: ProcessingStatus.FOUND,
+            },
+          },
+        },
       });
 
       if (!request) {
         throw new Error("Request not found");
       }
 
-      if (request.status !== RequestStatus.QUALITY_UNAVAILABLE) {
-        throw new Error("Request not in QUALITY_UNAVAILABLE status");
+      // Find processing items in FOUND status with alternativeReleases
+      const itemsWithAlternatives = request.processingItems.filter(
+        (item: { stepContext: unknown }) => {
+          const stepContext = item.stepContext as Record<string, unknown>;
+          return (
+            stepContext?.qualityMet === false &&
+            Array.isArray(stepContext?.alternativeReleases) &&
+            stepContext.alternativeReleases.length > 0
+          );
+        }
+      );
+
+      if (itemsWithAlternatives.length === 0) {
+        throw new Error("No items waiting for quality acceptance");
       }
 
-      const releases = request.availableReleases as unknown[] | null;
+      // Get alternativeReleases from the first item (they should all be the same for a request)
+      const firstItem = itemsWithAlternatives[0];
+      const stepContext = firstItem.stepContext as Record<string, unknown>;
+      const releases = stepContext?.alternativeReleases as unknown[] | null;
+
       if (!releases || !releases[input.releaseIndex]) {
         throw new Error("Invalid release index");
       }
 
       const selectedRelease = releases[input.releaseIndex] as Record<string, unknown>;
 
-      // Update request with selected release and proceed
-      await prisma.mediaRequest.update({
-        where: { id: input.id },
+      // Update all items with the selected release and transition back to PENDING
+      await prisma.processingItem.updateMany({
+        where: {
+          id: { in: itemsWithAlternatives.map((i: { id: string }) => i.id) },
+        },
         data: {
-          status: RequestStatus.PENDING,
-          selectedRelease: selectedRelease as Prisma.JsonObject,
-          // Capture initial torrent metadata
-          releaseFileSize: selectedRelease.size ? BigInt(selectedRelease.size as number) : null,
-          releaseIndexerName: (selectedRelease.indexerName as string | undefined) || null,
-          releaseSeeders: (selectedRelease.seeders as number | undefined) || null,
-          releaseLeechers: (selectedRelease.leechers as number | undefined) || null,
-          releaseResolution: (selectedRelease.resolution as string | undefined) || null,
-          releaseSource: (selectedRelease.source as string | undefined) || null,
-          releaseCodec: (selectedRelease.codec as string | undefined) || null,
-          releaseScore: (selectedRelease.score as number | undefined) || null,
-          releasePublishDate: selectedRelease.publishDate
-            ? new Date(selectedRelease.publishDate as string | number | Date)
-            : null,
-          releaseName: (selectedRelease.title as string | undefined) || null,
-          progress: 0,
-          currentStep: `Accepted lower quality: ${String(selectedRelease.resolution || "unknown")}`,
-          currentStepStartedAt: new Date(),
-          error: null,
+          status: ProcessingStatus.PENDING,
+          lastError: null,
+          stepContext: {
+            selectedRelease,
+            qualityMet: true,
+          } as unknown as Prisma.JsonObject,
         },
       });
 
-      // Restart pipeline with the selected release
-      const execution = await prisma.pipelineExecution.findFirst({
-        where: { requestId: input.id, parentExecutionId: null },
-        orderBy: { startedAt: "desc" },
-        select: { templateId: true },
-      });
+      console.log(
+        `[acceptLowerQuality] Accepted lower quality for ${itemsWithAlternatives.length} item(s): ${selectedRelease.title}`
+      );
 
-      if (execution) {
-        const executor = getPipelineExecutor();
-        executor.startExecution(request.id, execution.templateId).catch(async (error) => {
-          console.error(`Pipeline restart failed for request ${request.id}:`, error);
-          await prisma.mediaRequest.update({
-            where: { id: request.id },
-            data: { status: RequestStatus.FAILED, error: error.message },
-          });
-        });
-      }
+      // Items in PENDING status will be picked up automatically by SearchWorker
+      // SearchWorker will see selectedRelease in stepContext and skip search
 
       return { success: true };
+    }),
+
+  /**
+   * Manual search for releases when processing items have no downloadId
+   */
+  manualSearch: publicProcedure
+    .input(z.object({ requestId: z.string() }))
+    .query(async ({ input }) => {
+      const request = await prisma.mediaRequest.findUnique({
+        where: { id: input.requestId },
+        include: { processingItems: true },
+      });
+
+      if (!request) {
+        throw new Error("Request not found");
+      }
+
+      const seasonsNeedingDownloads =
+        request.type === MediaType.TV
+          ? [
+              ...new Set(
+                request.processingItems
+                  .filter(
+                    (item: { downloadId: string | null; season: number | null }) =>
+                      !item.downloadId && item.season !== null
+                  )
+                  .map((item: { season: number | null }) => item.season as number)
+              ),
+            ]
+          : [];
+
+      const { getIndexerService } = await import("../services/indexer.js");
+      const indexerService = getIndexerService();
+      const releases = await indexerService.search({
+        type: request.type === MediaType.MOVIE ? "movie" : "tv",
+        tmdbId: request.tmdbId,
+        year: request.year,
+        season: seasonsNeedingDownloads[0] as number | undefined,
+      });
+
+      return {
+        releases: releases.releases,
+        requestInfo: {
+          type: fromMediaType(request.type),
+          title: request.title,
+          year: request.year,
+          seasonsNeedingDownloads,
+        },
+      };
+    }),
+
+  /**
+   * Select a manual release for download
+   */
+  selectManualRelease: publicProcedure
+    .input(
+      z.object({
+        requestId: z.string(),
+        release: releaseSchema,
+      })
+    )
+    .mutation(async ({ input }) => {
+      const { requestId, release } = input;
+
+      const request = await prisma.mediaRequest.findUnique({
+        where: { id: requestId },
+        include: {
+          processingItems: {
+            where: { downloadId: null },
+          },
+        },
+      });
+
+      if (!request) {
+        throw new Error("Request not found");
+      }
+
+      const { parseTorrentName, createDownload } = await import("../services/downloadManager.js");
+      const parsed = parseTorrentName(release.title);
+      const isSeasonPack = parsed.season !== undefined && parsed.episode === undefined;
+
+      const download = await createDownload({
+        requestId,
+        mediaType: request.type,
+        release,
+        isSeasonPack,
+        season: parsed.season,
+      });
+
+      if (!download) {
+        throw new Error("Failed to create download");
+      }
+
+      let affectedItems = request.processingItems;
+
+      if (request.type === MediaType.TV) {
+        if (isSeasonPack && parsed.season !== null) {
+          affectedItems = request.processingItems.filter(
+            (item: { season: number | null }) => item.season === parsed.season
+          );
+        } else if (parsed.episode !== null && parsed.season !== null) {
+          affectedItems = request.processingItems.filter(
+            (item: { season: number | null; episode: number | null }) =>
+              item.season === parsed.season && item.episode === parsed.episode
+          );
+        }
+      }
+
+      await prisma.$transaction([
+        prisma.processingItem.updateMany({
+          where: { id: { in: affectedItems.map((i: { id: string }) => i.id) } },
+          data: {
+            downloadId: download.id,
+            status: ProcessingStatus.DOWNLOADING,
+            currentStep: "download",
+            stepContext: Prisma.JsonNull,
+          },
+        }),
+        prisma.activityLog.create({
+          data: {
+            type: "DOWNLOAD_MANUAL_SEARCH",
+            message: `Manual search: selected "${release.title}" for ${affectedItems.length} items`,
+            requestId,
+          },
+        }),
+      ]);
+
+      return {
+        success: true,
+        downloadId: download.id,
+        affectedItems: affectedItems.length,
+      };
     }),
 
   /**
@@ -1310,34 +1674,44 @@ export const requestsRouter = router({
         throw new Error("Request cannot be refreshed from current status");
       }
 
+      // Clear user's selected release (configuration)
       await prisma.mediaRequest.update({
         where: { id: input.id },
         data: {
-          status: RequestStatus.PENDING,
           selectedRelease: Prisma.JsonNull,
-          availableReleases: Prisma.JsonNull,
-          currentStep: "Re-searching for quality releases...",
-          currentStepStartedAt: new Date(),
-          error: null,
         },
       });
 
-      const execution = await prisma.pipelineExecution.findFirst({
-        where: { requestId: input.id, parentExecutionId: null },
-        orderBy: { startedAt: "desc" },
-        select: { templateId: true },
+      // Reset ProcessingItems to PENDING to restart search
+      await prisma.processingItem.updateMany({
+        where: { requestId: input.id },
+        data: {
+          status: ProcessingStatus.PENDING,
+          lastError: null,
+        },
       });
 
-      if (execution) {
-        const executor = getPipelineExecutor();
-        executor.startExecution(request.id, execution.templateId).catch(async (error) => {
-          console.error(`Pipeline restart failed for request ${request.id}:`, error);
-          await prisma.mediaRequest.update({
-            where: { id: request.id },
-            data: { status: RequestStatus.FAILED, error: error.message },
-          });
-        });
-      }
+      // NOTE: Old pipeline executor disabled - workers now handle all processing
+      // const execution = await prisma.pipelineExecution.findFirst({
+      //   where: { requestId: input.id, parentExecutionId: null },
+      //   orderBy: { startedAt: "desc" },
+      //   select: { templateId: true },
+      // });
+      // Items in PENDING status will be picked up automatically by SearchWorker
+      // if (execution) {
+      //   const executor = getPipelineExecutor();
+      //   executor.startExecution(request.id, execution.templateId).catch(async (error) => {
+      //     console.error(`Pipeline restart failed for request ${request.id}:`, error);
+      //     // Mark all ProcessingItems as failed (MediaRequest status computed from items)
+      //     await prisma.processingItem.updateMany({
+      //       where: { requestId: request.id },
+      //       data: {
+      //         status: ProcessingStatus.FAILED,
+      //         lastError: `Pipeline failed to start: ${error.message}`,
+      //       },
+      //     });
+      //   });
+      // }
 
       return { success: true };
     }),
