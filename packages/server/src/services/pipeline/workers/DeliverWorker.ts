@@ -420,6 +420,7 @@ export class DeliverWorker extends BaseWorker {
     const newStepContext = {
       ...stepContext,
       deliver: deliverContext,
+      deliveryResults: deliverContext,
       allDeliveriesComplete: true,
     };
 
