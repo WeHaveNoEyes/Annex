@@ -109,6 +109,13 @@ export class RequestStatusComputer {
       status = "ENCODING";
     } else if (items.some((i: (typeof items)[0]) => i.status === "DELIVERING")) {
       status = "DELIVERING";
+    } else if (
+      items.some(
+        (i: (typeof items)[0]) =>
+          i.status === "FOUND" && i.currentStep === "search_quality_unavailable"
+      )
+    ) {
+      status = "QUALITY_UNAVAILABLE";
     } else if (items.some((i: (typeof items)[0]) => i.status === "SEARCHING")) {
       status = "SEARCHING";
     } else if (items.some((i: (typeof items)[0]) => i.status === "PENDING")) {
@@ -241,6 +248,13 @@ export class RequestStatusComputer {
         status = "ENCODING";
       } else if (items.some((i: (typeof items)[0]) => i.status === "DELIVERING")) {
         status = "DELIVERING";
+      } else if (
+        items.some(
+          (i: (typeof items)[0]) =>
+            i.status === "FOUND" && i.currentStep === "search_quality_unavailable"
+        )
+      ) {
+        status = "QUALITY_UNAVAILABLE";
       } else if (items.some((i: (typeof items)[0]) => i.status === "SEARCHING")) {
         status = "SEARCHING";
       } else if (items.some((i: (typeof items)[0]) => i.status === "PENDING")) {

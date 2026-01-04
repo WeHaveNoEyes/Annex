@@ -704,11 +704,19 @@ export const requestsRouter = router({
           requiredResolution: r.requiredResolution,
           hasAlternatives: r.processingItems.some((item: { stepContext: unknown }) => {
             const stepContext = item.stepContext as Record<string, unknown>;
-            return (
+            const hasAlts =
               stepContext?.qualityMet === false &&
               Array.isArray(stepContext?.alternativeReleases) &&
-              stepContext.alternativeReleases.length > 0
-            );
+              stepContext.alternativeReleases.length > 0;
+            if (hasAlts && r.title?.includes("Florida")) {
+              const altCount = Array.isArray(stepContext?.alternativeReleases)
+                ? stepContext.alternativeReleases.length
+                : 0;
+              console.log(
+                `[Requests API] ${r.title}: hasAlternatives=true, qualityMet=${stepContext?.qualityMet}, alts=${altCount}`
+              );
+            }
+            return hasAlts;
           }),
           qualitySearchedAt: r.qualitySearchedAt,
           createdAt: r.createdAt,
