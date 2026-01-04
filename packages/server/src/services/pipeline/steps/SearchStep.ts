@@ -622,14 +622,14 @@ export class SearchStep extends BaseStep {
 
           if (packsForSeason && packsForSeason.length > 0) {
             // Rank and select best pack for this season
-            const { matching: ranked } = rankReleasesWithQualityFilter(
+            const result = rankReleasesWithQualityFilter(
               packsForSeason,
               requiredResolution,
-              1
+              10 // Get up to 10 for alternatives
             );
 
-            if (ranked.length > 0) {
-              const bestPack = ranked[0].release;
+            if (result.matching.length > 0) {
+              const bestPack = result.matching[0].release;
               selectedPacks.push({ season, release: bestPack });
 
               // DON'T spawn branch pipelines yet - season pack needs to download and extract first
@@ -649,10 +649,11 @@ export class SearchStep extends BaseStep {
                 }
               );
             }
+            // If no packs met quality for this season, fall back to individual episodes
           }
         }
 
-        // If we found season packs, create downloads for all of them and continue to download step
+        // If we found season packs that meet quality, create downloads for them
         if (selectedPacks.length > 0) {
           await this.logActivity(
             requestId,
@@ -673,6 +674,9 @@ export class SearchStep extends BaseStep {
             },
           };
         }
+
+        // If no season packs met quality, fall back to individual episodes
+        // Individual episode branches will search and collect alternatives if needed
 
         if (spawnedBranches > 0) {
           await this.logActivity(
@@ -696,9 +700,10 @@ export class SearchStep extends BaseStep {
           };
         }
 
-        // No quality packs found, fall through to normal selection
-        filteredReleases = seasonPacks;
-      } else if (individualEpisodes.length > 0) {
+        // No quality packs found, fall through to individual episodes
+      }
+
+      if (individualEpisodes.length > 0) {
         // Strategy 2: For individual episodes
         // If processing a SINGLE episode (Worker-based system), select and return the best release
         // If processing MULTIPLE episodes (OLD pipeline system), spawn branch pipelines
@@ -978,9 +983,11 @@ export class SearchStep extends BaseStep {
           success: true,
           nextStep: null, // Stop pipeline here, don't proceed to download
           data: {
-            qualityMet: false,
+            search: {
+              qualityMet: false,
+              alternativeReleases: belowQuality.slice(0, 10),
+            },
             bestAvailableQuality: bestAvailable,
-            alternativeReleases: belowQuality.slice(0, 10),
           },
         };
       }

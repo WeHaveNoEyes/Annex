@@ -45,13 +45,16 @@ export class ValidationFramework {
         break;
 
       case "FOUND": {
-        // Requires either a selected release, season packs, or existing download in stepContext
+        // Requires either a selected release, season packs, existing download, or alternatives in stepContext
         const searchContext = item.stepContext as Record<string, unknown>;
         const hasSelectedRelease = !!searchContext?.selectedRelease;
         const hasSelectedPacks = !!searchContext?.selectedPacks;
         const hasExistingDownload = !!searchContext?.existingDownload;
+        const hasAlternatives =
+          Array.isArray(searchContext?.alternativeReleases) &&
+          searchContext.alternativeReleases.length > 0;
 
-        if (!hasSelectedRelease && !hasSelectedPacks && !hasExistingDownload) {
+        if (!hasSelectedRelease && !hasSelectedPacks && !hasExistingDownload && !hasAlternatives) {
           errors.push("No release selected from search results");
         }
         break;
@@ -154,26 +157,32 @@ export class ValidationFramework {
         break;
 
       case "SEARCHING": {
-        // Must have found either a new release, season packs, or existing download
+        // Must have found either a new release, season packs, existing download, or alternatives
         const searchContext = item.stepContext as Record<string, unknown>;
         const hasSelectedRelease = !!searchContext?.selectedRelease;
         const hasSelectedPacks = !!searchContext?.selectedPacks;
         const hasExistingDownload = !!searchContext?.existingDownload;
+        const hasAlternatives =
+          Array.isArray(searchContext?.alternativeReleases) &&
+          searchContext.alternativeReleases.length > 0;
 
-        if (!hasSelectedRelease && !hasSelectedPacks && !hasExistingDownload) {
+        if (!hasSelectedRelease && !hasSelectedPacks && !hasExistingDownload && !hasAlternatives) {
           errors.push("No search results found");
         }
         break;
       }
 
       case "FOUND": {
-        // Must have either selected a release, season packs, or found existing download
+        // Must have either selected a release, season packs, existing download, or alternatives
         const foundContext = item.stepContext as Record<string, unknown>;
         const hasSelectedRelease = !!foundContext?.selectedRelease;
         const hasSelectedPacks = !!foundContext?.selectedPacks;
         const hasExistingDownload = !!foundContext?.existingDownload;
+        const hasAlternatives =
+          Array.isArray(foundContext?.alternativeReleases) &&
+          foundContext.alternativeReleases.length > 0;
 
-        if (!hasSelectedRelease && !hasSelectedPacks && !hasExistingDownload) {
+        if (!hasSelectedRelease && !hasSelectedPacks && !hasExistingDownload && !hasAlternatives) {
           errors.push("No release selected");
         }
         break;
