@@ -84,6 +84,11 @@ export class DownloadWorker extends BaseWorker {
         console.log(
           `[${this.name}] Early exit: ${item.title} download already complete, promoting to DOWNLOADED`
         );
+        // Transition through DOWNLOADING to reach DOWNLOADED (state machine requirement)
+        await pipelineOrchestrator.transitionStatus(item.id, "DOWNLOADING", {
+          currentStep: "download_early_exit",
+          downloadId: item.downloadId,
+        });
         // Get torrent details for file path
         const qb = getDownloadService();
         const torrent = await qb.getProgress(download.torrentHash);

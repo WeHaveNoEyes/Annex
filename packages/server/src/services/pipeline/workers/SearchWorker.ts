@@ -28,8 +28,12 @@ export class SearchWorker extends BaseWorker {
       console.log(
         `[${this.name}] Early exit: ${item.title} already has download, promoting to FOUND`
       );
+      // Transition through SEARCHING to reach FOUND (state machine requirement)
+      await pipelineOrchestrator.transitionStatus(item.id, "SEARCHING", {
+        currentStep: "search",
+      });
       await pipelineOrchestrator.transitionStatus(item.id, "FOUND", {
-        currentStep: "search_skipped",
+        currentStep: "search_complete",
       });
       return;
     }

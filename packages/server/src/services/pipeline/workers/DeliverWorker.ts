@@ -134,6 +134,10 @@ export class DeliverWorker extends BaseWorker {
       console.log(
         `[${this.name}] Early exit: ${item.title} already delivered to all servers, promoting to COMPLETED`
       );
+      // Transition through DELIVERING to reach COMPLETED (state machine requirement)
+      await pipelineOrchestrator.transitionStatus(item.id, "DELIVERING", {
+        currentStep: "deliver",
+      });
       await this.handleCompletedDelivery(item, encodeData, checkpoint.deliveredServers);
       return;
     }

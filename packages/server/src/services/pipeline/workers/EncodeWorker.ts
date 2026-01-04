@@ -97,6 +97,11 @@ export class EncodeWorker extends BaseWorker {
         console.log(
           `[${this.name}] Early exit: ${item.title} encoding already complete, promoting to ENCODED`
         );
+        // Transition through ENCODING to reach ENCODED (state machine requirement)
+        await pipelineOrchestrator.transitionStatus(item.id, "ENCODING", {
+          currentStep: "encode_early_exit",
+          encodingJobId: item.encodingJobId,
+        });
         await this.handleCompletedEncoding(item, assignment, null);
         return;
       }
