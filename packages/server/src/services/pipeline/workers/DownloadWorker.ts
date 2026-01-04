@@ -161,9 +161,25 @@ export class DownloadWorker extends BaseWorker {
 
         const torrentData = await response.arrayBuffer();
         const filename = `${release.title}.torrent`;
+        const tag = `annex-${item.id}`;
 
         console.log(`[${this.name}] Adding torrent file to qBittorrent: ${filename}`);
-        result = await qb.addTorrentFile(torrentData, filename);
+        result = await qb.addTorrentFile(torrentData, filename, { tags: [tag] });
+
+        if (!result.success) {
+          throw new Error(result.error || "Failed to add torrent to qBittorrent");
+        }
+
+        // Use tag to find the torrent (qBittorrent doesn't return hash for file uploads)
+        console.log(`[${this.name}] Finding torrent by tag: ${tag}`);
+        const torrent = await qb.findTorrentByTag(tag, 10000);
+
+        if (!torrent) {
+          throw new Error("Torrent added but could not be found by tag");
+        }
+
+        result.hash = torrent.hash;
+        console.log(`[${this.name}] Found torrent hash via tag: ${torrent.hash}`);
       } else {
         throw new Error("No valid download method available");
       }
@@ -172,25 +188,7 @@ export class DownloadWorker extends BaseWorker {
         throw new Error(result.error || "Failed to add torrent to qBittorrent");
       }
 
-      // For torrent files, hash may not be returned immediately
-      // We'll need to find it by tag or wait for it to appear
-      let torrentHash = result.hash;
-
-      if (!torrentHash && release.downloadUrl) {
-        // Wait a moment for qBittorrent to process the file
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-
-        // Try to find the torrent by name
-        const torrents = await qb.getAllTorrents();
-        const matchingTorrent = torrents.find((t: { name: string }) => t.name === release.title);
-
-        if (!matchingTorrent) {
-          throw new Error("Torrent added but hash could not be determined");
-        }
-
-        torrentHash = matchingTorrent.hash;
-        console.log(`[${this.name}] Found torrent hash: ${torrentHash}`);
-      }
+      const torrentHash = result.hash;
 
       if (!torrentHash) {
         throw new Error("Failed to get torrent hash");
