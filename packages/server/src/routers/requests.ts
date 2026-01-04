@@ -911,19 +911,20 @@ export const requestsRouter = router({
       },
     });
 
-    // Start a new pipeline execution
-    const executor = getPipelineExecutor();
-    executor.startExecution(request.id, templateId).catch(async (error) => {
-      console.error(`Pipeline retry failed for request ${request.id}:`, error);
-      // Mark all ProcessingItems as failed (MediaRequest status computed from items)
-      await prisma.processingItem.updateMany({
-        where: { requestId: request.id },
-        data: {
-          status: ProcessingStatus.FAILED,
-          lastError: `Pipeline failed to start: ${error.message}`,
-        },
-      });
-    });
+    // NOTE: Old pipeline executor disabled - workers now handle all processing
+    // Items in PENDING status will be picked up automatically by SearchWorker
+    // const executor = getPipelineExecutor();
+    // executor.startExecution(request.id, templateId).catch(async (error) => {
+    //   console.error(`Pipeline retry failed for request ${request.id}:`, error);
+    //   // Mark all ProcessingItems as failed (MediaRequest status computed from items)
+    //   await prisma.processingItem.updateMany({
+    //     where: { requestId: request.id },
+    //     data: {
+    //       status: ProcessingStatus.FAILED,
+    //       lastError: `Pipeline failed to start: ${error.message}`,
+    //     },
+    //   });
+    // });
 
     return { success: true };
   }),
@@ -1273,27 +1274,28 @@ export const requestsRouter = router({
         },
       });
 
+      // NOTE: Old pipeline executor disabled - workers now handle all processing
       // Restart pipeline with the selected release
-      const execution = await prisma.pipelineExecution.findFirst({
-        where: { requestId: input.id, parentExecutionId: null },
-        orderBy: { startedAt: "desc" },
-        select: { templateId: true },
-      });
-
-      if (execution) {
-        const executor = getPipelineExecutor();
-        executor.startExecution(request.id, execution.templateId).catch(async (error) => {
-          console.error(`Pipeline restart failed for request ${request.id}:`, error);
-          // Mark all ProcessingItems as failed (MediaRequest status computed from items)
-          await prisma.processingItem.updateMany({
-            where: { requestId: request.id },
-            data: {
-              status: ProcessingStatus.FAILED,
-              lastError: `Pipeline failed to start: ${error.message}`,
-            },
-          });
-        });
-      }
+      // const execution = await prisma.pipelineExecution.findFirst({
+      //   where: { requestId: input.id, parentExecutionId: null },
+      //   orderBy: { startedAt: "desc" },
+      //   select: { templateId: true },
+      // });
+      // Items in PENDING status will be picked up automatically by SearchWorker
+      // if (execution) {
+      //   const executor = getPipelineExecutor();
+      //   executor.startExecution(request.id, execution.templateId).catch(async (error) => {
+      //     console.error(`Pipeline restart failed for request ${request.id}:`, error);
+      //     // Mark all ProcessingItems as failed (MediaRequest status computed from items)
+      //     await prisma.processingItem.updateMany({
+      //       where: { requestId: request.id },
+      //       data: {
+      //         status: ProcessingStatus.FAILED,
+      //         lastError: `Pipeline failed to start: ${error.message}`,
+      //       },
+      //     });
+      //   });
+      // }
 
       return { success: true };
     }),
@@ -1469,26 +1471,27 @@ export const requestsRouter = router({
         },
       });
 
-      const execution = await prisma.pipelineExecution.findFirst({
-        where: { requestId: input.id, parentExecutionId: null },
-        orderBy: { startedAt: "desc" },
-        select: { templateId: true },
-      });
-
-      if (execution) {
-        const executor = getPipelineExecutor();
-        executor.startExecution(request.id, execution.templateId).catch(async (error) => {
-          console.error(`Pipeline restart failed for request ${request.id}:`, error);
-          // Mark all ProcessingItems as failed (MediaRequest status computed from items)
-          await prisma.processingItem.updateMany({
-            where: { requestId: request.id },
-            data: {
-              status: ProcessingStatus.FAILED,
-              lastError: `Pipeline failed to start: ${error.message}`,
-            },
-          });
-        });
-      }
+      // NOTE: Old pipeline executor disabled - workers now handle all processing
+      // const execution = await prisma.pipelineExecution.findFirst({
+      //   where: { requestId: input.id, parentExecutionId: null },
+      //   orderBy: { startedAt: "desc" },
+      //   select: { templateId: true },
+      // });
+      // Items in PENDING status will be picked up automatically by SearchWorker
+      // if (execution) {
+      //   const executor = getPipelineExecutor();
+      //   executor.startExecution(request.id, execution.templateId).catch(async (error) => {
+      //     console.error(`Pipeline restart failed for request ${request.id}:`, error);
+      //     // Mark all ProcessingItems as failed (MediaRequest status computed from items)
+      //     await prisma.processingItem.updateMany({
+      //       where: { requestId: request.id },
+      //       data: {
+      //         status: ProcessingStatus.FAILED,
+      //         lastError: `Pipeline failed to start: ${error.message}`,
+      //       },
+      //     });
+      //   });
+      // }
 
       return { success: true };
     }),
