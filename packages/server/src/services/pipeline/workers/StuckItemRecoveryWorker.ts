@@ -31,6 +31,8 @@ export class StuckItemRecoveryWorker extends BaseWorker {
     await this.recoverFoundWithoutDownloadId();
     await this.recoverCompletedDownloads();
     await this.recoverMixedSeasonDownloads();
+    await this.recoverStuckDelivering();
+    await this.recoverStuckEncoding();
   }
 
   /**
@@ -288,6 +290,68 @@ export class StuckItemRecoveryWorker extends BaseWorker {
           downloadId: season.download_id,
           status: "DOWNLOADING",
           currentStep: "download",
+        },
+      });
+    }
+  }
+
+  /**
+   * Fix items stuck in DELIVERING status for >10 minutes
+   * These are items that failed delivery but didn't properly handle the error
+   */
+  private async recoverStuckDelivering(): Promise<void> {
+    const stuckItems = await prisma.processingItem.findMany({
+      where: {
+        status: "DELIVERING",
+        updatedAt: { lt: new Date(Date.now() - 10 * 60 * 1000) }, // Stuck for >10min
+      },
+    });
+
+    if (stuckItems.length === 0) return;
+
+    console.log(
+      `[${this.name}] Found ${stuckItems.length} items stuck in DELIVERING for >10min, marking as FAILED`
+    );
+
+    // Mark items as FAILED - they've been stuck too long
+    for (const item of stuckItems) {
+      await prisma.processingItem.update({
+        where: { id: item.id },
+        data: {
+          status: "FAILED",
+          lastError: `Delivery stuck for >10 minutes - recovered by StuckItemRecoveryWorker`,
+          updatedAt: new Date(),
+        },
+      });
+    }
+  }
+
+  /**
+   * Fix items stuck in ENCODING status for >30 minutes
+   * These are items where encoding job failed but didn't properly update status
+   */
+  private async recoverStuckEncoding(): Promise<void> {
+    const stuckItems = await prisma.processingItem.findMany({
+      where: {
+        status: "ENCODING",
+        updatedAt: { lt: new Date(Date.now() - 30 * 60 * 1000) }, // Stuck for >30min
+      },
+    });
+
+    if (stuckItems.length === 0) return;
+
+    console.log(
+      `[${this.name}] Found ${stuckItems.length} items stuck in ENCODING for >30min, marking as FAILED`
+    );
+
+    // Mark items as FAILED - encoding jobs should not take more than 30min without updates
+    for (const item of stuckItems) {
+      await prisma.processingItem.update({
+        where: { id: item.id },
+        data: {
+          status: "FAILED",
+          lastError: `Encoding stuck for >30 minutes - recovered by StuckItemRecoveryWorker`,
+          updatedAt: new Date(),
         },
       });
     }

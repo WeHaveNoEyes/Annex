@@ -192,6 +192,10 @@ export class PipelineOrchestrator {
 
     const shouldRetry = retryStrategy.shouldRetry(error, item.attempts, item.maxAttempts);
 
+    console.log(
+      `[PipelineOrchestrator] handleError for ${item.title}: attempts=${item.attempts}, maxAttempts=${item.maxAttempts}, shouldRetry=${shouldRetry}`
+    );
+
     if (shouldRetry) {
       // Calculate next retry time
       const nextRetryAt = retryStrategy.calculateRetryTime(error, item.attempts);
@@ -216,10 +220,15 @@ export class PipelineOrchestrator {
       return updatedItem;
     } else {
       // Mark as failed
+      console.log(
+        `[PipelineOrchestrator] Max attempts reached for ${item.title}, transitioning to FAILED`
+      );
       const errorMessage = retryStrategy.formatError(error);
       const failedItem = await this.transitionStatus(itemId, "FAILED", {
         error: errorMessage,
       });
+
+      console.log(`[PipelineOrchestrator] Successfully transitioned ${item.title} to FAILED`);
 
       // Update request aggregates
       await processingItemRepository.updateRequestAggregates(item.requestId);
