@@ -229,9 +229,22 @@ export class PipelineOrchestrator {
 
       // Keep item in current processing status (DOWNLOADING/ENCODING/DELIVERING) for retry
       // Workers will pick it up based on their status filters
-      // Only reset to PENDING if item is in a non-processing state
+      // Only reset to PENDING if item is in a non-processing state AND has no work in progress
       const processingStatuses: ProcessingStatus[] = ["DOWNLOADING", "ENCODING", "DELIVERING"];
-      const targetStatus = processingStatuses.includes(item.status) ? item.status : "PENDING";
+      const hasWorkInProgress = item.downloadId || item.encodingJobId;
+
+      let targetStatus: ProcessingStatus;
+      if (processingStatuses.includes(item.status)) {
+        // Already in processing status, keep it
+        targetStatus = item.status;
+      } else if (hasWorkInProgress) {
+        // Has work in progress but in non-processing status (e.g., FOUND with downloadId)
+        // Keep current status so appropriate worker can retry
+        targetStatus = item.status;
+      } else {
+        // No work in progress, safe to reset to PENDING
+        targetStatus = "PENDING";
+      }
 
       const updatedItem = await prisma.processingItem.update({
         where: { id: itemId },
