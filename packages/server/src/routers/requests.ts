@@ -949,36 +949,22 @@ export const requestsRouter = router({
       );
     }
 
-    // Get all processing items to find and delete encoded files
+    // Collect file paths and job IDs to delete BEFORE starting transaction
     const processingItems = await prisma.processingItem.findMany({
       where: { requestId: input.id },
     });
 
-    // Delete encoded files from disk
+    const filesToDelete: string[] = [];
     for (const item of processingItems) {
       const stepContext = item.stepContext as Record<string, unknown>;
       const encodeData = stepContext?.encode as Record<string, unknown>;
       const encodedFiles = encodeData?.encodedFiles as Array<{ path: string }>;
 
       if (encodedFiles && encodedFiles.length > 0) {
-        for (const file of encodedFiles) {
-          try {
-            const filePath = file.path;
-            const fileObj = Bun.file(filePath);
-            if (await fileObj.exists()) {
-              await Bun.$`rm -f ${filePath}`.quiet();
-              console.log(`[Reprocess] Deleted encoded file: ${filePath}`);
-            }
-          } catch (err) {
-            console.warn(
-              `[Reprocess] Failed to delete encoded file: ${err instanceof Error ? err.message : "Unknown"}`
-            );
-          }
-        }
+        filesToDelete.push(...encodedFiles.map((f) => f.path));
       }
     }
 
-    // Cancel any active encoding jobs
     const activeEncodingJobs = await prisma.job.findMany({
       where: {
         requestId: input.id,
@@ -990,52 +976,112 @@ export const requestsRouter = router({
       },
     });
 
-    if (activeEncodingJobs.length > 0) {
-      console.log(
-        `[Reprocess] Found ${activeEncodingJobs.length} active encoding jobs for ${request.title}, cancelling them`
-      );
+    // Execute database updates in a transaction
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Cancel active encoding jobs
+      if (activeEncodingJobs.length > 0) {
+        console.log(
+          `[Reprocess] Cancelling ${activeEncodingJobs.length} active encoding jobs for ${request.title}`
+        );
 
-      for (const job of activeEncodingJobs) {
-        if (job.encoderAssignment) {
-          const assignment = job.encoderAssignment;
-          if (["PENDING", "ASSIGNED", "ENCODING"].includes(assignment.status)) {
-            await prisma.encoderAssignment.update({
-              where: { id: assignment.id },
-              data: { status: "CANCELLED" },
-            });
+        for (const job of activeEncodingJobs) {
+          if (job.encoderAssignment) {
+            const assignment = job.encoderAssignment;
+            if (["PENDING", "ASSIGNED", "ENCODING"].includes(assignment.status)) {
+              await tx.encoderAssignment.update({
+                where: { id: assignment.id },
+                data: { status: "CANCELLED" },
+              });
+            }
           }
+          await tx.job.update({
+            where: { id: job.id },
+            data: { status: "FAILED" },
+          });
         }
-        await prisma.job.update({
-          where: { id: job.id },
-          data: { status: "FAILED" },
-        });
+      }
+
+      // Reset ALL ProcessingItems to PENDING and clear context
+      await tx.processingItem.updateMany({
+        where: {
+          requestId: input.id,
+          status: { not: ProcessingStatus.COMPLETED },
+        },
+        data: {
+          status: ProcessingStatus.PENDING,
+          lastError: null,
+          stepContext: Prisma.JsonNull,
+          downloadId: null,
+          encodingJobId: null,
+          progress: 0,
+          lastProgressUpdate: null,
+          lastProgressValue: null,
+          checkpoint: Prisma.JsonNull,
+          currentStep: null,
+          skipUntil: null,
+        },
+      });
+
+      // Delete existing pipeline executions
+      await tx.pipelineExecution.deleteMany({
+        where: { requestId: input.id },
+      });
+
+      // Fetch template for new execution
+      const template = await tx.pipelineTemplate.findUnique({
+        where: { id: templateId },
+      });
+
+      if (!template) {
+        throw new Error(`Pipeline template ${templateId} not found`);
+      }
+
+      // Create new pipeline execution
+      const initialContext: PipelineContext = {
+        requestId: request.id,
+        mediaType: request.type,
+        tmdbId: request.tmdbId,
+        title: request.title,
+        year: request.year,
+        requestedSeasons: request.requestedSeasons,
+        requestedEpisodes: request.requestedEpisodes as
+          | Array<{ season: number; episode: number }>
+          | undefined,
+        targets: request.targets as Array<{ serverId: string; encodingProfileId?: string }>,
+        processingItemId: request.id,
+      };
+
+      await tx.pipelineExecution.create({
+        data: {
+          requestId: input.id,
+          templateId,
+          status: "RUNNING" as ExecutionStatus,
+          currentStep: 0,
+          steps: template.steps as unknown as Prisma.JsonArray,
+          context: initialContext as unknown as Prisma.JsonObject,
+          startedAt: new Date(),
+        },
+      });
+    });
+
+    // Delete files AFTER transaction completes (so DB is consistent even if file deletion fails)
+    for (const filePath of filesToDelete) {
+      try {
+        const fileObj = Bun.file(filePath);
+        if (await fileObj.exists()) {
+          await Bun.$`rm -f ${filePath}`.quiet();
+          console.log(`[Reprocess] Deleted encoded file: ${filePath}`);
+        }
+      } catch (err) {
+        console.warn(
+          `[Reprocess] Failed to delete encoded file: ${err instanceof Error ? err.message : "Unknown"}`
+        );
       }
     }
 
-    // Reset ALL ProcessingItems to PENDING and clear context
-    await prisma.processingItem.updateMany({
-      where: {
-        requestId: input.id,
-        status: { not: ProcessingStatus.COMPLETED },
-      },
-      data: {
-        status: ProcessingStatus.PENDING,
-        lastError: null,
-        stepContext: {},
-        downloadId: null,
-        encodingJobId: null,
-        progress: 0,
-        lastProgressUpdate: null,
-        lastProgressValue: null,
-        checkpoint: null,
-        currentStep: null,
-        skipUntil: null,
-      },
-    });
-
-    // Store pipeline template configuration for workers
-    const mediaType = request.type === MediaType.MOVIE ? "MOVIE" : "TV";
-    await storePipelineTemplate(input.id, mediaType, templateId);
+    console.log(
+      `[Reprocess] Reset request ${request.title} to PENDING with template ${templateId}`
+    );
 
     // NOTE: Old pipeline executor disabled - workers now handle all processing
     // Items in PENDING status will be picked up automatically by SearchWorker
