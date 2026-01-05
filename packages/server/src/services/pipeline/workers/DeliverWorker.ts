@@ -23,10 +23,19 @@ interface DeliveryCheckpoint {
 }
 
 /**
+ * Active delivery tracking
+ */
+interface ActiveDelivery {
+  itemId: string;
+  promise: Promise<void>;
+  startedAt: Date;
+}
+
+/**
  * DeliverWorker - Unified worker for delivering encoded media to storage servers
  * Processes ENCODED → DELIVERING → COMPLETED
  *
- * No blocking - uses scheduled polling
+ * Uses scheduler-style polling with true concurrency
  * Checkpointing to resume partial deliveries
  * Skips already-delivered servers on retry
  */
@@ -36,12 +45,18 @@ export class DeliverWorker extends BaseWorker {
   readonly name = "DeliverWorker";
   readonly concurrency = 2; // Deliver up to 2 files in parallel (reduced to prevent connection overload)
 
+  // Track active deliveries (non-blocking promises)
+  private activeDeliveries: Map<string, ActiveDelivery> = new Map();
+
   /**
    * Process batch - handle both new deliveries and active monitoring
    */
   async processBatch(): Promise<void> {
+    // Clean up completed deliveries
+    await this.cleanupCompletedDeliveries();
+
+    // Start new deliveries if we have capacity
     await this.startNewDeliveries();
-    await this.monitorActiveDeliveries();
   }
 
   /**
@@ -52,41 +67,82 @@ export class DeliverWorker extends BaseWorker {
   }
 
   /**
-   * Start new deliveries for ENCODED items
+   * Clean up completed delivery promises
+   */
+  private async cleanupCompletedDeliveries(): Promise<void> {
+    const completedIds: string[] = [];
+
+    for (const [itemId, delivery] of this.activeDeliveries.entries()) {
+      // Check if promise is settled using Promise.race with immediate rejection
+      const isSettled = await Promise.race([
+        delivery.promise.then(() => true),
+        Promise.resolve(false),
+      ]);
+
+      if (isSettled) {
+        completedIds.push(itemId);
+      }
+    }
+
+    // Remove completed deliveries
+    for (const itemId of completedIds) {
+      this.activeDeliveries.delete(itemId);
+      console.log(
+        `[${this.name}] Delivery completed for ${itemId}, active count: ${this.activeDeliveries.size}`
+      );
+    }
+  }
+
+  /**
+   * Start new deliveries for ENCODED items (non-blocking)
    */
   private async startNewDeliveries(): Promise<void> {
+    // Check how many slots are available
+    const activeCount = this.activeDeliveries.size;
+    const availableSlots = this.concurrency - activeCount;
+
+    if (availableSlots <= 0) {
+      return; // No capacity
+    }
+
+    // Get ENCODED items that aren't already being delivered
     const encodedItems = await pipelineOrchestrator.getItemsForProcessing("ENCODED");
+    const newItems = encodedItems.filter((item) => !this.activeDeliveries.has(item.id));
 
-    for (const item of encodedItems.slice(0, this.concurrency)) {
-      try {
-        await this.startDelivery(item);
-      } catch (error) {
-        await this.handleError(item, error instanceof Error ? error : new Error(String(error)));
-      }
+    // Start deliveries up to available slots
+    for (const item of newItems.slice(0, availableSlots)) {
+      console.log(
+        `[${this.name}] Starting delivery for ${item.title} (active: ${this.activeDeliveries.size + 1}/${this.concurrency})`
+      );
+
+      // Start delivery in background (non-blocking)
+      const deliveryPromise = this.executeDelivery(item);
+
+      // Track active delivery
+      this.activeDeliveries.set(item.id, {
+        itemId: item.id,
+        promise: deliveryPromise,
+        startedAt: new Date(),
+      });
     }
   }
 
   /**
-   * Monitor active deliveries for DELIVERING items
-   * Handles both retry of failed deliveries and detection of stuck items
+   * Execute delivery for ENCODED item (runs in background, handles errors internally)
    */
-  private async monitorActiveDeliveries(): Promise<void> {
-    const deliveringItems = await pipelineOrchestrator.getItemsForProcessing("DELIVERING");
-
-    for (const item of deliveringItems) {
-      try {
-        // Retry failed deliveries that are ready
-        await this.startDelivery(item);
-      } catch (error) {
-        await this.handleError(item, error instanceof Error ? error : new Error(String(error)));
-      }
+  private async executeDelivery(item: ProcessingItem): Promise<void> {
+    try {
+      await this.performDelivery(item);
+    } catch (error) {
+      // Handle error internally since this runs in background
+      await this.handleError(item, error instanceof Error ? error : new Error(String(error)));
     }
   }
 
   /**
-   * Start delivery for ENCODED item (or resume DELIVERING item)
+   * Perform delivery for ENCODED item (or resume DELIVERING item)
    */
-  private async startDelivery(item: ProcessingItem): Promise<void> {
+  private async performDelivery(item: ProcessingItem): Promise<void> {
     console.log(`[${this.name}] Starting delivery for ${item.title}`);
 
     // Get request details
