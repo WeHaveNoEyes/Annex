@@ -179,12 +179,12 @@ export class SearchWorker extends BaseWorker {
 
     // Determine next status based on what was found
     if (searchContext.existingDownload) {
-      // Existing download: skip DISCOVERED cooldown, go directly to DOWNLOADING
+      // Existing download: skip DISCOVERED cooldown, go directly to FOUND
       console.log(
         `[${this.name}] Existing download found for ${request.title}, skipping discovery cooldown`
       );
-      await pipelineOrchestrator.transitionStatus(item.id, "DOWNLOADING", {
-        currentStep: "download_existing",
+      await pipelineOrchestrator.transitionStatus(item.id, "FOUND", {
+        currentStep: "search_existing_download",
         stepContext,
       });
     } else if (qualityNotMet) {
