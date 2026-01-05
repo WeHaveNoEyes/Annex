@@ -138,8 +138,8 @@ export async function refreshTraktListCache(
             type: (traktItem.type === "movie" ? "MOVIE" : "TV") as "MOVIE" | "TV",
             tmdbId: traktItem.tmdbId,
             title: traktItem.title,
-            posterPath: traktItem.posterUrl || null,
-            backdropPath: traktItem.fanartUrl || null,
+            posterPath: extractTMDBPath(traktItem.posterUrl),
+            backdropPath: extractTMDBPath(traktItem.fanartUrl),
             year: traktItem.year,
             overview: "",
             ratings: null,
@@ -223,6 +223,27 @@ export async function refreshTraktListCache(
         });
     }
   }
+}
+
+/**
+ * Extract TMDB path from Trakt image URL
+ * Trakt uses TMDB images, so we can extract the path and use TMDB CDN directly
+ * Examples:
+ * - https://image.tmdb.org/t/p/w500/abc123.jpg -> /abc123.jpg
+ * - https://walter.trakt.tv/images/movies/000/123/456/posters/original/abc123.jpg -> null (Trakt-specific)
+ */
+function extractTMDBPath(traktUrl: string | null | undefined): string | null {
+  if (!traktUrl) return null;
+
+  // Check if it's a TMDB image URL
+  if (traktUrl.includes("image.tmdb.org")) {
+    // Extract the path after /t/p/{size}/
+    const match = traktUrl.match(/\/t\/p\/[^/]+(\/.+)$/);
+    return match ? match[1] : null;
+  }
+
+  // Not a TMDB URL, return null to avoid Trakt URLs
+  return null;
 }
 
 /**
