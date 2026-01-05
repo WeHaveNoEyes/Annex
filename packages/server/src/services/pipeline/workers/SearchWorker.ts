@@ -107,6 +107,12 @@ export class SearchWorker extends BaseWorker {
       this.updateProgress(item.id, progress, message);
     });
 
+    // Update lastSearchedAt timestamp
+    await prisma.processingItem.update({
+      where: { id: item.id },
+      data: { lastSearchedAt: new Date() },
+    });
+
     // Execute search
     const output = await searchStep.execute(context, {
       checkExistingDownloads: true,

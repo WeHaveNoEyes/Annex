@@ -44,9 +44,11 @@ export class SmartRetryStrategy {
   ): Promise<RetryDecision> {
     const errorType = this.classifyError(error);
     const errorMessage = this.formatError(error);
+    const isSearching = item.status === "SEARCHING";
 
-    // Check attempts limit
-    if (!this.canRetry(item.attempts, item.maxAttempts)) {
+    // For SEARCHING status: Never give up, ignore max attempts
+    // Searches should retry indefinitely with configured interval
+    if (!isSearching && !this.canRetry(item.attempts, item.maxAttempts)) {
       return {
         shouldRetry: false,
         useSkipUntil: false,
@@ -55,8 +57,9 @@ export class SmartRetryStrategy {
       };
     }
 
-    // Permanent errors: Don't retry
-    if (errorType === ErrorType.PERMANENT) {
+    // For SEARCHING status: "not found" is not permanent - retry indefinitely
+    // For other statuses: permanent errors should not retry
+    if (errorType === ErrorType.PERMANENT && !isSearching) {
       return {
         shouldRetry: false,
         useSkipUntil: false,
@@ -87,14 +90,32 @@ export class SmartRetryStrategy {
       await circuitBreakerService.recordFailure(service, error);
     }
 
-    // Transient errors: Retry with backoff
-    const retryAt = this.calculateRetryTime(errorType, item.attempts);
+    // For SEARCHING status: Use configured search retry interval
+    // For other statuses: Use exponential backoff
+    let retryAt: Date;
+    let reason: string;
+
+    if (isSearching) {
+      // Get search retry interval from settings
+      const { prisma } = await import("../../db/client.js");
+      const settings = await prisma.settings.findUnique({
+        where: { id: "default" },
+        select: { searchRetryIntervalHours: true },
+      });
+      const intervalHours = settings?.searchRetryIntervalHours || 6;
+      retryAt = new Date(Date.now() + intervalHours * 60 * 60 * 1000);
+      reason = `Search retry scheduled in ${intervalHours} hours at ${retryAt.toISOString()}`;
+    } else {
+      // Transient errors: Retry with exponential backoff
+      retryAt = this.calculateRetryTime(errorType, item.attempts);
+      reason = `Transient ${errorType} error, retry at ${retryAt.toISOString()}`;
+    }
 
     return {
       shouldRetry: true,
       useSkipUntil: false,
       retryAt,
-      reason: `Transient ${errorType} error, retry at ${retryAt.toISOString()}`,
+      reason,
     };
   }
 

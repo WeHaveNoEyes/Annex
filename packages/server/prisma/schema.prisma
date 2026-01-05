@@ -521,6 +521,7 @@ model ProcessingItem {
   progress             Int       @default(0) // 0-100
   lastProgressUpdate   DateTime? // When progress last changed
   lastProgressValue    Int? // Previous progress for stall detection
+  lastSearchedAt       DateTime? // When search was last attempted
   startedAt            DateTime  @default(now())
   completedAt          DateTime?
 
@@ -1369,6 +1370,9 @@ model Settings {
 
   // Discovery cooldown (minutes)
   discoveryCooldownMinutes Int @default(5)
+
+  // Search retry interval (hours) - how often to retry failed searches
+  searchRetryIntervalHours Int @default(6)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
