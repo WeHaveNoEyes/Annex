@@ -736,22 +736,28 @@ function parseProgress(line: string): Partial<{
 
   const matches: Record<string, (v: string) => void> = {
     "frame=": (v) => {
-      result.frame = parseInt(v, 10);
+      const val = parseInt(v, 10);
+      if (!Number.isNaN(val)) result.frame = val;
     },
     "fps=": (v) => {
-      result.fps = parseFloat(v);
+      const val = parseFloat(v);
+      if (!Number.isNaN(val)) result.fps = val;
     },
     "bitrate=": (v) => {
-      result.bitrate = parseFloat(v.replace("kbits/s", ""));
+      const val = parseFloat(v.replace("kbits/s", ""));
+      if (!Number.isNaN(val)) result.bitrate = val;
     },
     "total_size=": (v) => {
-      result.totalSize = parseInt(v, 10);
+      const val = parseInt(v, 10);
+      if (!Number.isNaN(val)) result.totalSize = val;
     },
     "out_time_us=": (v) => {
-      result.outTimeUs = parseInt(v, 10);
+      const val = parseInt(v, 10);
+      if (!Number.isNaN(val)) result.outTimeUs = val;
     },
     "speed=": (v) => {
-      result.speed = parseFloat(v.replace("x", ""));
+      const val = parseFloat(v.replace("x", ""));
+      if (!Number.isNaN(val)) result.speed = val;
     },
   };
 
