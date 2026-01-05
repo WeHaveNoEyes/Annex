@@ -90,12 +90,12 @@ export default function MediaDetailPage() {
     }
   }, [searchParams, setSearchParams]);
 
-  // Helper to check if data is fully hydrated
+  // Helper to check if data is fully hydrated from TMDB
   const isDataHydrated = (data: unknown) => {
     if (!data || typeof data !== "object") return false;
-    const mediaData = data as { cast?: unknown[]; backdropPath?: string | null };
-    // Check for essential hydrated fields (cast, crew, backdrop)
-    return !!mediaData.cast && mediaData.cast.length > 0 && !!mediaData.backdropPath;
+    const mediaData = data as { tmdbUpdatedAt?: Date | null };
+    // If tmdbUpdatedAt exists, the data has been fetched from TMDB and saved
+    return !!mediaData.tmdbUpdatedAt;
   };
 
   // JIT data fetching - handles caching and background refresh automatically
