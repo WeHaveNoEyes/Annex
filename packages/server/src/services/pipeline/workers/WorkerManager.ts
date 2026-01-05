@@ -1,9 +1,7 @@
 import type { BaseWorker } from "./BaseWorker";
 import { deliverWorker } from "./DeliverWorker";
-import { downloadProgressWorker } from "./DownloadProgressWorker";
-import { downloadRecoveryWorker } from "./DownloadRecoveryWorker";
+import { discoveredWorker } from "./DiscoveredWorker";
 import { downloadWorker } from "./DownloadWorker";
-import { encoderMonitorWorker } from "./EncoderMonitorWorker";
 import { encodeWorker } from "./EncodeWorker";
 import { searchWorker } from "./SearchWorker";
 
@@ -16,15 +14,7 @@ export class WorkerManager {
   private isRegistered = false;
 
   constructor() {
-    this.workers = [
-      searchWorker,
-      downloadWorker,
-      downloadProgressWorker,
-      downloadRecoveryWorker,
-      encodeWorker,
-      encoderMonitorWorker,
-      deliverWorker,
-    ];
+    this.workers = [searchWorker, discoveredWorker, downloadWorker, encodeWorker, deliverWorker];
   }
 
   /**

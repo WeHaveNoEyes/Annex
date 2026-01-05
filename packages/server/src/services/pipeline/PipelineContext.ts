@@ -33,13 +33,33 @@ export interface PipelineContext {
       leechers?: number;
       indexer: string;
       indexerName?: string;
-      magnetUri: string;
+      magnetUri?: string;
+      downloadUrl?: string;
+      downloadHeaders?: Record<string, string>;
       publishDate?: string;
       quality?: string;
       source?: string;
       codec?: string;
       resolution?: string;
     };
+    selectedPacks?: Array<{
+      title: string;
+      size: number;
+      seeders: number;
+      leechers?: number;
+      indexer: string;
+      indexerName?: string;
+      magnetUri?: string;
+      downloadUrl?: string;
+      downloadHeaders?: Record<string, string>;
+      publishDate?: string;
+      quality?: string;
+      source?: string;
+      codec?: string;
+      resolution?: string;
+      season?: number;
+    }>;
+    bulkDownloadsForSeasonPacks?: Record<number, string>; // Maps season number to BulkDownload.id
     alternativeReleases?: unknown[];
     qualityMet?: boolean;
     existingDownload?: {

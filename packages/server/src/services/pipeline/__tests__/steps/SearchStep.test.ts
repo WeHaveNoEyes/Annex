@@ -211,7 +211,8 @@ describe("SearchStep", () => {
       expect(result.success).toBe(true);
       expect(result.nextStep).toBe(null);
 
-      const searchData = result.data as Record<string, unknown>;
+      const data = result.data as Record<string, unknown>;
+      const searchData = data.search as Record<string, unknown>;
       expect(searchData.qualityMet).toBe(false);
       expect(searchData.alternativeReleases).toBeDefined();
       expect((searchData.alternativeReleases as unknown[]).length).toBeGreaterThan(0);
