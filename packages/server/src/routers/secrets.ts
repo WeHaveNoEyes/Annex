@@ -236,7 +236,7 @@ export const secretsRouter = router({
   testConnection: setupProcedure
     .input(
       z.object({
-        service: z.enum(["qbittorrent", "mdblist", "trakt"]),
+        service: z.enum(["qbittorrent", "mdblist", "trakt", "tmdb"]),
         // Optional: provide secrets directly (used during setup before saving)
         secrets: z.record(z.string()).optional(),
       })
@@ -337,6 +337,32 @@ export const secretsRouter = router({
                 // Ignore errors reading response body
               }
               return { success: false, error: errorMsg };
+            }
+          } catch (error) {
+            return { success: false, error: (error as Error).message };
+          }
+        }
+
+        case "tmdb": {
+          const apiKey = await getSecretValue("tmdb.apiKey");
+          if (!apiKey) {
+            return { success: false, error: "TMDB API key not configured" };
+          }
+
+          try {
+            const response = await fetch(
+              `https://api.themoviedb.org/3/movie/550?api_key=${apiKey}`
+            );
+
+            if (response.ok) {
+              return { success: true, message: "Connected to TMDB!" };
+            } else if (response.status === 401) {
+              return {
+                success: false,
+                error: "Invalid API key. Get your key at themoviedb.org/settings/api",
+              };
+            } else {
+              return { success: false, error: `HTTP ${response.status}` };
             }
           } catch (error) {
             return { success: false, error: (error as Error).message };

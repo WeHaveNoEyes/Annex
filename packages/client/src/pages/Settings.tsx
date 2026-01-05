@@ -107,7 +107,7 @@ function SecretInput({
   helpUrl?: string;
   hasValue: boolean;
   sensitive: boolean;
-  testService?: "qbittorrent" | "mdblist" | "trakt";
+  testService?: "qbittorrent" | "mdblist" | "trakt" | "tmdb";
 }) {
   const utils = trpc.useUtils();
   const [isEditing, setIsEditing] = useState(false);
@@ -376,9 +376,10 @@ function GeneralSettings() {
   };
 
   // Map secret keys to testable services
-  const testServiceMap: Record<string, "qbittorrent" | "mdblist" | "trakt"> = {
+  const testServiceMap: Record<string, "qbittorrent" | "mdblist" | "trakt" | "tmdb"> = {
     "trakt.clientId": "trakt",
     "mdblist.apiKey": "mdblist",
+    "tmdb.apiKey": "tmdb",
     "qbittorrent.url": "qbittorrent",
   };
 

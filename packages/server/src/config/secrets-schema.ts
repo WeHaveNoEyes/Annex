@@ -51,6 +51,17 @@ export const SECRET_DEFINITIONS: SecretDefinition[] = [
     sensitive: true,
     placeholder: "Enter your Trakt client secret",
   },
+  {
+    key: "tmdb.apiKey",
+    label: "TMDB API Key",
+    description: "Required for movie/TV metadata (posters, backdrops, cast, crew)",
+    group: "metadata",
+    required: false,
+    sensitive: true,
+    placeholder: "Enter your TMDB API key",
+    helpUrl: "https://www.themoviedb.org/settings/api",
+    validate: (v) => v.length >= 32,
+  },
 
   // Download client
   {
