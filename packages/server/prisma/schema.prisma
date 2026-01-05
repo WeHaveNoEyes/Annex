@@ -1144,6 +1144,10 @@ model EncoderAssignment {
   speed    Float? // x realtime
   eta      Int? // seconds remaining
 
+  // Frame-based activity tracking (for hardware encoder stall detection)
+  lastFrame         Int? // Last frame number received
+  lastFrameUpdateAt DateTime? // When frame counter last changed (for activity-based stall detection)
+
   // Result (set on completion)
   outputSize       BigInt? // bytes
   compressionRatio Float?

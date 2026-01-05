@@ -376,31 +376,48 @@ class EncoderDispatchService {
   async detectStalledJobs(): Promise<void> {
     const cutoff = new Date(Date.now() - this.stallTimeoutMs);
 
-    // Find ENCODING jobs with no progress update in 2 minutes
-    const stalledJobs = await prisma.encoderAssignment.findMany({
-      where: {
-        status: "ENCODING",
-        lastProgressAt: { lt: cutoff },
+    // Find all ENCODING jobs to check for stalls
+    const encodingJobs = await prisma.encoderAssignment.findMany({
+      where: { status: "ENCODING" },
+      select: {
+        id: true,
+        jobId: true,
+        progress: true,
+        lastProgressAt: true,
+        lastFrameUpdateAt: true,
+        startedAt: true,
       },
     });
 
-    for (const job of stalledJobs) {
-      console.warn(`[EncoderDispatch] Job ${job.jobId} stalled at ${job.progress.toFixed(1)}%`);
-      await this.handleStalledJob(job);
-    }
+    for (const job of encodingJobs) {
+      let isStalled = false;
+      let reason = "";
 
-    // Also check for ENCODING jobs that never sent any progress
-    const neverStarted = await prisma.encoderAssignment.findMany({
-      where: {
-        status: "ENCODING",
-        lastProgressAt: null,
-        startedAt: { lt: cutoff },
-      },
-    });
+      // Check 1: Never sent any progress after starting
+      if (!job.lastProgressAt && job.startedAt && job.startedAt < cutoff) {
+        isStalled = true;
+        reason = "never sent progress";
+      }
+      // Check 2: Dual-mode stall detection (both progress AND frames must be stalled)
+      // For hardware encoders: frame activity alone is sufficient to show health
+      else if (job.lastProgressAt && job.lastProgressAt < cutoff) {
+        // Progress hasn't updated - check if frames are still advancing
+        if (!job.lastFrameUpdateAt || job.lastFrameUpdateAt < cutoff) {
+          // Neither progress nor frames have updated - truly stalled
+          isStalled = true;
+          reason = "no progress or frame activity";
+        } else {
+          // Frames are still advancing - not stalled (hardware encoder case)
+          console.log(
+            `[EncoderDispatch] Job ${job.jobId} at ${job.progress.toFixed(1)}% - progress stale but frames advancing (hardware encoder)`
+          );
+        }
+      }
 
-    for (const job of neverStarted) {
-      console.warn(`[EncoderDispatch] Job ${job.jobId} never sent progress`);
-      await this.handleStalledJob(job);
+      if (isStalled) {
+        console.warn(`[EncoderDispatch] Job ${job.jobId} stalled: ${reason}`);
+        await this.handleStalledJob(job);
+      }
     }
   }
 
@@ -872,16 +889,40 @@ class EncoderDispatchService {
       const fps = Number.isFinite(msg.fps) ? msg.fps : 0;
       const speed = Number.isFinite(msg.speed) && msg.speed !== null ? msg.speed : 0;
       const eta = Number.isFinite(msg.eta) ? Math.round(msg.eta) : 0;
+      const frame = Number.isFinite(msg.frame) ? msg.frame : null;
+
+      // Check if frame count has changed (for hardware encoder activity detection)
+      const currentAssignment = await prisma.encoderAssignment.findUnique({
+        where: { jobId: msg.jobId },
+        select: { lastFrame: true },
+      });
+
+      const frameHasChanged = frame !== null && frame !== currentAssignment?.lastFrame;
+      const updateData: {
+        progress: number;
+        fps: number;
+        speed: number;
+        eta: number;
+        lastProgressAt: Date;
+        lastFrame?: number;
+        lastFrameUpdateAt?: Date;
+      } = {
+        progress,
+        fps,
+        speed,
+        eta,
+        lastProgressAt: new Date(),
+      };
+
+      // Update frame tracking if frame count changed
+      if (frameHasChanged && frame !== null) {
+        updateData.lastFrame = frame;
+        updateData.lastFrameUpdateAt = new Date();
+      }
 
       await prisma.encoderAssignment.update({
         where: { jobId: msg.jobId },
-        data: {
-          progress,
-          fps,
-          speed,
-          eta,
-          lastProgressAt: new Date(),
-        },
+        data: updateData,
       });
     }
 

@@ -980,26 +980,47 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
           const parsed = parseProgress(trimmed);
           Object.assign(progressState, parsed);
 
-          // Debug: Log when we receive critical progress fields
-          if (parsed.outTimeUs !== undefined || parsed.speed !== undefined) {
-            console.log(
-              `[Encoder] Progress update: out_time_us=${progressState.outTimeUs} speed=${progressState.speed} fps=${progressState.fps}`
-            );
-          }
+          // Dual-mode progress tracking: use timestamp-based when available, frame-based as fallback
+          let progressMode: "timestamp" | "frame" = "timestamp";
+          let rawProgress = 0;
+          let elapsedTime = 0;
+          let eta = 0;
 
-          // Calculate progress percentage
-          const elapsedTime = progressState.outTimeUs / 1_000_000;
-          const rawProgress =
-            mediaInfo.duration > 0 ? Math.min(100, (elapsedTime / mediaInfo.duration) * 100) : 0;
+          // Primary mode: Use out_time_us when available (valid number > 0)
+          if (progressState.outTimeUs > 0 && mediaInfo.duration > 0) {
+            elapsedTime = progressState.outTimeUs / 1_000_000;
+            rawProgress = Math.min(100, (elapsedTime / mediaInfo.duration) * 100);
+
+            // Calculate ETA using speed
+            eta = progressState.speed > 0
+              ? Math.round((mediaInfo.duration - elapsedTime) / progressState.speed)
+              : 0;
+          }
+          // Fallback mode: Use frame-based estimation when out_time is not available
+          else if (progressState.frame > 0 && mediaInfo.fps > 0 && mediaInfo.duration > 0) {
+            progressMode = "frame";
+            const estimatedTotalFrames = Math.ceil(mediaInfo.duration * mediaInfo.fps);
+            rawProgress = Math.min(100, (progressState.frame / estimatedTotalFrames) * 100);
+
+            // Estimate elapsed time from frames
+            elapsedTime = progressState.frame / mediaInfo.fps;
+
+            // Calculate ETA using fps (frames remaining / current fps)
+            if (progressState.fps > 0) {
+              const framesRemaining = estimatedTotalFrames - progressState.frame;
+              eta = Math.round(framesRemaining / progressState.fps);
+            }
+          }
 
           // Scale progress: if DV was stripped, use 10-100%, otherwise use 0-100%
           const progress = dvStripped ? 10 + rawProgress * 0.9 : rawProgress;
 
-          // Calculate ETA
-          const eta =
-            progressState.speed > 0
-              ? Math.round((mediaInfo.duration - elapsedTime) / progressState.speed)
-              : 0;
+          // Log progress mode transitions for debugging
+          if (parsed.frame !== undefined && progressState.frame % 100 === 0) {
+            console.log(
+              `[Encoder] Progress mode: ${progressMode} | frame=${progressState.frame} fps=${progressState.fps.toFixed(1)} out_time_us=${progressState.outTimeUs} speed=${progressState.speed}`
+            );
+          }
 
           job.onProgress({
             type: "job:progress",
