@@ -44,7 +44,7 @@ export class DeliverWorker extends BaseWorker {
   readonly processingStatus = "ENCODED" as const;
   readonly nextStatus = "COMPLETED" as const;
   readonly name = "DeliverWorker";
-  readonly concurrency = 2; // Deliver up to 2 files in parallel (reduced to prevent connection overload)
+  readonly concurrency = 3; // Deliver up to 3 files in parallel per server
 
   // Track active deliveries (non-blocking promises)
   private activeDeliveries: Map<string, ActiveDelivery> = new Map();
