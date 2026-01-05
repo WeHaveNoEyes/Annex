@@ -131,6 +131,9 @@ export class PipelineOrchestrator {
       error?: string;
       downloadId?: string;
       encodingJobId?: string;
+      discoveredAt?: Date;
+      cooldownEndsAt?: Date;
+      allSearchResults?: unknown;
     }
   ): Promise<ProcessingItem> {
     const item = await processingItemRepository.findById(itemId);
@@ -149,6 +152,8 @@ export class PipelineOrchestrator {
         stepContext: context?.stepContext,
         downloadId: context?.downloadId,
         encodingJobId: context?.encodingJobId,
+        cooldownEndsAt: context?.cooldownEndsAt,
+        discoveredAt: context?.discoveredAt,
       });
       if (!validation.valid) {
         throw new ValidationError(itemId, toStatus, "entry", validation.errors.join(", "));
@@ -162,6 +167,10 @@ export class PipelineOrchestrator {
         lastError: context?.error,
         downloadId: context?.downloadId,
         encodingJobId: context?.encodingJobId,
+        discoveredAt: context?.discoveredAt,
+        cooldownEndsAt: context?.cooldownEndsAt,
+        allSearchResults:
+          context?.allSearchResults as import("@prisma/client").Prisma.InputJsonValue,
       });
 
       // Update request aggregates
@@ -258,12 +267,15 @@ export class PipelineOrchestrator {
       return updatedItem;
     } else {
       // Mark as failed
+      const actualError = smartRetryStrategy.formatError(error);
+      const failureMessage = `Failed at ${item.status} after ${item.attempts + 1} attempts: ${actualError}`;
+
       console.log(
         `[PipelineOrchestrator] Cannot retry ${item.title}: ${decision.reason}, transitioning to FAILED`
       );
 
       const failedItem = await this.transitionStatus(itemId, "FAILED", {
-        error: decision.reason,
+        error: failureMessage,
       });
 
       // Update error history on failed item
@@ -318,17 +330,37 @@ export class PipelineOrchestrator {
       );
     }
 
+    // Preserve stepContext with selectedRelease if it exists
+    const stepContext = item.stepContext as Record<string, unknown> | null;
+    const hasSelectedRelease = !!stepContext?.selectedRelease;
+
+    console.log(
+      `[PipelineOrchestrator] Retrying ${item.title} from ${item.status} (has selected release: ${hasSelectedRelease})`
+    );
+
+    // Build update data
+    const updateData: Record<string, unknown> = {
+      status: "PENDING",
+      attempts: 0,
+      lastError: null,
+      nextRetryAt: null,
+      progress: 0,
+      updatedAt: new Date(),
+    };
+
+    // If item has a selected release, explicitly preserve it with qualityMet flag
+    if (hasSelectedRelease && stepContext) {
+      updateData.stepContext = {
+        selectedRelease: stepContext.selectedRelease,
+        qualityMet: true,
+        alternativeReleases: stepContext.alternativeReleases || [],
+      } as import("@prisma/client").Prisma.InputJsonValue;
+    }
+
     // Reset to PENDING to restart pipeline
     await prisma.processingItem.update({
       where: { id: itemId },
-      data: {
-        status: "PENDING",
-        attempts: 0,
-        lastError: null,
-        nextRetryAt: null,
-        progress: 0,
-        updatedAt: new Date(),
-      },
+      data: updateData,
     });
 
     const updated = await processingItemRepository.findById(itemId);

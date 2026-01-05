@@ -117,6 +117,9 @@ export class ProcessingItemRepository {
       nextRetryAt?: Date | null;
       downloadId?: string | null;
       encodingJobId?: string | null;
+      discoveredAt?: Date | null;
+      cooldownEndsAt?: Date | null;
+      allSearchResults?: Prisma.InputJsonValue;
     }
   ): Promise<ProcessingItem> {
     const updateData: Prisma.ProcessingItemUpdateInput = {
@@ -136,6 +139,9 @@ export class ProcessingItemRepository {
           : { disconnect: true };
       }
       if (data.encodingJobId !== undefined) updateData.encodingJobId = data.encodingJobId;
+      if (data.discoveredAt !== undefined) updateData.discoveredAt = data.discoveredAt;
+      if (data.cooldownEndsAt !== undefined) updateData.cooldownEndsAt = data.cooldownEndsAt;
+      if (data.allSearchResults !== undefined) updateData.allSearchResults = data.allSearchResults;
     }
 
     // Mark completion time if status is terminal

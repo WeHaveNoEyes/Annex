@@ -1504,6 +1504,7 @@ export const requestsRouter = router({
       const selectedRelease = releases[input.releaseIndex] as Record<string, unknown>;
 
       // Update all items with the selected release and transition back to PENDING
+      // Preserve alternativeReleases so they can be shown in the discovery override modal
       await prisma.processingItem.updateMany({
         where: {
           id: { in: itemsWithAlternatives.map((i: { id: string }) => i.id) },
@@ -1514,6 +1515,7 @@ export const requestsRouter = router({
           stepContext: {
             selectedRelease,
             qualityMet: true,
+            alternativeReleases: releases, // Preserve all alternatives for override modal
           } as unknown as Prisma.JsonObject,
         },
       });
@@ -1522,10 +1524,247 @@ export const requestsRouter = router({
         `[acceptLowerQuality] Accepted lower quality for ${itemsWithAlternatives.length} item(s): ${selectedRelease.title}`
       );
 
-      // Items in PENDING status will be picked up automatically by SearchWorker
-      // SearchWorker will see selectedRelease in stepContext and skip search
+      // Wait for SearchWorker to transition items to DISCOVERED status
+      // Poll for up to 10 seconds (SearchWorker should handle this in < 1 second)
+      const itemIds = itemsWithAlternatives.map((i: { id: string }) => i.id);
+      const maxWaitMs = 10000;
+      const pollIntervalMs = 200;
+      const startTime = Date.now();
 
-      return { success: true };
+      while (Date.now() - startTime < maxWaitMs) {
+        const updatedItems = await prisma.processingItem.findMany({
+          where: { id: { in: itemIds } },
+          select: { id: true, status: true },
+        });
+
+        const allDiscovered = updatedItems.every(
+          (item: { status: string }) =>
+            item.status === "DISCOVERED" || item.status === "DOWNLOADING"
+        );
+
+        if (allDiscovered) {
+          console.log(
+            `[acceptLowerQuality] All items transitioned to DISCOVERED (took ${Date.now() - startTime}ms)`
+          );
+          return { success: true, itemIds };
+        }
+
+        // Wait before next poll
+        await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+      }
+
+      // Timeout - return anyway (SearchWorker will still process them)
+      console.log(`[acceptLowerQuality] Timeout waiting for DISCOVERED status, returning anyway`);
+      return { success: true, itemIds };
+    }),
+
+  /**
+   * Get discovered item details (for countdown timer and override modal)
+   * UPDATED: Now accepts requestId instead of itemId
+   */
+  getDiscoveredDetails: publicProcedure
+    .input(z.object({ itemId: z.string() }))
+    .query(async ({ input }) => {
+      // Try to find as ProcessingItem first (old behavior for compatibility)
+      let item = await prisma.processingItem.findUnique({
+        where: { id: input.itemId },
+        include: { request: true },
+      });
+
+      // If not found as ProcessingItem, treat as requestId and find DISCOVERED items
+      if (!item) {
+        const items = await prisma.processingItem.findMany({
+          where: {
+            requestId: input.itemId,
+            status: "DISCOVERED",
+          },
+          include: { request: true },
+          orderBy: { createdAt: "asc" },
+        });
+
+        if (items.length === 0) {
+          throw new Error("No items in DISCOVERED status for this request");
+        }
+
+        // Use first DISCOVERED item (for movies there's only one, for TV shows pick first episode)
+        item = items[0];
+      }
+
+      if (!item || item.status !== "DISCOVERED") {
+        throw new Error("Item not in DISCOVERED status");
+      }
+
+      const stepContext = item.stepContext as Record<string, unknown>;
+      // biome-ignore lint/suspicious/noExplicitAny: JSON deserialization from database
+      const selectedRelease = stepContext?.selectedRelease as any;
+      // biome-ignore lint/suspicious/noExplicitAny: JSON deserialization from database
+      const allSearchResults = item.allSearchResults as any[];
+
+      const now = new Date();
+      const remainingSeconds = item.cooldownEndsAt
+        ? Math.max(0, Math.ceil((item.cooldownEndsAt.getTime() - now.getTime()) / 1000))
+        : 0;
+
+      return {
+        item: {
+          id: item.id,
+          type: item.type,
+          title: item.title,
+          season: item.season,
+          episode: item.episode,
+        },
+        selectedRelease,
+        allSearchResults: allSearchResults || [],
+        cooldownEndsAt: item.cooldownEndsAt,
+        remainingSeconds,
+      };
+    }),
+
+  /**
+   * Override discovered release selection and reset cooldown to 30s
+   */
+  overrideDiscoveredRelease: publicProcedure
+    .input(
+      z.object({
+        itemId: z.string(),
+        releaseIndex: z.number(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      // Try to find as ProcessingItem first
+      let item = await prisma.processingItem.findUnique({
+        where: { id: input.itemId },
+      });
+
+      // If not found, treat as requestId and find DISCOVERED items
+      if (!item) {
+        const items = await prisma.processingItem.findMany({
+          where: {
+            requestId: input.itemId,
+            status: "DISCOVERED",
+          },
+          orderBy: { createdAt: "asc" },
+        });
+
+        if (items.length === 0) {
+          throw new Error("No items in DISCOVERED status for this request");
+        }
+
+        item = items[0];
+      }
+
+      if (!item) {
+        throw new Error("Item not found");
+      }
+
+      // Only allow override if item is still in DISCOVERED status
+      if (item.status !== "DISCOVERED") {
+        throw new Error(
+          `Cannot override release - item has progressed to ${item.status} status. Try canceling and retrying the request instead.`
+        );
+      }
+
+      // biome-ignore lint/suspicious/noExplicitAny: JSON deserialization from database
+      const allSearchResults = item.allSearchResults as any[];
+      if (!allSearchResults || input.releaseIndex >= allSearchResults.length) {
+        throw new Error("Invalid release index");
+      }
+
+      const newSelection = allSearchResults[input.releaseIndex];
+      const stepContext = item.stepContext as Record<string, unknown>;
+
+      // CRITICAL: Reset cooldown to current time + 30 seconds
+      const newCooldownEndsAt = new Date(Date.now() + 30 * 1000);
+
+      // Update stepContext with new selection AND reset cooldown
+      await prisma.processingItem.update({
+        where: { id: input.itemId },
+        data: {
+          stepContext: {
+            ...stepContext,
+            selectedRelease: newSelection,
+          } as Prisma.InputJsonValue,
+          cooldownEndsAt: newCooldownEndsAt,
+        },
+      });
+
+      // Log activity
+      await prisma.activityLog.create({
+        data: {
+          type: "DISCOVERY_OVERRIDE",
+          message: `User overrode discovery selection: "${newSelection.title}"`,
+          requestId: item.requestId,
+        },
+      });
+
+      return {
+        success: true,
+        newCooldownEndsAt,
+      };
+    }),
+
+  /**
+   * Approve discovered item and skip remaining cooldown
+   */
+  approveDiscoveredItem: publicProcedure
+    .input(z.object({ itemId: z.string() }))
+    .mutation(async ({ input }) => {
+      // Try to find as ProcessingItem first
+      let item = await prisma.processingItem.findUnique({
+        where: { id: input.itemId },
+      });
+
+      // If not found, treat as requestId and find DISCOVERED items
+      if (!item) {
+        const items = await prisma.processingItem.findMany({
+          where: {
+            requestId: input.itemId,
+            status: "DISCOVERED",
+          },
+          orderBy: { createdAt: "asc" },
+        });
+
+        if (items.length === 0) {
+          throw new Error("No items in DISCOVERED status for this request");
+        }
+
+        item = items[0];
+      }
+
+      if (!item) {
+        throw new Error("Item not found");
+      }
+
+      // Only allow approval if item is in DISCOVERED status
+      if (item.status !== "DISCOVERED") {
+        throw new Error(
+          `Cannot approve - item is in ${item.status} status. Only DISCOVERED items can be approved.`
+        );
+      }
+
+      // Set cooldown to 5 seconds from now (effectively immediate)
+      const newCooldownEndsAt = new Date(Date.now() + 5 * 1000);
+
+      await prisma.processingItem.update({
+        where: { id: item.id },
+        data: {
+          cooldownEndsAt: newCooldownEndsAt,
+        },
+      });
+
+      // Log activity
+      await prisma.activityLog.create({
+        data: {
+          type: "INFO",
+          message: `User approved discovery - skipping cooldown`,
+          requestId: item.requestId,
+        },
+      });
+
+      return {
+        success: true,
+        newCooldownEndsAt,
+      };
     }),
 
   /**
@@ -1894,6 +2133,48 @@ export const requestsRouter = router({
         year: item.request.year ?? new Date().getFullYear(),
         sourceFilePath: outputPath,
         targetServers: targets,
+      });
+
+      return { success: true };
+    }),
+
+  /**
+   * Retry a single episode (reset to pending to search again)
+   */
+  retryEpisode: publicProcedure
+    .input(z.object({ itemId: z.string() }))
+    .mutation(async ({ input }) => {
+      const item = await prisma.processingItem.findUnique({
+        where: { id: input.itemId },
+      });
+
+      if (!item) {
+        throw new Error("Episode not found");
+      }
+
+      if (item.type !== "EPISODE") {
+        throw new Error("Only episodes can be retried");
+      }
+
+      // Reset to PENDING status to restart from search
+      await prisma.processingItem.update({
+        where: { id: input.itemId },
+        data: {
+          status: ProcessingStatus.PENDING,
+          progress: 0,
+          lastError: null,
+          currentStep: null,
+          attempts: 0,
+          stepContext: {},
+          discoveredAt: null,
+          cooldownEndsAt: null,
+          downloadId: null,
+          sourceFilePath: null,
+          encodingJobId: null,
+          downloadedAt: null,
+          encodedAt: null,
+          deliveredAt: null,
+        },
       });
 
       return { success: true };

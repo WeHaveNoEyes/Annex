@@ -3,6 +3,8 @@ import {
   AlternativesModal,
   Button,
   ContextMenu,
+  CountdownTimer,
+  DiscoveryOverrideModal,
   Input,
   ManualSearchModal,
   Select,
@@ -13,6 +15,8 @@ import { trpc } from "../trpc";
 type RequestStatus =
   | "pending"
   | "searching"
+  | "found"
+  | "discovered"
   | "awaiting"
   | "quality_unavailable"
   | "downloading"
@@ -70,6 +74,30 @@ const statusConfig: Record<
     label: "Searching",
     color: "text-blue-400",
     bgColor: "bg-blue-500/20",
+    variant: "info",
+  },
+  found: {
+    label: "Found",
+    color: "text-indigo-400",
+    bgColor: "bg-indigo-500/20",
+    variant: "info",
+  },
+  FOUND: {
+    label: "Found",
+    color: "text-indigo-400",
+    bgColor: "bg-indigo-500/20",
+    variant: "info",
+  },
+  discovered: {
+    label: "Discovered",
+    color: "text-cyan-400",
+    bgColor: "bg-cyan-500/20",
+    variant: "info",
+  },
+  DISCOVERED: {
+    label: "Discovered",
+    color: "text-cyan-400",
+    bgColor: "bg-cyan-500/20",
     variant: "info",
   },
   processing: {
@@ -428,6 +456,13 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
     },
   });
 
+  const retryEpisodeMutation = trpc.requests.retryEpisode.useMutation({
+    onSuccess: () => {
+      utils.requests.getEpisodeStatuses.invalidate({ requestId });
+      utils.requests.list.invalidate();
+    },
+  });
+
   const reEncodeMutation = trpc.requests.reEncodeEpisode.useMutation({
     onSuccess: () => {
       utils.requests.getEpisodeStatuses.invalidate({ requestId });
@@ -457,6 +492,12 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
     );
   }
 
+  const retrySeason = (_seasonNumber: number, episodes: Array<{ id: string }>) => {
+    episodes.forEach((episode) => {
+      retryEpisodeMutation.mutate({ itemId: episode.id });
+    });
+  };
+
   return (
     <div className="space-y-3">
       {episodeStatuses.data.map((season) => {
@@ -477,6 +518,15 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
                   )}
                 </span>
               </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => retrySeason(season.seasonNumber, season.episodes)}
+                disabled={retryEpisodeMutation.isPending}
+                popcorn={false}
+              >
+                Retry Season
+              </Button>
             </div>
             <div className="p-2 flex flex-wrap gap-1">
               {season.episodes.map((episode) => {
@@ -502,6 +552,11 @@ function EpisodeGrid({ requestId }: { requestId: string }) {
 
                 // Context menu items
                 const contextMenuItems = [
+                  {
+                    label: "Retry",
+                    onClick: () => retryEpisodeMutation.mutate({ itemId: episode.id }),
+                    disabled: false,
+                  },
                   {
                     label: "Re-encode",
                     onClick: () => reEncodeMutation.mutate({ itemId: episode.id }),
@@ -608,9 +663,10 @@ interface RequestCardProps {
     } | null;
   };
   onShowAlternatives: (id: string) => void;
+  onShowDiscoveryOverride: (id: string) => void;
 }
 
-function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
+function RequestCard({ request, onShowAlternatives, onShowDiscoveryOverride }: RequestCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const utils = trpc.useUtils();
 
@@ -664,6 +720,7 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
     "processing",
   ].includes(status);
   const isAwaiting = status === "awaiting";
+  const isDiscovered = status === "discovered";
   const isQualityUnavailable = status === "quality_unavailable";
   const isFailed = status === "failed";
   const isDownloading = status === "downloading";
@@ -844,6 +901,33 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
               <div className="text-xs text-amber-400/70 mb-1">Awaiting Release</div>
               <div className="text-sm text-amber-400">
                 No releases found yet. Will retry automatically.
+              </div>
+            </div>
+          )}
+
+          {/* Discovered */}
+          {isDiscovered && (
+            <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded space-y-3">
+              <div>
+                <div className="text-xs text-cyan-400/70 mb-1">Release Discovered</div>
+                <div className="text-sm text-cyan-400">
+                  Best release auto-selected. Reviewing before download.
+                </div>
+                <div className="mt-2">
+                  <CountdownTimer itemId={request.id} />
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onShowDiscoveryOverride(request.id);
+                  }}
+                >
+                  View Selection
+                </Button>
               </div>
             </div>
           )}
@@ -1149,7 +1233,7 @@ function RequestCard({ request, onShowAlternatives }: RequestCardProps) {
               </Button>
             )}
 
-            {(isFailed || isAwaiting || isDownloading) && (
+            {(isFailed || isAwaiting || isDownloading || isQualityUnavailable) && (
               <Button
                 variant="primary"
                 size="sm"
@@ -1221,6 +1305,7 @@ export default function RequestsPage() {
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [alternativesRequestId, setAlternativesRequestId] = useState<string | null>(null);
   const [manualSearchRequestId, setManualSearchRequestId] = useState<string | null>(null);
+  const [discoveryOverrideItemId, setDiscoveryOverrideItemId] = useState<string | null>(null);
 
   const requests = trpc.requests.list.useQuery({ limit: 100 }, { refetchInterval: 5000 });
 
@@ -1467,6 +1552,7 @@ export default function RequestsPage() {
               key={request.id}
               request={request}
               onShowAlternatives={setAlternativesRequestId}
+              onShowDiscoveryOverride={setDiscoveryOverrideItemId}
             />
           ))}
         </div>
@@ -1484,6 +1570,13 @@ export default function RequestsPage() {
         isOpen={manualSearchRequestId !== null}
         onClose={() => setManualSearchRequestId(null)}
         requestId={manualSearchRequestId}
+      />
+
+      {/* Discovery Override Modal */}
+      <DiscoveryOverrideModal
+        isOpen={discoveryOverrideItemId !== null}
+        onClose={() => setDiscoveryOverrideItemId(null)}
+        itemId={discoveryOverrideItemId}
       />
     </div>
   );

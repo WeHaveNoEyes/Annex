@@ -1,15 +1,16 @@
 import type { MediaType, ProcessingItem } from "@prisma/client";
+import { prisma } from "../../../db/client.js";
 import type { PipelineContext } from "../PipelineContext";
 import { SearchStep } from "../steps/SearchStep";
 import { BaseWorker } from "./BaseWorker";
 
 /**
  * SearchWorker - Searches for releases for items in PENDING status
- * Transitions items from PENDING → SEARCHING → FOUND
+ * Transitions items from PENDING → SEARCHING → DISCOVERED (or FOUND if quality unavailable)
  */
 export class SearchWorker extends BaseWorker {
   readonly processingStatus = "PENDING" as const;
-  readonly nextStatus = "FOUND" as const;
+  readonly nextStatus = "DISCOVERED" as const;
   readonly name = "SearchWorker";
 
   protected async processItem(item: ProcessingItem): Promise<void> {
@@ -30,6 +31,43 @@ export class SearchWorker extends BaseWorker {
       );
       await pipelineOrchestrator.transitionStatus(item.id, "FOUND", {
         currentStep: "search_complete",
+      });
+      return;
+    }
+
+    // Early exit: if item has selectedRelease in stepContext (from acceptLowerQuality), skip search
+    const existingContext = item.stepContext as Record<string, unknown> | null;
+    if (existingContext?.selectedRelease && existingContext?.qualityMet === true) {
+      console.log(
+        `[${this.name}] Early exit: ${item.title} has accepted lower quality release, promoting to DISCOVERED`
+      );
+
+      // Transition to SEARCHING first (required by state machine)
+      await pipelineOrchestrator.transitionStatus(item.id, "SEARCHING", { currentStep: "search" });
+
+      // Use existing cooldown if set (from override), otherwise use default 5min
+      const now = new Date();
+      let cooldownEndsAt: Date;
+
+      if (item.cooldownEndsAt && item.cooldownEndsAt > now) {
+        // Preserve existing cooldown (e.g., from override with 30s)
+        cooldownEndsAt = item.cooldownEndsAt;
+      } else {
+        // Calculate new cooldown from settings
+        const cooldownSetting = await prisma.setting.findUnique({
+          where: { key: "discovery.cooldownMinutes" },
+        });
+        const cooldownMinutes = cooldownSetting ? (JSON.parse(cooldownSetting.value) as number) : 5;
+        cooldownEndsAt = new Date(now.getTime() + cooldownMinutes * 60 * 1000);
+      }
+
+      // Transition to DISCOVERED with cooldown
+      await pipelineOrchestrator.transitionStatus(item.id, "DISCOVERED", {
+        currentStep: "discovery_cooldown",
+        stepContext: existingContext,
+        discoveredAt: item.discoveredAt || now,
+        cooldownEndsAt,
+        allSearchResults: (existingContext.alternativeReleases as unknown[]) || [],
       });
       return;
     }
@@ -139,13 +177,35 @@ export class SearchWorker extends BaseWorker {
       );
     }
 
-    // Transition to FOUND with search results
-    // Even if qualityMet=false, we transition to FOUND so UI can show "Accept Lower Quality"
-    // The stepContext contains all info the UI needs: alternativeReleases, qualityMet, bestAvailableQuality
-    await this.transitionToNext(item.id, {
-      currentStep: qualityNotMet ? "search_quality_unavailable" : "search_complete",
-      stepContext,
-    });
+    // Determine next status based on whether auto-selection succeeded
+    if (qualityNotMet) {
+      // Quality not met: skip DISCOVERED, go directly to FOUND with search_quality_unavailable
+      console.log(`[${this.name}] Skipping DISCOVERED for ${request.title}: quality unavailable`);
+      await pipelineOrchestrator.transitionStatus(item.id, "FOUND", {
+        currentStep: "search_quality_unavailable",
+        stepContext,
+      });
+    } else {
+      // Quality met: transition to DISCOVERED with cooldown
+      const cooldownSetting = await prisma.setting.findUnique({
+        where: { key: "discovery.cooldownMinutes" },
+      });
+      const cooldownMinutes = cooldownSetting ? (JSON.parse(cooldownSetting.value) as number) : 5;
+      const now = new Date();
+      const cooldownEndsAt = new Date(now.getTime() + cooldownMinutes * 60 * 1000);
+
+      console.log(
+        `[${this.name}] Transitioning ${request.title} to DISCOVERED with ${cooldownMinutes}min cooldown`
+      );
+
+      await pipelineOrchestrator.transitionStatus(item.id, "DISCOVERED", {
+        currentStep: "discovery_cooldown",
+        stepContext,
+        discoveredAt: now,
+        cooldownEndsAt,
+        allSearchResults: stepContext.alternativeReleases || [],
+      });
+    }
   }
 }
 

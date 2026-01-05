@@ -263,6 +263,13 @@ function GeneralSettings() {
   const [retryInterval, setRetryInterval] = useState<string>("6");
   const [retryIntervalSaved, setRetryIntervalSaved] = useState(false);
 
+  // Fetch discovery cooldown setting
+  const discoveryCooldownQuery = trpc.system.settings.get.useQuery({
+    key: "discovery.cooldownMinutes",
+  });
+  const [discoveryCooldown, setDiscoveryCooldown] = useState<string>("5");
+  const [discoveryCooldownSaved, setDiscoveryCooldownSaved] = useState(false);
+
   // Config values
   const configQuery = trpc.system.config.get.useQuery();
   const [configValues, setConfigValues] = useState({
@@ -295,6 +302,14 @@ function GeneralSettings() {
     }
   }, [retryIntervalQuery.data, retryInterval, retryIntervalSaved]);
 
+  // Set initial discovery cooldown value
+  useEffect(() => {
+    const currentCooldown = discoveryCooldownQuery.data?.value as number | undefined;
+    if (currentCooldown !== undefined && discoveryCooldown === "5" && !discoveryCooldownSaved) {
+      setDiscoveryCooldown(String(currentCooldown));
+    }
+  }, [discoveryCooldownQuery.data, discoveryCooldown, discoveryCooldownSaved]);
+
   // Load config values when query returns
   useEffect(() => {
     if (configQuery.data && !configValues.downloads.directory) {
@@ -308,10 +323,16 @@ function GeneralSettings() {
   }, [configQuery.data, configValues.downloads.directory]);
 
   const setSettingMutation = trpc.system.settings.set.useMutation({
-    onSuccess: () => {
-      utils.system.settings.get.invalidate({ key: "search.retryIntervalHours" });
-      setRetryIntervalSaved(true);
-      setTimeout(() => setRetryIntervalSaved(false), 2000);
+    onSuccess: (_, variables) => {
+      if (variables.key === "search.retryIntervalHours") {
+        utils.system.settings.get.invalidate({ key: "search.retryIntervalHours" });
+        setRetryIntervalSaved(true);
+        setTimeout(() => setRetryIntervalSaved(false), 2000);
+      } else if (variables.key === "discovery.cooldownMinutes") {
+        utils.system.settings.get.invalidate({ key: "discovery.cooldownMinutes" });
+        setDiscoveryCooldownSaved(true);
+        setTimeout(() => setDiscoveryCooldownSaved(false), 2000);
+      }
     },
   });
 
@@ -325,6 +346,13 @@ function GeneralSettings() {
     const value = parseInt(retryInterval, 10);
     if (value >= 1) {
       setSettingMutation.mutate({ key: "search.retryIntervalHours", value });
+    }
+  };
+
+  const handleSaveDiscoveryCooldown = () => {
+    const value = parseInt(discoveryCooldown, 10);
+    if (value >= 1 && value <= 60) {
+      setSettingMutation.mutate({ key: "discovery.cooldownMinutes", value });
     }
   };
 
@@ -426,6 +454,37 @@ function GeneralSettings() {
           <p className="text-xs text-surface-500 mt-1">
             When no releases are found for a request, it will be retried every {retryInterval} hour
             {retryInterval !== "1" ? "s" : ""}
+          </p>
+        </div>
+
+        <div>
+          <Label hint="Time to wait before auto-downloading after release discovery">
+            Discovery Cooldown (minutes)
+          </Label>
+          <div className="flex gap-2 items-center">
+            <Input
+              type="number"
+              min="1"
+              max="60"
+              value={discoveryCooldown}
+              onChange={(e) => setDiscoveryCooldown(e.target.value)}
+              className="w-24"
+            />
+            <Button
+              onClick={handleSaveDiscoveryCooldown}
+              disabled={setSettingMutation.isLoading}
+              size="sm"
+            >
+              {setSettingMutation.isLoading
+                ? "Saving..."
+                : discoveryCooldownSaved
+                  ? "Saved!"
+                  : "Save"}
+            </Button>
+          </div>
+          <p className="text-xs text-surface-500 mt-1">
+            When a release is discovered, wait {discoveryCooldown} minute
+            {discoveryCooldown !== "1" ? "s" : ""} before auto-downloading to allow manual override
           </p>
         </div>
       </Card>

@@ -60,6 +60,23 @@ export class ValidationFramework {
         break;
       }
 
+      case "DISCOVERED": {
+        // Requires selectedRelease or selectedPacks from search
+        const discoveryContext = item.stepContext as Record<string, unknown>;
+        const hasSelectedRelease = !!discoveryContext?.selectedRelease;
+        const hasSelectedPacks = !!discoveryContext?.selectedPacks;
+
+        if (!hasSelectedRelease && !hasSelectedPacks) {
+          errors.push("No release selected for discovery cooldown");
+        }
+
+        // Require cooldownEndsAt to be set
+        if (!item.cooldownEndsAt) {
+          errors.push("Cooldown end time must be set for DISCOVERED status");
+        }
+        break;
+      }
+
       case "DOWNLOADING":
         // Download ID is optional for existing downloads in qBittorrent
         break;
@@ -188,6 +205,25 @@ export class ValidationFramework {
         break;
       }
 
+      case "DISCOVERED": {
+        // Cooldown must have expired OR user explicitly overrode
+        const now = new Date();
+        if (item.cooldownEndsAt && item.cooldownEndsAt > now) {
+          // Note: This is OK if user is overriding
+          // The override endpoint will handle the transition directly
+        }
+
+        // Must still have a selected release
+        const discoveryContext = item.stepContext as Record<string, unknown>;
+        const hasSelectedRelease = !!discoveryContext?.selectedRelease;
+        const hasSelectedPacks = !!discoveryContext?.selectedPacks;
+
+        if (!hasSelectedRelease && !hasSelectedPacks) {
+          errors.push("No release selected");
+        }
+        break;
+      }
+
       case "DOWNLOADING": {
         // Download must be complete
         const stepContext = item.stepContext as Record<string, unknown>;
@@ -274,6 +310,8 @@ export class ValidationFramework {
       stepContext?: Record<string, unknown>;
       downloadId?: string;
       encodingJobId?: string;
+      cooldownEndsAt?: Date;
+      discoveredAt?: Date;
     }
   ): Promise<ValidationResult> {
     // Create a temporary item with new fields for validation
@@ -284,6 +322,8 @@ export class ValidationFramework {
       }),
       ...(newContext?.downloadId && { downloadId: newContext.downloadId }),
       ...(newContext?.encodingJobId && { encodingJobId: newContext.encodingJobId }),
+      ...(newContext?.cooldownEndsAt && { cooldownEndsAt: newContext.cooldownEndsAt }),
+      ...(newContext?.discoveredAt && { discoveredAt: newContext.discoveredAt }),
     };
 
     // Skip exit validation when transitioning to terminal states (FAILED, CANCELLED)

@@ -128,10 +128,7 @@ export class SearchStep extends BaseStep {
 
       if (processingItem?.stepContext && typeof processingItem.stepContext === "object") {
         const stepContext = processingItem.stepContext as Record<string, unknown>;
-        if (stepContext.search && typeof stepContext.search === "object") {
-          const searchData = stepContext.search as Record<string, unknown>;
-          selectedRelease = searchData.selectedRelease || null;
-        }
+        selectedRelease = stepContext.selectedRelease || null;
       }
     }
 
@@ -414,6 +411,8 @@ export class SearchStep extends BaseStep {
 
     // For TV shows, intelligently select between season packs and individual episodes
     let filteredReleases = searchResult.releases;
+    // Store ALL releases for alternativeReleases (so modal shows everything)
+    const allReleases = searchResult.releases;
     if (mediaType === MediaType.TV) {
       // Get all episodes for this request and their statuses
       const allEpisodes = await prisma.processingItem.findMany({
@@ -979,13 +978,17 @@ export class SearchStep extends BaseStep {
 
         // Return success=true because we successfully found releases and stored alternatives
         // The user can manually select a lower quality from the UI
+        // For TV shows, show ALL releases; for movies, show top 10 below quality
+        const alternativesForQualityNotMet =
+          mediaType === MediaType.TV ? allReleases : belowQuality.slice(0, 10);
+
         return {
           success: true,
           nextStep: null, // Stop pipeline here, don't proceed to download
           data: {
             search: {
               qualityMet: false,
-              alternativeReleases: belowQuality.slice(0, 10),
+              alternativeReleases: alternativesForQualityNotMet,
             },
             bestAvailableQuality: bestAvailable,
           },
@@ -1067,13 +1070,17 @@ export class SearchStep extends BaseStep {
     // selectedRelease is stored in ProcessingItem.stepContext via step return data
     // Status/progress are handled by ProcessingItem, not MediaRequest
 
+    // For TV shows, use ALL search results (not filtered by episode) for alternativeReleases
+    // This allows the modal to show all available releases, not just for this specific episode
+    const alternativeReleases = mediaType === MediaType.TV ? allReleases : alternatives;
+
     return {
       success: true,
       nextStep: "download",
       data: {
         search: {
           selectedRelease: bestRelease,
-          alternativeReleases: alternatives,
+          alternativeReleases,
           qualityMet: true,
         },
       },

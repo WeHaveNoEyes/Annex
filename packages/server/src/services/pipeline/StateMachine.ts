@@ -7,6 +7,7 @@ const PIPELINE_ORDER: ProcessingStatus[] = [
   "PENDING",
   "SEARCHING",
   "FOUND",
+  "DISCOVERED",
   "DOWNLOADING",
   "DOWNLOADED",
   "ENCODING",
@@ -40,6 +41,12 @@ const STATE_METADATA: Record<ProcessingStatus, StateMetadata> = {
   },
   FOUND: {
     description: "Release found and selected",
+    isTerminal: false,
+    requiresValidation: true,
+    allowsRetry: false,
+  },
+  DISCOVERED: {
+    description: "Cooldown period before download",
     isTerminal: false,
     requiresValidation: true,
     allowsRetry: false,

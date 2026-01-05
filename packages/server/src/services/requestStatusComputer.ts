@@ -116,6 +116,8 @@ export class RequestStatusComputer {
       )
     ) {
       status = "QUALITY_UNAVAILABLE";
+    } else if (items.some((i: (typeof items)[0]) => i.status === "DISCOVERED")) {
+      status = "DISCOVERED";
     } else if (items.some((i: (typeof items)[0]) => i.status === "SEARCHING")) {
       status = "SEARCHING";
     } else if (items.some((i: (typeof items)[0]) => i.status === "PENDING")) {
@@ -255,6 +257,8 @@ export class RequestStatusComputer {
         )
       ) {
         status = "QUALITY_UNAVAILABLE";
+      } else if (items.some((i: (typeof items)[0]) => i.status === "DISCOVERED")) {
+        status = "DISCOVERED";
       } else if (items.some((i: (typeof items)[0]) => i.status === "SEARCHING")) {
         status = "SEARCHING";
       } else if (items.some((i: (typeof items)[0]) => i.status === "PENDING")) {

@@ -532,6 +532,11 @@ model ProcessingItem {
   downloadId    String?
   encodingJobId String?
 
+  // Discovery cooldown tracking
+  discoveredAt     DateTime? // When item transitioned to DISCOVERED
+  cooldownEndsAt   DateTime? // When cooldown period expires
+  allSearchResults Json?     // All search results for user override
+
   // Episode-specific tracking fields (migrated from TvEpisode)
   sourceFilePath    String?   // Path to extracted episode file
   airDate           DateTime? // When episode airs (for AWAITING status)
@@ -565,6 +570,7 @@ enum ProcessingStatus {
   PENDING // Initial state
   SEARCHING // Looking for releases
   FOUND // Release selected
+  DISCOVERED // Cooldown period before download
   DOWNLOADING // Download in progress
   DOWNLOADED // Download complete, file validated
   ENCODING // Encoding in progress
@@ -636,10 +642,14 @@ enum RequestStatus {
   PENDING
   PROCESSING // NEW: At least one item is being processed
   SEARCHING
+  FOUND // NEW: Release selected
+  DISCOVERED // NEW: Cooldown period before download
   AWAITING // No releases found, waiting for availability
   QUALITY_UNAVAILABLE // Releases found but none meet quality requirements
   DOWNLOADING
+  DOWNLOADED // NEW: Download complete, ready for encoding
   ENCODING
+  ENCODED // NEW: Encoding complete, ready for delivery
   DELIVERING
   COMPLETED
   PARTIAL // NEW: Some items completed, some failed
@@ -1348,4 +1358,18 @@ model CircuitBreaker {
 
   @@index([service])
   @@index([state])
+}
+
+// =============================================================================
+// Settings - Global application settings
+// =============================================================================
+
+model Settings {
+  id String @id @default("default") // Single row, use fixed ID
+
+  // Discovery cooldown (minutes)
+  discoveryCooldownMinutes Int @default(5)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
