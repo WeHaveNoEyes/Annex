@@ -8,6 +8,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { z } from "zod";
+import { getConfig, initConfig } from "../config";
 
 // Import the schema to test validation directly
 const configSchema = z.object({
@@ -462,19 +463,16 @@ describe("config schema validation", () => {
 });
 
 describe("config module behavior", () => {
-  test("config module exports initConfig function", async () => {
-    const config = await import("../config.js");
-    expect(typeof config.initConfig).toBe("function");
+  test("config module exports initConfig function", () => {
+    expect(typeof initConfig).toBe("function");
   });
 
-  test("config module exports getConfig function", async () => {
-    const config = await import("../config.js");
-    expect(typeof config.getConfig).toBe("function");
+  test("config module exports getConfig function", () => {
+    expect(typeof getConfig).toBe("function");
   });
 
-  test("getConfig returns a config object", async () => {
+  test("getConfig returns a config object", () => {
     // Ensure encoder ID is set (uses HOSTNAME as fallback in CI)
-    const { initConfig } = await import("../config.js");
     const config = initConfig(); // Use initConfig to ensure fresh load
     expect(config).toBeDefined();
     expect(typeof config.encoderId).toBe("string");
