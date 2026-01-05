@@ -131,19 +131,20 @@ export async function refreshTraktListCache(
     const local: LocalMediaItem | undefined = localMap.get(localId);
     const key = `${traktItem.type}-${traktItem.tmdbId}`;
 
-    const baseResult =
-      local && local.ratings !== undefined
-        ? mediaItemToTrendingResult(local)
-        : mediaItemToTrendingResult({
-            type: (traktItem.type === "movie" ? "MOVIE" : "TV") as "MOVIE" | "TV",
-            tmdbId: traktItem.tmdbId,
-            title: traktItem.title,
-            posterPath: extractTMDBPath(traktItem.posterUrl),
-            backdropPath: extractTMDBPath(traktItem.fanartUrl),
-            year: traktItem.year,
-            overview: "",
-            ratings: null,
-          });
+    // Prefer local database data if available (regardless of ratings status)
+    const baseResult = local
+      ? mediaItemToTrendingResult(local)
+      : mediaItemToTrendingResult({
+          type: (traktItem.type === "movie" ? "MOVIE" : "TV") as "MOVIE" | "TV",
+          tmdbId: traktItem.tmdbId,
+          title: traktItem.title,
+          // Extract TMDB path if possible, otherwise use Trakt URL as fallback
+          posterPath: extractTMDBPath(traktItem.posterUrl) || traktItem.posterUrl || null,
+          backdropPath: extractTMDBPath(traktItem.fanartUrl) || traktItem.fanartUrl || null,
+          year: traktItem.year,
+          overview: "",
+          ratings: null,
+        });
 
     // Add hydrated status
     return {
@@ -638,18 +639,47 @@ export const discoveryRouter = router({
             `[TraktCache] Cache hit (fresh): ${input.listType}/${input.type}/page${input.page}`
           );
 
-          // Re-hydrate library/request status (not cached since it changes frequently)
           const cachedResults = cached.results as unknown as TrendingResult[];
+
+          // Re-fetch metadata from database to pick up newly hydrated items
+          const mediaItemIds = cachedResults.map((item) => `tmdb-${item.type}-${item.tmdbId}`);
+          const localItems = await prisma.mediaItem.findMany({
+            where: { id: { in: mediaItemIds } },
+            select: {
+              id: true,
+              tmdbId: true,
+              posterPath: true,
+              backdropPath: true,
+            },
+          });
+
+          type LocalMetadata = {
+            id: string;
+            tmdbId: number;
+            posterPath: string | null;
+            backdropPath: string | null;
+          };
+          const localMap = new Map<string, LocalMetadata>(
+            localItems.map((item: LocalMetadata) => [item.id, item])
+          );
+
+          // Re-hydrate library/request status
           const libraryStatusService = getLibraryStatusService();
           const status = await libraryStatusService.getBatchStatus(
             cachedResults.map((item) => ({ tmdbId: item.tmdbId, type: item.type }))
           );
 
-          // Update results with fresh status
+          // Update results with fresh metadata and status
           const resultsWithStatus = cachedResults.map((result) => {
             const key = `${result.type}-${result.tmdbId}`;
+            const localId = `tmdb-${result.type}-${result.tmdbId}`;
+            const local = localMap.get(localId);
+
             return {
               ...result,
+              // Use database poster/backdrop if available
+              posterPath: local?.posterPath ?? result.posterPath,
+              backdropPath: local?.backdropPath ?? result.backdropPath,
               inLibrary: status.inLibrary[key] || null,
               requestStatus: status.requestStatus[key] || null,
             };
@@ -684,18 +714,47 @@ export const discoveryRouter = router({
               console.error("[TraktCache] Failed to queue refresh job:", err);
             });
 
-          // Re-hydrate library/request status
           const cachedResults = cached.results as unknown as TrendingResult[];
+
+          // Re-fetch metadata from database to pick up newly hydrated items
+          const mediaItemIds = cachedResults.map((item) => `tmdb-${item.type}-${item.tmdbId}`);
+          const localItems = await prisma.mediaItem.findMany({
+            where: { id: { in: mediaItemIds } },
+            select: {
+              id: true,
+              tmdbId: true,
+              posterPath: true,
+              backdropPath: true,
+            },
+          });
+
+          type LocalMetadata = {
+            id: string;
+            tmdbId: number;
+            posterPath: string | null;
+            backdropPath: string | null;
+          };
+          const localMap = new Map<string, LocalMetadata>(
+            localItems.map((item: LocalMetadata) => [item.id, item])
+          );
+
+          // Re-hydrate library/request status
           const libraryStatusService = getLibraryStatusService();
           const status = await libraryStatusService.getBatchStatus(
             cachedResults.map((item) => ({ tmdbId: item.tmdbId, type: item.type }))
           );
 
-          // Update results with fresh status
+          // Update results with fresh metadata and status
           const resultsWithStatus = cachedResults.map((result) => {
             const key = `${result.type}-${result.tmdbId}`;
+            const localId = `tmdb-${result.type}-${result.tmdbId}`;
+            const local = localMap.get(localId);
+
             return {
               ...result,
+              // Use database poster/backdrop if available
+              posterPath: local?.posterPath ?? result.posterPath,
+              backdropPath: local?.backdropPath ?? result.backdropPath,
               inLibrary: status.inLibrary[key] || null,
               requestStatus: status.requestStatus[key] || null,
             };
