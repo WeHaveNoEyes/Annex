@@ -1,3 +1,4 @@
+import { prisma } from "../../../db/client.js";
 import type { BaseWorker } from "./BaseWorker";
 import { deliverWorker } from "./DeliverWorker";
 import { discoveredWorker } from "./DiscoveredWorker";
@@ -18,6 +19,42 @@ export class WorkerManager {
   }
 
   /**
+   * Recover stuck in-progress deliveries on startup
+   * Moves DELIVERING items back to ENCODED so they can be rescheduled
+   */
+  async recoverStuckDeliveries(): Promise<void> {
+    console.log("[WorkerManager] Checking for stuck deliveries...");
+
+    const deliveringItems = await prisma.processingItem.findMany({
+      where: { status: "DELIVERING" },
+      select: { id: true, title: true },
+    });
+
+    if (deliveringItems.length === 0) {
+      console.log("[WorkerManager] No stuck deliveries found");
+      return;
+    }
+
+    console.log(
+      `[WorkerManager] Found ${deliveringItems.length} stuck deliveries, resetting to ENCODED...`
+    );
+
+    // Reset all DELIVERING items back to ENCODED
+    await prisma.processingItem.updateMany({
+      where: { status: "DELIVERING" },
+      data: {
+        status: "ENCODED",
+        currentStep: "encode_complete",
+        progress: 100,
+      },
+    });
+
+    console.log(
+      `[WorkerManager] Reset ${deliveringItems.length} items back to ENCODED: ${deliveringItems.map((i: { id: string; title: string }) => i.title).join(", ")}`
+    );
+  }
+
+  /**
    * Register all workers with the scheduler
    */
   async registerWithScheduler(): Promise<void> {
@@ -25,6 +62,9 @@ export class WorkerManager {
       console.log("[WorkerManager] Workers already registered");
       return;
     }
+
+    // Recover stuck deliveries before starting workers
+    await this.recoverStuckDeliveries();
 
     console.log("[WorkerManager] Registering workers with scheduler...");
 
