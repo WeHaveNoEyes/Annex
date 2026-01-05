@@ -738,11 +738,11 @@ class JobQueueService {
   /**
    * Register library metadata hydration scheduler
    * Automatically hydrates library items with metadata (images, ratings, etc)
-   * Runs every 15 minutes to process 100 items at a time
+   * Runs every 5 minutes to process 500 items at a time
    */
   private async startLibraryMetadataHydrationScheduler(): Promise<void> {
     const scheduler = getSchedulerService();
-    const intervalMs = 15 * 60 * 1000; // 15 minutes
+    const intervalMs = 5 * 60 * 1000; // 5 minutes (was 15 minutes)
 
     // Hydrate missing metadata
     scheduler.register(
@@ -752,14 +752,16 @@ class JobQueueService {
       async () => {
         await this.addJobIfNotExists(
           "library:hydrate-metadata",
-          { limit: 100 },
+          { limit: 500 }, // Increased from 100 to 500
           "library:hydrate-metadata",
           { priority: 3, maxAttempts: 3 }
         );
       }
     );
 
-    console.log("[JobQueue] Registered library metadata hydration task (15m interval)");
+    console.log(
+      "[JobQueue] Registered library metadata hydration task (5m interval, 500 items/run)"
+    );
 
     // Refresh stale metadata (once every 24 hours)
     const staleRefreshIntervalMs = 24 * 60 * 60 * 1000; // 24 hours
