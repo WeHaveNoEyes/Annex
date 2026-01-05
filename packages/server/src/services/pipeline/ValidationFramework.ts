@@ -61,13 +61,14 @@ export class ValidationFramework {
       }
 
       case "DISCOVERED": {
-        // Requires selectedRelease or selectedPacks from search
+        // Requires selectedRelease, selectedPacks, OR existingDownload from search
         const discoveryContext = item.stepContext as Record<string, unknown>;
         const hasSelectedRelease = !!discoveryContext?.selectedRelease;
         const hasSelectedPacks = !!discoveryContext?.selectedPacks;
+        const hasExistingDownload = !!discoveryContext?.existingDownload;
 
-        if (!hasSelectedRelease && !hasSelectedPacks) {
-          errors.push("No release selected for discovery cooldown");
+        if (!hasSelectedRelease && !hasSelectedPacks && !hasExistingDownload) {
+          errors.push("No release, packs, or existing download selected for discovery cooldown");
         }
 
         // Require cooldownEndsAt to be set
