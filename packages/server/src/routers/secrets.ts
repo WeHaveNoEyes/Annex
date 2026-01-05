@@ -350,9 +350,21 @@ export const secretsRouter = router({
           }
 
           try {
-            const response = await fetch(
-              `https://api.themoviedb.org/3/movie/550?api_key=${apiKey}`
-            );
+            // Support both API key formats:
+            // 1. JWT tokens (API Read Access Token) - use Bearer auth
+            // 2. Legacy API keys - use query parameter
+            let url = "https://api.themoviedb.org/3/movie/550";
+            const headers: Record<string, string> = {};
+
+            if (apiKey.startsWith("eyJ")) {
+              // JWT token - use Bearer authentication
+              headers.Authorization = `Bearer ${apiKey}`;
+            } else {
+              // Legacy API key - use query parameter
+              url += `?api_key=${apiKey}`;
+            }
+
+            const response = await fetch(url, { headers });
 
             if (response.ok) {
               return { success: true, message: "Connected to TMDB!" };

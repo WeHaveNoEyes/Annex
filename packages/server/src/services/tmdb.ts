@@ -250,12 +250,23 @@ class TMDBService {
 
     // Build URL
     const url = new URL(`${TMDB_API_BASE}${endpoint}`);
-    url.searchParams.set("api_key", apiKey);
     for (const [key, value] of Object.entries(params)) {
       url.searchParams.set(key, value);
     }
 
-    const response = await fetch(url.toString());
+    // Support both API key formats:
+    // 1. JWT tokens (API Read Access Token) - use Bearer auth
+    // 2. Legacy API keys - use query parameter
+    const headers: Record<string, string> = {};
+    if (apiKey.startsWith("eyJ")) {
+      // JWT token - use Bearer authentication
+      headers.Authorization = `Bearer ${apiKey}`;
+    } else {
+      // Legacy API key - use query parameter
+      url.searchParams.set("api_key", apiKey);
+    }
+
+    const response = await fetch(url.toString(), { headers });
 
     if (!response.ok) {
       const error = await response.text();
