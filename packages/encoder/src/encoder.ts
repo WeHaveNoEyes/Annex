@@ -497,15 +497,6 @@ function buildSubtitleMapping(mediaInfo: MediaInfo): {
     return { subArgs: [], hasCompatibleSubs: false };
   }
 
-  // Check if there are any incompatible English subs that would break native filtering
-  const allEnglishSubs = mediaInfo.subtitleStreams.filter((sub) => {
-    const lang = sub.language?.toLowerCase();
-    return lang === "eng" || lang === "en" || lang === "english";
-  });
-  const incompatibleEnglishSubs = allEnglishSubs.filter(
-    (sub) => !MKV_COMPATIBLE_SUBTITLE_CODECS.has(sub.codec.toLowerCase())
-  );
-
   // Log what we're filtering
   const incompatibleTotal = mediaInfo.subtitleStreams.length - compatibleSubs.length;
   if (incompatibleTotal > 0) {
@@ -532,20 +523,9 @@ function buildSubtitleMapping(mediaInfo: MediaInfo): {
 
   const subArgs: string[] = [];
 
-  // If all English subs are compatible, use FFmpeg's native language filtering (cleaner)
-  // Otherwise, map compatible streams individually to avoid encoding failures
-  if (incompatibleEnglishSubs.length === 0) {
-    // All English subs are compatible - use native filtering
-    subArgs.push("-map", "0:s:m:language:eng?");
-    console.log("[Encoder] Using native language filter for English subtitles");
-  } else {
-    // Some English subs are incompatible - map only compatible ones individually
-    console.log(
-      `[Encoder] Mapping ${englishSubs.length} compatible English subs individually (${incompatibleEnglishSubs.length} incompatible English subs skipped)`
-    );
-    for (const sub of englishSubs) {
-      subArgs.push("-map", `0:${sub.index}`);
-    }
+  // Map compatible streams individually
+  for (const sub of englishSubs) {
+    subArgs.push("-map", `0:${sub.index}`);
   }
 
   return { subArgs, hasCompatibleSubs: true };
@@ -992,9 +972,10 @@ export async function encode(job: EncodeJob): Promise<EncodeResult> {
             rawProgress = Math.min(100, (elapsedTime / mediaInfo.duration) * 100);
 
             // Calculate ETA using speed
-            eta = progressState.speed > 0
-              ? Math.round((mediaInfo.duration - elapsedTime) / progressState.speed)
-              : 0;
+            eta =
+              progressState.speed > 0
+                ? Math.round((mediaInfo.duration - elapsedTime) / progressState.speed)
+                : 0;
           }
           // Fallback mode: Use frame-based estimation when out_time is not available
           else if (progressState.frame > 0 && mediaInfo.fps > 0 && mediaInfo.duration > 0) {
