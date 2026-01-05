@@ -389,15 +389,14 @@ export class DeliverWorker extends BaseWorker {
           const file = Bun.file(encodedPath);
           const exists = await file.exists();
           if (exists) {
-            await file.text(); // Force file to be loaded before deleting
-            // TODO: Actually delete the file once we confirm this works
+            // TODO: Actually delete the file once we confirm delivery works
             // await Bun.$`rm ${encodedPath}`;
+            await this.logActivity(
+              item.requestId,
+              ActivityType.INFO,
+              `Encoded file ready for cleanup: ${encodedPath}`
+            );
           }
-          await this.logActivity(
-            item.requestId,
-            ActivityType.INFO,
-            `Cleaned up encoded file: ${encodedPath}`
-          );
         } catch (err) {
           // Log but don't fail delivery on cleanup errors
           await this.logActivity(
