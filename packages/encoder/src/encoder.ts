@@ -429,7 +429,7 @@ function buildFfmpegArgs(
 
   // Explicit stream mapping - video and audio
   args.push("-map", "0:v:0"); // First video stream
-  args.push("-map", "0:a?"); // All audio streams (optional)
+  args.push("-map", "0:a:0"); // First audio stream only (avoid multi-stream codec issues)
 
   // Map compatible subtitle streams (or skip entirely)
   const { subArgs, hasCompatibleSubs } = buildSubtitleMapping(mediaInfo);
