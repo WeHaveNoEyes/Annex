@@ -262,10 +262,18 @@ class IndexerService {
     options: SearchOptions
   ): Promise<Release[]> {
     const url = this.buildSearchUrl(indexer, options);
-    console.log(`[Indexer] ${indexer.name} - URL: ${url}`);
+    console.log(`[Indexer] ${indexer.name} - Request URL: ${url}`);
 
     const response = await fetch(url, {
       signal: AbortSignal.timeout(30000), // 30 second timeout
+    });
+
+    console.log(
+      `[Indexer] ${indexer.name} - Response status: ${response.status} ${response.statusText}`
+    );
+    console.log(`[Indexer] ${indexer.name} - Response headers:`, {
+      contentType: response.headers.get("content-type"),
+      contentLength: response.headers.get("content-length"),
     });
 
     if (!response.ok) {
@@ -273,8 +281,23 @@ class IndexerService {
     }
 
     const xml = await response.text();
+    console.log(`[Indexer] ${indexer.name} - Response body length: ${xml.length} bytes`);
+    console.log(
+      `[Indexer] ${indexer.name} - Response preview (first 500 chars):`,
+      xml.substring(0, 500)
+    );
+
     const results = this.parseResults(xml, indexer.id, indexer.name);
-    console.log(`[Indexer] ${indexer.name} - Found ${results.length} results`);
+    console.log(`[Indexer] ${indexer.name} - Parsed ${results.length} results`);
+
+    if (results.length > 0) {
+      console.log(`[Indexer] ${indexer.name} - First result:`, {
+        title: results[0].title,
+        size: results[0].size,
+        seeders: results[0].seeders,
+      });
+    }
+
     return results;
   }
 
@@ -520,29 +543,43 @@ class IndexerService {
    * Parse Torznab XML response
    */
   private parseResults(xml: string, indexerId: string, indexerName: string): Release[] {
-    const parsed = this.xmlParser.parse(xml);
+    try {
+      const parsed = this.xmlParser.parse(xml);
 
-    // Handle error responses
-    if (parsed.error) {
-      throw new Error(parsed.error["@_description"] || "Unknown Torznab error");
+      // Handle error responses
+      if (parsed.error) {
+        const errorMsg = parsed.error["@_description"] || "Unknown Torznab error";
+        console.error(`[Indexer] ${indexerName} - API error:`, errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      const channel = parsed.rss?.channel;
+      if (!channel) {
+        console.warn(`[Indexer] ${indexerName} - No RSS channel found in response`);
+        console.log(
+          `[Indexer] ${indexerName} - Parsed structure:`,
+          JSON.stringify(parsed, null, 2).substring(0, 500)
+        );
+        return [];
+      }
+
+      const items = channel.item;
+      if (!items) {
+        console.log(`[Indexer] ${indexerName} - No items found in channel (0 results)`);
+        return [];
+      }
+
+      // Normalize to array
+      const itemArray: TorznabItem[] = Array.isArray(items) ? items : [items];
+      console.log(`[Indexer] ${indexerName} - Found ${itemArray.length} items in XML`);
+
+      return itemArray
+        .map((item) => this.parseItem(item, indexerId, indexerName))
+        .filter((r): r is Release => r !== null);
+    } catch (error) {
+      console.error(`[Indexer] ${indexerName} - XML parsing failed:`, error);
+      throw error;
     }
-
-    const channel = parsed.rss?.channel;
-    if (!channel) {
-      return [];
-    }
-
-    const items = channel.item;
-    if (!items) {
-      return [];
-    }
-
-    // Normalize to array
-    const itemArray: TorznabItem[] = Array.isArray(items) ? items : [items];
-
-    return itemArray
-      .map((item) => this.parseItem(item, indexerId, indexerName))
-      .filter((r): r is Release => r !== null);
   }
 
   /**
