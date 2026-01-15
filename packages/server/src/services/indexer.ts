@@ -253,6 +253,7 @@ class IndexerService {
     indexer: {
       id: string;
       name: string;
+      type: IndexerType;
       url: string;
       apiKey: string;
       categoriesMovies: number[];
@@ -281,6 +282,7 @@ class IndexerService {
     indexer: {
       id: string;
       name: string;
+      type: IndexerType;
       url: string;
       apiKey: string;
       categoriesMovies: number[];
@@ -352,12 +354,13 @@ class IndexerService {
 
     const releases = await provider.search(searchOptions);
 
-    // Update indexer ID/name on releases
+    // Update indexer ID/name/type on releases
     return releases.map((r) => ({
       ...r,
       id: `${indexer.id}-${r.id}`,
       indexerId: indexer.id,
       indexerName: indexer.name,
+      indexerType: indexer.type,
     }));
   }
 
@@ -368,6 +371,7 @@ class IndexerService {
     indexer: {
       id: string;
       name: string;
+      type: IndexerType;
       url: string;
       apiKey: string;
       categoriesMovies: number[];
@@ -409,12 +413,13 @@ class IndexerService {
 
     const releases = await provider.search(searchOptions);
 
-    // Update indexer ID/name on releases
+    // Update indexer ID/name/type on releases
     return releases.map((r) => ({
       ...r,
       id: `${indexer.id}-${r.id}`,
       indexerId: indexer.id,
       indexerName: indexer.name,
+      indexerType: indexer.type,
     }));
   }
 
@@ -425,6 +430,7 @@ class IndexerService {
     indexer: {
       id: string;
       name: string;
+      type: IndexerType;
       url: string;
       apiKey: string;
       categoriesMovies: number[];

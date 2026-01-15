@@ -212,6 +212,7 @@ export interface IndexerRelease {
   indexer?: string; // Optional - from internal types
   indexerName?: string; // Optional - from Release type in indexer.ts
   indexerId?: string; // Optional - from Release type in indexer.ts
+  indexerType?: string; // Optional - from Release type in indexer.ts
   publishDate?: Date;
   resolution?: string;
   source?: string;
