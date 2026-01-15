@@ -71,6 +71,7 @@ export class NZBGetClient implements IDownloadClient {
   private password: string;
   private nzbGetBaseDir: string | undefined;
   private requestId = 1;
+  private cachedVersion: string | null = null;
 
   constructor(config: {
     name: string;
@@ -142,33 +143,44 @@ export class NZBGetClient implements IDownloadClient {
       const priority = options?.priority || 0;
       const addPaused = options?.paused || false;
 
-      // NZBGet append parameters: NZBFilename, NZBContent, Category, Priority, AddToTop, AddPaused, DupeKey, DupeScore, DupeMode
-      // Pass DupeKey/DupeScore/DupeMode with default values (some versions require them)
-      const params = [
+      // Try append with minimal parameters first (v13+ signature)
+      // NZBGet append: NZBFilename, NZBContent, Category, Priority, AddToTop, AddPaused
+      let params: unknown[] = [
         filename,
         base64,
         category,
         priority,
-        false, // AddToTop (addFirst)
+        false, // AddToTop
         addPaused,
-        "", // DupeKey (default: empty string)
-        0, // DupeScore (default: 0)
-        "SCORE", // DupeMode (default: "SCORE" - safest option)
       ];
 
-      console.log(`[NZBGetClient] Calling append with ${params.length} parameters:`, {
+      console.log(`[NZBGetClient] Calling append with ${params.length} parameters (minimal):`, {
         filename,
         contentLength: base64.length,
         category,
         priority,
         addToTop: false,
         addPaused,
-        dupeKey: "",
-        dupeScore: 0,
-        dupeMode: "SCORE",
       });
 
-      const response = await this.rpcCall<number>("append", params);
+      let response = await this.rpcCall<number>("append", params);
+
+      // If that fails with parameter error, try with dupe params (older versions)
+      if (response.error && response.error.message.includes("Invalid parameter")) {
+        console.log(`[NZBGetClient] Retrying append with dupe parameters...`);
+        params = [
+          filename,
+          base64,
+          category,
+          priority,
+          false,
+          addPaused,
+          "", // DupeKey
+          0, // DupeScore
+          "SCORE", // DupeMode
+        ];
+        response = await this.rpcCall<number>("append", params);
+      }
 
       if (response.error) {
         console.error(`[NZBGetClient] append failed:`, response.error);
@@ -213,31 +225,41 @@ export class NZBGetClient implements IDownloadClient {
       const priority = options?.priority || 0;
       const addPaused = options?.paused || false;
 
-      // NZBGet appendurl parameters: NZBFilename, Category, Priority, AddToTop, AddPaused, DupeKey, DupeScore, DupeMode
-      // Pass DupeKey/DupeScore/DupeMode with default values (some versions require them)
-      const params = [
+      // Try appendurl with minimal parameters first
+      // NZBGet appendurl: NZBFilename, Category, Priority, AddToTop, AddPaused
+      let params: unknown[] = [
         nzbUrl,
         category,
         priority,
-        false, // AddToTop (addFirst)
+        false, // AddToTop
         addPaused,
-        "", // DupeKey (default: empty string)
-        0, // DupeScore (default: 0)
-        "SCORE", // DupeMode (default: "SCORE" - safest option)
       ];
 
-      console.log(`[NZBGetClient] Calling appendurl with ${params.length} parameters:`, {
+      console.log(`[NZBGetClient] Calling appendurl with ${params.length} parameters (minimal):`, {
         nzbUrl,
         category,
         priority,
         addToTop: false,
         addPaused,
-        dupeKey: "",
-        dupeScore: 0,
-        dupeMode: "SCORE",
       });
 
-      const response = await this.rpcCall<number>("appendurl", params);
+      let response = await this.rpcCall<number>("appendurl", params);
+
+      // If that fails with parameter error, try with dupe params (older versions)
+      if (response.error && response.error.message.includes("Invalid parameter")) {
+        console.log(`[NZBGetClient] Retrying appendurl with dupe parameters...`);
+        params = [
+          nzbUrl,
+          category,
+          priority,
+          false,
+          addPaused,
+          "", // DupeKey
+          0, // DupeScore
+          "SCORE", // DupeMode
+        ];
+        response = await this.rpcCall<number>("appendurl", params);
+      }
 
       if (response.error) {
         console.error(`[NZBGetClient] appendurl failed:`, response.error);
