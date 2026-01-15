@@ -270,16 +270,12 @@ class IndexerService {
 
     if (options.type === "movie") {
       // Movie search strategies in priority order
+      // Note: TMDB ID is skipped for NEWZNAB - most indexers have broken TMDB support
+      // that returns incorrect results (e.g., altHUB returns random content)
       if (options.imdbId) {
         searchStrategies.push({
           name: "imdbid",
           options: { ...options, tmdbId: undefined, query: undefined },
-        });
-      }
-      if (options.tmdbId) {
-        searchStrategies.push({
-          name: "tmdbid",
-          options: { ...options, imdbId: undefined, query: undefined },
         });
       }
       if (options.query) {
@@ -290,6 +286,8 @@ class IndexerService {
       }
     } else {
       // TV search strategies in priority order
+      // TVDB is the most reliable for TV, followed by IMDB, then query text
+      // TMDB is skipped - unreliable for NEWZNAB indexers
       if (options.tvdbId) {
         searchStrategies.push({
           name: "tvdbid",
@@ -300,12 +298,6 @@ class IndexerService {
         searchStrategies.push({
           name: "imdbid",
           options: { ...options, tvdbId: undefined, tmdbId: undefined, query: undefined },
-        });
-      }
-      if (options.tmdbId) {
-        searchStrategies.push({
-          name: "tmdbid",
-          options: { ...options, tvdbId: undefined, imdbId: undefined, query: undefined },
         });
       }
       if (options.query) {
