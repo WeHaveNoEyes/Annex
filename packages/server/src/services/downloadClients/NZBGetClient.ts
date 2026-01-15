@@ -140,16 +140,16 @@ export class NZBGetClient implements IDownloadClient {
       const priority = options?.priority || 0;
       const addPaused = options?.paused || false;
 
+      // NZBGet append parameters (only use universally supported ones):
+      // NZBFilename, NZBContent, Category, Priority, AddToTop, AddPaused
+      // Newer parameters (DupeKey, DupeScore, DupeMode) cause "Invalid parameter" errors on some versions
       const response = await this.rpcCall<number>("append", [
         filename,
         base64,
         category,
         priority,
-        false, // addFirst
+        false, // AddToTop (addFirst)
         addPaused,
-        "", // dupeKey
-        0, // dupeScore
-        "ALL", // dupeMode
       ]);
 
       if (response.error) {
@@ -193,15 +193,15 @@ export class NZBGetClient implements IDownloadClient {
       const priority = options?.priority || 0;
       const addPaused = options?.paused || false;
 
+      // NZBGet appendurl parameters (only use universally supported ones):
+      // NZBFilename, Category, Priority, AddToTop, AddPaused
+      // Newer parameters (DupeKey, DupeScore, DupeMode) cause "Invalid parameter" errors on some versions
       const response = await this.rpcCall<number>("appendurl", [
         nzbUrl,
         category,
         priority,
-        false, // addFirst
+        false, // AddToTop (addFirst)
         addPaused,
-        "", // dupeKey
-        0, // dupeScore
-        "ALL", // dupeMode
       ]);
 
       if (response.error) {
