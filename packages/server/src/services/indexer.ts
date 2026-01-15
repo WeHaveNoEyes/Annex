@@ -69,6 +69,7 @@ export interface Release {
   title: string;
   indexerId: string;
   indexerName: string;
+  indexerPriority: number; // Lower = higher priority (5 before 50, used for tiebreaking)
   resolution: string;
   source: string;
   codec: string;
@@ -194,8 +195,21 @@ class IndexerService {
     // Deduplicate by title similarity and score
     const dedupedReleases = this.deduplicateReleases(allReleases);
 
-    // Sort by score (descending)
-    dedupedReleases.sort((a, b) => b.score - a.score);
+    // Sort by score (descending), then by indexer priority (ascending: lower = higher priority), then by file size (ascending)
+    dedupedReleases.sort((a, b) => {
+      // Primary: sort by score (descending)
+      if (b.score !== a.score) {
+        return b.score - a.score;
+      }
+
+      // Tiebreaker 1: prefer lower indexer priority number (5 before 50)
+      if (a.indexerPriority !== b.indexerPriority) {
+        return a.indexerPriority - b.indexerPriority;
+      }
+
+      // Tiebreaker 2: prefer smaller file size (better quality/size ratio)
+      return a.size - b.size;
+    });
 
     return {
       releases: dedupedReleases,
@@ -217,6 +231,7 @@ class IndexerService {
       apiKey: string;
       categoriesMovies: number[];
       categoriesTv: number[];
+      priority: number;
     },
     options: SearchOptions
   ): Promise<Release[]> {
@@ -258,6 +273,7 @@ class IndexerService {
       apiKey: string;
       categoriesMovies: number[];
       categoriesTv: number[];
+      priority: number;
     },
     options: SearchOptions
   ): Promise<Release[]> {
@@ -362,6 +378,7 @@ class IndexerService {
       apiKey: string;
       categoriesMovies: number[];
       categoriesTv: number[];
+      priority: number;
     },
     options: SearchOptions
   ): Promise<Release[]> {
@@ -391,7 +408,7 @@ class IndexerService {
       xml.substring(0, 500)
     );
 
-    const results = this.parseResults(xml, indexer.id, indexer.name);
+    const results = this.parseResults(xml, indexer.id, indexer.name, indexer.priority);
     console.log(`[Indexer] ${indexer.name} - Parsed ${results.length} results`);
 
     if (results.length > 0) {
@@ -417,6 +434,7 @@ class IndexerService {
       apiKey: string;
       categoriesMovies: number[];
       categoriesTv: number[];
+      priority: number;
     },
     options: SearchOptions
   ): Promise<Release[]> {
@@ -484,12 +502,13 @@ class IndexerService {
 
     const releases = await provider.search(searchOptions);
 
-    // Update indexer ID/name/type on releases
+    // Update indexer ID/name/type/priority on releases
     return releases.map((r) => ({
       ...r,
       id: `${indexer.id}-${r.id}`,
       indexerId: indexer.id,
       indexerName: indexer.name,
+      indexerPriority: indexer.priority,
       indexerType: indexer.type,
     }));
   }
@@ -506,6 +525,7 @@ class IndexerService {
       apiKey: string;
       categoriesMovies: number[];
       categoriesTv: number[];
+      priority: number;
     },
     options: SearchOptions
   ): Promise<Release[]> {
@@ -543,12 +563,13 @@ class IndexerService {
 
     const releases = await provider.search(searchOptions);
 
-    // Update indexer ID/name/type on releases
+    // Update indexer ID/name/type/priority on releases
     return releases.map((r) => ({
       ...r,
       id: `${indexer.id}-${r.id}`,
       indexerId: indexer.id,
       indexerName: indexer.name,
+      indexerPriority: indexer.priority,
       indexerType: indexer.type,
     }));
   }
@@ -565,6 +586,7 @@ class IndexerService {
       apiKey: string;
       categoriesMovies: number[];
       categoriesTv: number[];
+      priority: number;
     },
     options: SearchOptions
   ): Promise<Release[]> {
@@ -586,6 +608,7 @@ class IndexerService {
       {
         indexerId: indexer.id,
         indexerName: indexer.name,
+        indexerPriority: indexer.priority,
         cardigannIndexer,
       },
       options
@@ -655,7 +678,12 @@ class IndexerService {
   /**
    * Parse Torznab XML response
    */
-  private parseResults(xml: string, indexerId: string, indexerName: string): Release[] {
+  private parseResults(
+    xml: string,
+    indexerId: string,
+    indexerName: string,
+    indexerPriority: number
+  ): Release[] {
     try {
       const parsed = this.xmlParser.parse(xml);
 
@@ -687,7 +715,7 @@ class IndexerService {
       console.log(`[Indexer] ${indexerName} - Found ${itemArray.length} items in XML`);
 
       return itemArray
-        .map((item) => this.parseItem(item, indexerId, indexerName))
+        .map((item) => this.parseItem(item, indexerId, indexerName, indexerPriority))
         .filter((r): r is Release => r !== null);
     } catch (error) {
       console.error(`[Indexer] ${indexerName} - XML parsing failed:`, error);
@@ -698,7 +726,12 @@ class IndexerService {
   /**
    * Parse a single Torznab item
    */
-  private parseItem(item: TorznabItem, indexerId: string, indexerName: string): Release | null {
+  private parseItem(
+    item: TorznabItem,
+    indexerId: string,
+    indexerName: string,
+    indexerPriority: number
+  ): Release | null {
     const title = item.title;
     if (!title) return null;
 
@@ -740,6 +773,7 @@ class IndexerService {
       title,
       indexerId,
       indexerName,
+      indexerPriority,
       resolution,
       source,
       codec,

@@ -309,6 +309,7 @@ export const indexersRouter = router({
             {
               indexerId: indexer.id,
               indexerName: indexer.name,
+              indexerPriority: indexer.priority,
               cardigannIndexer,
             },
             { type: "movie", query: "test" }

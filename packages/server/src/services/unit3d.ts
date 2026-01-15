@@ -378,6 +378,7 @@ class Unit3dProvider {
       title,
       indexerId: "unit3d",
       indexerName: "UNIT3D",
+      indexerPriority: 0, // Overridden by indexer.ts
       resolution,
       source,
       codec,

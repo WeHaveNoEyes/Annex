@@ -462,6 +462,7 @@ class RssAnnounceMonitor {
       title,
       indexerId: "rss-torrentleech",
       indexerName: "TorrentLeech (RSS)",
+      indexerPriority: 1, // RSS announces are highest priority (immediate notifications)
       resolution,
       source,
       codec,

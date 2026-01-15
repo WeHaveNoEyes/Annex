@@ -18,6 +18,7 @@ import type { Release, SearchOptions } from "./indexer.js";
 export interface CardigannProviderConfig {
   indexerId: string;
   indexerName: string;
+  indexerPriority: number;
   cardigannIndexer: CardigannIndexer;
 }
 
@@ -26,7 +27,7 @@ class CardigannProvider {
    * Search a Cardigann indexer
    */
   async search(config: CardigannProviderConfig, options: SearchOptions): Promise<Release[]> {
-    const { cardigannIndexer, indexerId, indexerName } = config;
+    const { cardigannIndexer, indexerId, indexerName, indexerPriority } = config;
 
     // Load the definition
     const parsedDefinition = await cardigannRepository.getDefinition(cardigannIndexer.definitionId);
@@ -164,7 +165,7 @@ class CardigannProvider {
 
     // Transform results to Release format
     return results.map((result) =>
-      this.transformToRelease(result, indexerId, indexerName, cookieHeader)
+      this.transformToRelease(result, indexerId, indexerName, indexerPriority, cookieHeader)
     );
   }
 
@@ -175,6 +176,7 @@ class CardigannProvider {
     result: CardigannSearchResult,
     indexerId: string,
     indexerName: string,
+    indexerPriority: number,
     cookieHeader?: string
   ): Release {
     const title = result.title;
@@ -207,6 +209,7 @@ class CardigannProvider {
       title: result.title,
       indexerId,
       indexerName,
+      indexerPriority,
       resolution,
       source,
       codec,

@@ -556,6 +556,7 @@ class IrcAnnounceMonitor {
       title: announce.name,
       indexerId: "irc-torrentleech",
       indexerName: "TorrentLeech (IRC)",
+      indexerPriority: 1, // IRC announces are highest priority (immediate notifications)
       resolution,
       source,
       codec,

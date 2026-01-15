@@ -56,6 +56,7 @@ export class MockIndexerService {
       title: mock.title,
       indexerId: mock.indexerId,
       indexerName: mock.indexerName || "Mock Indexer",
+      indexerPriority: mock.indexerPriority ?? 50,
       resolution: mock.resolution || "1080p",
       source: mock.source || "WEB-DL",
       codec: mock.codec || "H264",

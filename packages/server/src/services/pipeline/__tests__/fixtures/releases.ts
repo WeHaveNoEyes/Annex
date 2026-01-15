@@ -13,6 +13,7 @@ function createRelease(overrides: Partial<Release>): Release {
     title: overrides.title || "Test.Release.1080p.WEB-DL.H264",
     indexerId: overrides.indexerId || "test-indexer",
     indexerName: overrides.indexerName || "Test Indexer",
+    indexerPriority: overrides.indexerPriority ?? 50,
     resolution: overrides.resolution || "1080p",
     source: overrides.source || "WEB-DL",
     codec: overrides.codec || "H264",

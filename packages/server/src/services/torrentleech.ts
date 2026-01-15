@@ -635,6 +635,7 @@ class TorrentLeechProvider {
       title,
       indexerId: "torrentleech",
       indexerName: "TorrentLeech",
+      indexerPriority: 0, // Overridden by indexer.ts
       resolution,
       source,
       codec,
