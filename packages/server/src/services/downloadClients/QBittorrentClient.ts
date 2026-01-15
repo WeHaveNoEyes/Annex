@@ -122,7 +122,7 @@ export class QBittorrentClient implements IDownloadClient {
       }
 
       if (data) {
-        return await this.addTorrentFile(data, undefined, options);
+        return await this.addTorrentFile(data, options?.filename, options);
       }
 
       return await this.addTorrentUrl(url, options);
@@ -318,20 +318,33 @@ export class QBittorrentClient implements IDownloadClient {
     if (options?.paused) params.append("paused", "true");
     if (options?.tags && options.tags.length > 0) params.append("tags", options.tags.join(","));
 
+    const redactedUrl = torrentUrl.replace(/(passkey|key|token)=[^&]+/gi, "$1=***");
+    console.log(`[QBittorrent] Adding torrent URL: ${redactedUrl}`);
+
     const response = await this.request("/torrents/add", {
       method: "POST",
       body: params,
     });
 
     if (!response.ok) {
-      return { success: false, error: `HTTP ${response.status}` };
+      const errorText = await response.text();
+      console.error(`[QBittorrent] HTTP error ${response.status}: ${errorText}`);
+      return { success: false, error: `HTTP ${response.status}: ${errorText}` };
     }
 
     const text = await response.text();
+    console.log(`[QBittorrent] Add torrent URL response: "${text}"`);
+
     if (text === "Fails.") {
-      return { success: false, error: "Failed to add torrent" };
+      console.error(`[QBittorrent] Failed to add torrent URL: qBittorrent returned "Fails."`);
+      return { success: false, error: "Failed to add torrent URL (qBittorrent rejected it)" };
     }
 
+    if (text !== "Ok.") {
+      console.warn(`[QBittorrent] Unexpected response when adding torrent URL: "${text}"`);
+    }
+
+    console.log(`[QBittorrent] Successfully added torrent from URL`);
     return { success: true };
   }
 
@@ -342,12 +355,17 @@ export class QBittorrentClient implements IDownloadClient {
   ): Promise<AddDownloadResult> {
     const formData = new FormData();
     const blob = new Blob([fileData], { type: "application/x-bittorrent" });
-    formData.append("torrents", blob, filename || "torrent.torrent");
+    const torrentFilename = filename || "torrent.torrent";
+    formData.append("torrents", blob, torrentFilename);
 
     if (options?.savePath) formData.append("savepath", options.savePath);
     if (options?.category) formData.append("category", options.category);
     if (options?.paused) formData.append("paused", "true");
     if (options?.tags && options.tags.length > 0) formData.append("tags", options.tags.join(","));
+
+    console.log(
+      `[QBittorrent] Adding torrent file: ${torrentFilename} (${fileData.byteLength} bytes)`
+    );
 
     const response = await this.request("/torrents/add", {
       method: "POST",
@@ -355,14 +373,26 @@ export class QBittorrentClient implements IDownloadClient {
     });
 
     if (!response.ok) {
-      return { success: false, error: `HTTP ${response.status}` };
+      const errorText = await response.text();
+      console.error(`[QBittorrent] HTTP error ${response.status}: ${errorText}`);
+      return { success: false, error: `HTTP ${response.status}: ${errorText}` };
     }
 
     const text = await response.text();
+    console.log(`[QBittorrent] Add torrent file response: "${text}"`);
+
     if (text === "Fails.") {
-      return { success: false, error: "Failed to add torrent file" };
+      console.error(
+        `[QBittorrent] Failed to add torrent file ${torrentFilename}: qBittorrent returned "Fails."`
+      );
+      return { success: false, error: "Failed to add torrent file (qBittorrent rejected it)" };
     }
 
+    if (text !== "Ok.") {
+      console.warn(`[QBittorrent] Unexpected response when adding torrent file: "${text}"`);
+    }
+
+    console.log(`[QBittorrent] Successfully added torrent: ${torrentFilename}`);
     return { success: true };
   }
 
