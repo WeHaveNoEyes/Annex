@@ -4,6 +4,7 @@ import type { MediaType, ProcessingItem } from "@prisma/client";
 import { prisma } from "../../../db/client.js";
 import { detectRarArchive, extractRar } from "../../archive.js";
 import { getDownloadService } from "../../download.js";
+import { getDownloadClientManager } from "../../downloadClients/DownloadClientManager.js";
 import { circuitBreakerService } from "../CircuitBreakerService.js";
 import type { PipelineContext } from "../PipelineContext";
 import { pipelineOrchestrator } from "../PipelineOrchestrator.js";
@@ -23,6 +24,19 @@ export class DownloadWorker extends BaseWorker {
   readonly nextStatus = "DOWNLOADED" as const;
   readonly name = "DownloadWorker";
   readonly concurrency = 20;
+
+  /**
+   * Get the download client for a download, with fallback to legacy qBittorrent
+   */
+  private getClientForDownload(download: { downloadClientId?: string | null }) {
+    const clientManager = getDownloadClientManager();
+    const client = download.downloadClientId
+      ? clientManager.getClient(download.downloadClientId)
+      : null;
+
+    // Fallback to legacy qBittorrent
+    return client || getDownloadService();
+  }
 
   /**
    * Process batch - handle both new downloads and active monitoring
@@ -85,11 +99,12 @@ export class DownloadWorker extends BaseWorker {
         console.log(
           `[${this.name}] Early exit: ${item.title} download already complete, promoting to DOWNLOADED`
         );
-        // Get torrent details for file path
-        const qb = getDownloadService();
-        const torrent = await qb.getProgress(download.torrentHash);
-        if (torrent) {
-          await this.handleCompletedDownload(item, download, torrent);
+        // Get download details for file path
+        const client = this.getClientForDownload(download);
+        const clientHash = download.clientHash || download.torrentHash;
+        const progress = await client.getProgress(clientHash);
+        if (progress) {
+          await this.handleCompletedDownload(item, download, progress);
         }
         return;
       }
@@ -297,16 +312,17 @@ export class DownloadWorker extends BaseWorker {
     }
 
     try {
-      // Get torrent status from qBittorrent
-      const qb = getDownloadService();
-      const torrent = await qb.getProgress(download.torrentHash);
+      // Get download status from client
+      const client = this.getClientForDownload(download);
+      const clientHash = download.clientHash || download.torrentHash;
+      const progress = await client.getProgress(clientHash);
 
-      if (!torrent) {
-        throw new Error(`Torrent ${download.torrentHash} not found in qBittorrent`);
+      if (!progress) {
+        throw new Error(`Download ${clientHash} not found in client ${client.name}`);
       }
 
       // Stall detection: Compare progress to last known value
-      const progressChanged = torrent.progress !== item.lastProgressValue;
+      const progressChanged = progress.progress !== item.lastProgressValue;
 
       if (!progressChanged && item.lastProgressUpdate) {
         const stallTime = Date.now() - item.lastProgressUpdate.getTime();
@@ -317,34 +333,34 @@ export class DownloadWorker extends BaseWorker {
             `[${this.name}] Download stalled for ${item.title} (no progress for 30 min)`
           );
 
-          // Check qBittorrent state
-          if (torrent.state === "stalled" || torrent.state === "error") {
-            throw new Error(`Download stalled: ${torrent.state}`);
+          // Check client state
+          if (progress.state === "stalled" || progress.state === "error") {
+            throw new Error(`Download stalled: ${progress.state}`);
           }
         }
       }
 
       // Update progress if changed
       if (progressChanged) {
-        await pipelineOrchestrator.updateProgress(item.id, torrent.progress, {
+        await pipelineOrchestrator.updateProgress(item.id, progress.progress, {
           lastProgressUpdate: new Date(),
-          lastProgressValue: torrent.progress,
+          lastProgressValue: progress.progress,
         });
 
         // Update download record
         await prisma.download.update({
           where: { id: download.id },
           data: {
-            progress: torrent.progress,
-            savePath: torrent.savePath,
-            contentPath: torrent.contentPath,
+            progress: progress.progress,
+            savePath: progress.savePath,
+            contentPath: progress.contentPath,
           },
         });
       }
 
       // Check if complete
-      if (torrent.isComplete || torrent.progress >= 100) {
-        await this.handleCompletedDownload(item, download, torrent);
+      if (progress.isComplete || progress.progress >= 100) {
+        await this.handleCompletedDownload(item, download, progress);
       }
 
       // Record success in circuit breaker
@@ -459,7 +475,16 @@ export class DownloadWorker extends BaseWorker {
       throw new Error("No existing download in search context");
     }
 
-    const torrentHash = existingDownload.torrentHash;
+    // Get full download record from database
+    const downloadRecord = await prisma.download.findUnique({
+      where: { torrentHash: existingDownload.torrentHash },
+    });
+
+    if (!downloadRecord) {
+      throw new Error(`Download record not found for hash ${existingDownload.torrentHash}`);
+    }
+
+    const clientHash = downloadRecord.clientHash || downloadRecord.torrentHash;
 
     // Check circuit breaker
     const qbHealthy = await circuitBreakerService.isAvailable("qbittorrent");
@@ -473,42 +498,44 @@ export class DownloadWorker extends BaseWorker {
     }
 
     try {
-      // Get torrent details from qBittorrent
-      const qb = getDownloadService();
-      const torrent = await qb.getProgress(torrentHash);
+      // Get download details from client
+      const client = this.getClientForDownload(downloadRecord);
+      const progress = await client.getProgress(clientHash);
 
-      if (!torrent) {
-        throw new Error(`Torrent ${torrentHash} no longer exists in qBittorrent`);
+      if (!progress) {
+        throw new Error(`Download ${clientHash} no longer exists in ${client.name}`);
       }
 
       console.log(
-        `[${this.name}] Existing torrent: ${torrent.name}, progress: ${torrent.progress}%`
+        `[${this.name}] Existing download: ${progress.name}, progress: ${progress.progress}%`
       );
 
       // Find or create Download record
       let download = await prisma.download.findUnique({
-        where: { torrentHash },
+        where: { torrentHash: clientHash },
       });
 
       if (!download) {
-        // Create Download record for existing torrent
+        // Create Download record for existing download
         const selectedRelease = searchData?.selectedRelease;
         download = await prisma.download.create({
           data: {
-            id: torrentHash,
+            id: clientHash,
             requestId: item.requestId,
             mediaType: request.type as MediaType,
-            torrentHash,
-            torrentName: torrent.name,
-            status: torrent.isComplete ? "COMPLETED" : "DOWNLOADING",
-            progress: torrent.progress,
-            savePath: torrent.savePath,
-            contentPath: torrent.contentPath,
+            torrentHash: clientHash, // Keep for backward compatibility
+            clientHash,
+            downloadClientId: downloadRecord.downloadClientId,
+            torrentName: progress.name,
+            status: progress.isComplete ? "COMPLETED" : "DOWNLOADING",
+            progress: progress.progress,
+            savePath: progress.savePath,
+            contentPath: progress.contentPath,
             indexerName: selectedRelease?.indexerName || null,
             resolution: selectedRelease?.resolution || null,
             source: selectedRelease?.source || null,
             codec: selectedRelease?.codec || null,
-            completedAt: torrent.isComplete ? new Date() : null,
+            completedAt: progress.isComplete ? new Date() : null,
           },
         });
       }
@@ -525,14 +552,14 @@ export class DownloadWorker extends BaseWorker {
       });
 
       // Initialize progress tracking
-      await pipelineOrchestrator.updateProgress(item.id, torrent.progress, {
+      await pipelineOrchestrator.updateProgress(item.id, progress.progress, {
         lastProgressUpdate: new Date(),
-        lastProgressValue: torrent.progress,
+        lastProgressValue: progress.progress,
       });
 
       // If already complete, immediately transition to DOWNLOADED
-      if (torrent.isComplete || torrent.progress >= 100) {
-        await this.handleCompletedDownload(item, download, torrent);
+      if (progress.isComplete || progress.progress >= 100) {
+        await this.handleCompletedDownload(item, download, progress);
       }
 
       // Record success in circuit breaker
