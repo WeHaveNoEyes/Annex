@@ -394,6 +394,51 @@ model AlternativeRelease {
 }
 
 // =============================================================================
+// Download Clients - Multi-client support (qBittorrent, SABnzbd, NZBGet)
+// =============================================================================
+
+model DownloadClient {
+  id   String             @id @default(cuid())
+  name String             @unique
+  type DownloadClientType
+
+  // Connection
+  url      String
+  username String?
+
+  // Configuration
+  priority       Int      @default(50) // 1-100, higher = preferred
+  enabled        Boolean  @default(true)
+  supportedTypes String[] // ["torrent"] or ["nzb"]
+  baseDir        String?  @map("base_dir") // Path mapping for remote clients
+
+  // Health tracking
+  isHealthy       Boolean   @default(true) @map("is_healthy")
+  lastHealthCheck DateTime? @map("last_health_check")
+  lastError       String?   @map("last_error")
+
+  // Statistics
+  totalDownloads  Int @default(0) @map("total_downloads")
+  activeDownloads Int @default(0) @map("active_downloads")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  downloads Download[]
+
+  @@index([enabled, priority])
+  @@index([type, enabled])
+  @@map("download_clients")
+}
+
+enum DownloadClientType {
+  QBITTORRENT
+  SABNZBD
+  NZBGET
+}
+
+// =============================================================================
 // Downloads - Central download tracking for both Movies and TV
 // =============================================================================
 
@@ -402,7 +447,12 @@ model Download {
   requestId String
   request   MediaRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
 
-  // qBittorrent tracking
+  // Download client tracking (NEW - nullable for backward compatibility)
+  downloadClientId String?         @map("download_client_id")
+  downloadClient   DownloadClient? @relation(fields: [downloadClientId], references: [id], onDelete: SetNull)
+  clientHash       String?         @map("client_hash") // Generic hash/ID across all client types
+
+  // qBittorrent tracking (LEGACY - kept for backward compatibility)
   torrentHash String  @unique // qBittorrent identifier
   torrentName String // Original torrent name
   magnetUri   String? // Magnet link used to add (for recovery)
@@ -454,6 +504,7 @@ model Download {
   @@index([requestId])
   @@index([status])
   @@index([mediaType, status])
+  @@index([downloadClientId])
 }
 
 enum DownloadStatus {
