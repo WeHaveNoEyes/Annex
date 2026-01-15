@@ -37,6 +37,7 @@ export interface AddDownloadOptions {
   paused?: boolean;
   tags?: string[];
   priority?: number;
+  filename?: string;
 }
 
 export interface AddDownloadResult {

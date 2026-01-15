@@ -591,8 +591,9 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
 
   if (magnetUri) {
     addResult = await client.addDownload(magnetUri, undefined, {
-      category: "annex",
+      category: "",
       tags: [requestTag],
+      filename: release.title,
     });
   } else if (downloadUrl) {
     // Fetch file data if needed for authenticated URLs
@@ -621,13 +622,15 @@ export async function createDownload(params: CreateDownloadParams): Promise<Down
     // Add with file data if we have it, otherwise try URL directly
     if (fileData) {
       addResult = await client.addDownload(downloadUrl, fileData, {
-        category: "annex",
+        category: "",
         tags: [requestTag],
+        filename: release.title,
       });
     } else {
       addResult = await client.addDownload(downloadUrl, undefined, {
-        category: "annex",
+        category: "",
         tags: [requestTag],
+        filename: release.title,
       });
     }
   } else {
@@ -1040,8 +1043,9 @@ export async function retryWithAlternative(downloadId: string): Promise<Download
   const tag = `request:${download.requestId}`;
   // biome-ignore lint/style/noNonNullAssertion: checked above
   const addResult = await client.addDownload(magnetUri || downloadUrl!, undefined, {
-    category: "annex",
+    category: "",
     tags: [tag],
+    filename: nextRelease.title,
   });
 
   if (!addResult.success || !addResult.clientHash) {

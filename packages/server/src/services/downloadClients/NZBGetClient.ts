@@ -138,7 +138,11 @@ export class NZBGetClient implements IDownloadClient {
       const uint8Array = new Uint8Array(fileData);
       const base64 = this.arrayBufferToBase64(uint8Array);
 
-      const filename = "file.nzb";
+      // Use provided filename or default, ensure .nzb extension
+      let filename = options?.filename || "download";
+      if (!filename.endsWith(".nzb")) {
+        filename += ".nzb";
+      }
       const category = options?.category || "";
       const priority = options?.priority || 0;
       const addPaused = options?.paused || false;
@@ -201,7 +205,11 @@ export class NZBGetClient implements IDownloadClient {
     options?: AddDownloadOptions
   ): Promise<AddDownloadResult> {
     try {
-      const filename = "download.nzb";
+      // Use provided filename or default, ensure .nzb extension
+      let filename = options?.filename || "download";
+      if (!filename.endsWith(".nzb")) {
+        filename += ".nzb";
+      }
       const category = options?.category || "";
       const priority = options?.priority || 0;
       const addPaused = options?.paused || false;
