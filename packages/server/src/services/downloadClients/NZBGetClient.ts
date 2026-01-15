@@ -100,6 +100,7 @@ export class NZBGetClient implements IDownloadClient {
 
       return { success: true, version: response.result };
     } catch (error) {
+      console.error(`[NZBGetClient] Exception:`, error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -119,6 +120,7 @@ export class NZBGetClient implements IDownloadClient {
 
       return await this.addNzbUrl(url, options);
     } catch (error) {
+      console.error(`[NZBGetClient] Exception:`, error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -140,19 +142,36 @@ export class NZBGetClient implements IDownloadClient {
       const priority = options?.priority || 0;
       const addPaused = options?.paused || false;
 
-      // NZBGet append parameters (only use universally supported ones):
-      // NZBFilename, NZBContent, Category, Priority, AddToTop, AddPaused
-      // Newer parameters (DupeKey, DupeScore, DupeMode) cause "Invalid parameter" errors on some versions
-      const response = await this.rpcCall<number>("append", [
+      // NZBGet append parameters: NZBFilename, NZBContent, Category, Priority, AddToTop, AddPaused, DupeKey, DupeScore, DupeMode
+      // Pass DupeKey/DupeScore/DupeMode with default values (some versions require them)
+      const params = [
         filename,
         base64,
         category,
         priority,
         false, // AddToTop (addFirst)
         addPaused,
-      ]);
+        "", // DupeKey (default: empty string)
+        0, // DupeScore (default: 0)
+        "SCORE", // DupeMode (default: "SCORE" - safest option)
+      ];
+
+      console.log(`[NZBGetClient] Calling append with ${params.length} parameters:`, {
+        filename,
+        contentLength: base64.length,
+        category,
+        priority,
+        addToTop: false,
+        addPaused,
+        dupeKey: "",
+        dupeScore: 0,
+        dupeMode: "SCORE",
+      });
+
+      const response = await this.rpcCall<number>("append", params);
 
       if (response.error) {
+        console.error(`[NZBGetClient] append failed:`, response.error);
         return { success: false, error: response.error.message };
       }
 
@@ -162,6 +181,7 @@ export class NZBGetClient implements IDownloadClient {
 
       return { success: true, clientHash: String(response.result) };
     } catch (error) {
+      console.error(`[NZBGetClient] Exception:`, error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -193,18 +213,34 @@ export class NZBGetClient implements IDownloadClient {
       const priority = options?.priority || 0;
       const addPaused = options?.paused || false;
 
-      // NZBGet appendurl parameters (only use universally supported ones):
-      // NZBFilename, Category, Priority, AddToTop, AddPaused
-      // Newer parameters (DupeKey, DupeScore, DupeMode) cause "Invalid parameter" errors on some versions
-      const response = await this.rpcCall<number>("appendurl", [
+      // NZBGet appendurl parameters: NZBFilename, Category, Priority, AddToTop, AddPaused, DupeKey, DupeScore, DupeMode
+      // Pass DupeKey/DupeScore/DupeMode with default values (some versions require them)
+      const params = [
         nzbUrl,
         category,
         priority,
         false, // AddToTop (addFirst)
         addPaused,
-      ]);
+        "", // DupeKey (default: empty string)
+        0, // DupeScore (default: 0)
+        "SCORE", // DupeMode (default: "SCORE" - safest option)
+      ];
+
+      console.log(`[NZBGetClient] Calling appendurl with ${params.length} parameters:`, {
+        nzbUrl,
+        category,
+        priority,
+        addToTop: false,
+        addPaused,
+        dupeKey: "",
+        dupeScore: 0,
+        dupeMode: "SCORE",
+      });
+
+      const response = await this.rpcCall<number>("appendurl", params);
 
       if (response.error) {
+        console.error(`[NZBGetClient] appendurl failed:`, response.error);
         return { success: false, error: response.error.message };
       }
 
@@ -214,6 +250,7 @@ export class NZBGetClient implements IDownloadClient {
 
       return { success: true, clientHash: String(response.result) };
     } catch (error) {
+      console.error(`[NZBGetClient] Exception:`, error);
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
