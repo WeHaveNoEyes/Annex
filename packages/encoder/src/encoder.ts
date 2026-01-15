@@ -476,6 +476,12 @@ function buildFfmpegArgs(
     args.push("-c:s", "copy");
   }
 
+  // Fix timestamp and interleaving issues
+  args.push("-avoid_negative_ts", "make_zero"); // Normalize timestamps
+  args.push("-max_interleave_delta", "0"); // Don't wait for subtitle packets
+  args.push("-fps_mode", "cfr"); // Force constant frame rate
+  args.push("-vsync", "cfr"); // Legacy alias for fps_mode (backwards compat)
+
   // Limit internal muxing queue to prevent memory buildup
   args.push("-max_muxing_queue_size", "1024");
 
