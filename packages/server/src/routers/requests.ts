@@ -1678,7 +1678,7 @@ export const requestsRouter = router({
 
       // Update stepContext with new selection AND reset cooldown
       await prisma.processingItem.update({
-        where: { id: input.itemId },
+        where: { id: item.id },
         data: {
           stepContext: {
             ...stepContext,
