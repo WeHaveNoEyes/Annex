@@ -831,7 +831,7 @@ class IndexerService {
     resolution: string,
     source: string,
     codec: string,
-    seeders: number
+    _seeders: number
   ): number {
     let score = 0;
 
@@ -851,10 +851,9 @@ class IndexerService {
     if (upper.includes("DTS-HD") || upper.includes("DTSHD")) score += QUALITY_SCORES["DTS-HD"];
     if (upper.includes("DTS") && !upper.includes("DTS-HD")) score += QUALITY_SCORES.DTS;
 
-    // Seeder bonus (logarithmic, capped at 20 points)
-    if (seeders > 0) {
-      score += Math.min(20, Math.floor(Math.log10(seeders) * 5));
-    }
+    // Note: Seeder bonus removed to prevent bias against Usenet releases
+    // Seeders indicate availability (torrent-specific), not quality
+    // NZB releases would always get 0 bonus, making them score lower unfairly
 
     // Penalty for samples, hardcoded subs, etc.
     if (upper.includes("SAMPLE")) score -= 100;

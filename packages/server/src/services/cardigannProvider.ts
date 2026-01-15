@@ -282,7 +282,7 @@ class CardigannProvider {
     resolution: string,
     source: string,
     codec: string,
-    seeders: number
+    _seeders: number
   ): number {
     const QUALITY_SCORES: Record<string, number> = {
       "2160p": 100,
@@ -323,9 +323,9 @@ class CardigannProvider {
     if (upper.includes("DTS-HD") || upper.includes("DTSHD")) score += QUALITY_SCORES["DTS-HD"];
     if (upper.includes("DTS") && !upper.includes("DTS-HD")) score += QUALITY_SCORES.DTS;
 
-    if (seeders > 0) {
-      score += Math.min(20, Math.floor(Math.log10(seeders) * 5));
-    }
+    // Note: Seeder bonus removed to prevent bias against Usenet releases
+    // Seeders indicate availability (torrent-specific), not quality
+    // NZB releases would always get 0 bonus, making them score lower unfairly
 
     if (upper.includes("SAMPLE")) score -= 100;
     if (upper.includes("HARDCODED") || upper.includes("HC ")) score -= 30;

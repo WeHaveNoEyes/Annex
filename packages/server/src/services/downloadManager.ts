@@ -476,8 +476,9 @@ export function scoreRelease(
     }
   }
 
-  // Seeder bonus (0-100)
-  score += Math.min(release.seeders, 100);
+  // Note: Seeder bonus removed to prevent bias against Usenet releases
+  // Seeders indicate availability (torrent-specific), not quality
+  // NZB releases would always get 0 bonus, making them score lower unfairly
 
   // Preferred group bonus
   if (parsed.group && profile.preferredGroups.includes(parsed.group.toUpperCase())) {
