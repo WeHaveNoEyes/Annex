@@ -491,19 +491,17 @@ export class DownloadWorker extends BaseWorker {
       throw new Error("No existing download in search context");
     }
 
-    // Get full download record from database
+    const clientHash = existingDownload.torrentHash;
+
+    // Get full download record from database (may not exist for external torrents)
     const downloadRecord = await prisma.download.findUnique({
-      where: { torrentHash: existingDownload.torrentHash },
+      where: { torrentHash: clientHash },
     });
 
-    if (!downloadRecord) {
-      throw new Error(`Download record not found for hash ${existingDownload.torrentHash}`);
-    }
-
-    const clientHash = downloadRecord.clientHash || downloadRecord.torrentHash;
-
-    // Get client and check its circuit breaker
-    const client = this.getClientForDownload(downloadRecord);
+    // Get client (use record if exists, otherwise fallback to default)
+    const client = downloadRecord
+      ? this.getClientForDownload(downloadRecord)
+      : getDownloadService();
     const circuitBreakerKey = this.getCircuitBreakerKey(client);
     const clientHealthy = await circuitBreakerService.isAvailable(circuitBreakerKey);
 
@@ -543,7 +541,7 @@ export class DownloadWorker extends BaseWorker {
             mediaType: request.type as MediaType,
             torrentHash: clientHash, // Keep for backward compatibility
             clientHash,
-            downloadClientId: downloadRecord.downloadClientId,
+            downloadClientId: downloadRecord?.downloadClientId || null,
             torrentName: progress.name,
             status: progress.isComplete ? "COMPLETED" : "DOWNLOADING",
             progress: progress.progress,
