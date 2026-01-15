@@ -260,8 +260,8 @@ function formatCurrentStep(step: string | null): string | null {
     searching: "Searching for releases",
 
     // Download phase
-    download: "Downloading from torrent",
-    downloading: "Downloading from torrent",
+    download: "Downloading release",
+    downloading: "Downloading release",
     download_complete: "Download complete",
 
     // Encode phase
@@ -1071,7 +1071,11 @@ function RequestCard({ request, onShowAlternatives, onShowDiscoveryOverride }: R
                   <div className="flex items-center gap-3">
                     <div className="flex-1">
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-white/70">Downloading from torrent</span>
+                        <span className="text-sm text-white/70">
+                          {request.releaseIndexerName
+                            ? `Downloading from ${request.releaseIndexerName}`
+                            : "Downloading release"}
+                        </span>
                         <span className="text-sm font-medium text-white">
                           {Math.round(request.progress)}%
                         </span>
