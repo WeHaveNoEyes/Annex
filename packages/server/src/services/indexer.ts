@@ -536,7 +536,9 @@ class IndexerService {
       url.searchParams.set("q", options.query);
     }
 
-    return url.toString();
+    // Convert to string and replace + with %20 for NEWZNAB compatibility
+    // Some NEWZNAB indexers (like altHUB) don't accept + for spaces
+    return url.toString().replace(/\+/g, "%20");
   }
 
   /**
