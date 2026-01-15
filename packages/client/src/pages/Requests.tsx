@@ -624,6 +624,105 @@ function formatBytes(bytes: number): string {
   return `${(bytes / k ** i).toFixed(1)} ${sizes[i]}`;
 }
 
+function DiscoveredSection({
+  requestId,
+  onShowDiscoveryOverride,
+}: {
+  requestId: string;
+  onShowDiscoveryOverride: (id: string) => void;
+}) {
+  const utils = trpc.useUtils();
+  const { data } = trpc.requests.getDiscoveredDetails.useQuery(
+    { itemId: requestId },
+    { refetchInterval: 1000 }
+  );
+
+  const approveMutation = trpc.requests.approveDiscoveredItem.useMutation({
+    onSuccess: () => {
+      utils.requests.list.invalidate();
+    },
+  });
+
+  const handleApprove = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    approveMutation.mutate({ itemId: requestId });
+  };
+
+  const handleViewAlternatives = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onShowDiscoveryOverride(requestId);
+  };
+
+  return (
+    <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded space-y-3">
+      <div>
+        <div className="text-xs text-cyan-400/70 mb-1">Release Discovered</div>
+        <div className="mt-2">
+          <CountdownTimer itemId={requestId} />
+        </div>
+      </div>
+
+      {data?.selectedRelease && (
+        <div className="bg-white/5 rounded border border-white/10 p-3">
+          <div
+            className="text-sm font-medium text-white/90 mb-2 truncate"
+            title={data.selectedRelease.title}
+          >
+            {data.selectedRelease.title}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {data.selectedRelease.indexerName && (
+              <span className="px-2 py-1 bg-annex-500/20 rounded border border-annex-500/30 text-xs text-annex-300">
+                {data.selectedRelease.indexerName}
+              </span>
+            )}
+            {data.selectedRelease.resolution && (
+              <span className="px-2 py-1 bg-blue-500/20 rounded border border-blue-500/30 text-xs text-blue-300">
+                {data.selectedRelease.resolution}
+              </span>
+            )}
+            {data.selectedRelease.source && (
+              <span className="px-2 py-1 bg-purple-500/20 rounded border border-purple-500/30 text-xs text-purple-300">
+                {data.selectedRelease.source}
+              </span>
+            )}
+            {data.selectedRelease.codec && (
+              <span className="px-2 py-1 bg-cyan-500/20 rounded border border-cyan-500/30 text-xs text-cyan-300">
+                {data.selectedRelease.codec}
+              </span>
+            )}
+            {data.selectedRelease.score && (
+              <span className="px-2 py-1 bg-gold-500/20 rounded border border-gold-500/30 text-xs text-gold-300">
+                Score: {data.selectedRelease.score}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-4 mt-2 text-xs text-white/60">
+            {data.selectedRelease.size && <span>{formatBytes(data.selectedRelease.size)}</span>}
+            {data.selectedRelease.seeders !== undefined && (
+              <span className="text-green-300">{data.selectedRelease.seeders} seeders</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="flex gap-2">
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={handleApprove}
+          disabled={approveMutation.isPending}
+        >
+          {approveMutation.isPending ? "Approving..." : "Approve"}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={handleViewAlternatives}>
+          View Alternatives
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 interface RequestCardProps {
   request: {
     id: string;
@@ -907,29 +1006,10 @@ function RequestCard({ request, onShowAlternatives, onShowDiscoveryOverride }: R
 
           {/* Discovered */}
           {isDiscovered && (
-            <div className="p-3 bg-cyan-500/10 border border-cyan-500/20 rounded space-y-3">
-              <div>
-                <div className="text-xs text-cyan-400/70 mb-1">Release Discovered</div>
-                <div className="text-sm text-cyan-400">
-                  Best release auto-selected. Reviewing before download.
-                </div>
-                <div className="mt-2">
-                  <CountdownTimer itemId={request.id} />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onShowDiscoveryOverride(request.id);
-                  }}
-                >
-                  View Selection
-                </Button>
-              </div>
-            </div>
+            <DiscoveredSection
+              requestId={request.id}
+              onShowDiscoveryOverride={onShowDiscoveryOverride}
+            />
           )}
 
           {/* Quality Unavailable */}
